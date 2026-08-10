@@ -21,6 +21,7 @@ resources:
   - service-mesh.yaml
   - connectivity-link-operator.yaml
   - connectivity-link.yaml
+  - console-plugins.yaml
 configMapGenerator:
   - name: api-monetization-gitops-source
     namespace: openshift-gitops

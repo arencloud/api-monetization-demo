@@ -8,10 +8,12 @@ if [[ ${CONFIRM_UNINSTALL:-} != "api-monetization" ]]; then
   exit 1
 fi
 
-if ! command -v oc >/dev/null 2>&1; then
-  echo "error: oc is required" >&2
-  exit 1
-fi
+for command_name in oc jq; do
+  if ! command -v "$command_name" >/dev/null 2>&1; then
+    echo "error: $command_name is required" >&2
+    exit 1
+  fi
+done
 
 echo "removing API Monetization from $(oc whoami --show-server)"
 
@@ -31,6 +33,23 @@ for attempt in $(seq 1 6); do
   [[ -z $remaining_applications ]] && break
   sleep 2
 done
+
+echo "disabling API Monetization operator console plugins"
+if oc get console.operator.openshift.io cluster >/dev/null 2>&1; then
+  console_patch=$(oc get console.operator.openshift.io cluster -o json | jq -c '{
+    spec: {
+      plugins: [
+        .spec.plugins[]?
+        | select(. != "gitops-plugin" and . != "kuadrant-console-plugin")
+      ]
+    }
+  }')
+  oc patch console.operator.openshift.io cluster --type=merge -p "$console_patch"
+  oc annotate console.operator.openshift.io cluster \
+    argocd.argoproj.io/sync-options- >/dev/null 2>&1 || true
+  oc label console.operator.openshift.io cluster \
+    app.kubernetes.io/name- app.kubernetes.io/part-of- >/dev/null 2>&1 || true
+fi
 
 delete_package() {
   local package=$1

@@ -5,6 +5,7 @@ resources:
   - service-mode.yaml
   - gateway.yaml
   - openshift-routes.yaml
+  - route-hosts.yaml
   - default-auth-policy.yaml
   - inventory-routes.yaml
   - inventory-auth-policies.yaml

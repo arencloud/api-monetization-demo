@@ -35,6 +35,9 @@ token then proves the parallel JWT path.
    oc get route -n api-monetization-gateway
    ```
 
+   `make verify` prints the cluster-generated API-key and JWT endpoint URLs.
+   Confirm that both use the current cluster's ingress domain.
+
 6. Reset the commercial state, then allow one minute for any old rate-limit
    counters to expire:
 
@@ -50,6 +53,9 @@ Show the `Inventory API` under **Connectivity Link → API Products** in the
 OpenShift console. Explain that `APIProduct`, `PlanPolicy`, and `APIKey` are
 operator-managed platform APIs rather than records hidden inside a monolithic
 API-management product.
+
+The **Connectivity Link** and **GitOps** console entries are enabled by GitOps
+after their Operators install the corresponding console plugins.
 
 Show the running topology:
 

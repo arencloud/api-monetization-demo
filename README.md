@@ -25,6 +25,8 @@ Internet -> OpenShift Route -> Gateway API -> Connectivity Link -> Service Mesh 
 OpenShift Routes always provide the portable entry path shown above. When
 MetalLB, a cloud integration, or another Service LoadBalancer provider assigns
 an external address, the Gateway also retains that direct LoadBalancer entry.
+The API hostnames are generated beneath the cluster ingress domain and are
+printed by `make verify`; no external DNS setup is required for the baseline.
 
 See [the architecture](docs/architecture.md) for component responsibilities and
 trust boundaries.
@@ -109,7 +111,8 @@ Detailed prerequisites, verification, and recovery steps are in
 
 The repository now contains the complete single-cluster demo path: operator and
 GitOps bootstrap, integrated-registry readiness validation, OpenShift Routes,
-Service Mesh, Connectivity Link, the RHCL developer catalog,
+Service Mesh, Connectivity Link, the enabled GitOps and RHCL console plugins,
+the RHCL developer catalog,
 External Secrets-generated API keys, Keycloak JWT clients, Free/Developer/Business/
 Enterprise plan policies, an Inventory API, a PostgreSQL-backed subscription
 control plane, live plan changes, Prometheus metrics, a Grafana dashboard,

@@ -13,8 +13,6 @@ gateway_namespace=api-monetization-gateway
 gateway_name=api-monetization
 application_namespace=api-monetization-apps
 data_namespace=api-monetization-data
-api_hostname=api-monetization.demo
-jwt_hostname=jwt.api-monetization.demo
 control_port=${CONTROL_LOCAL_PORT:-18080}
 keycloak_port=${KEYCLOAK_LOCAL_PORT:-18081}
 port_forward_pids=()
@@ -36,12 +34,18 @@ oc wait route/api-monetization-jwt -n "$gateway_namespace" \
 oc wait --for=condition=Ready apikey.devportal.kuadrant.io/demo-inventory-key \
   -n "$application_namespace" --timeout=5m
 
+api_hostname=$(oc get route api-monetization -n "$gateway_namespace" \
+  -o jsonpath='{.status.ingress[0].host}')
+jwt_hostname=$(oc get route api-monetization-jwt -n "$gateway_namespace" \
+  -o jsonpath='{.status.ingress[0].host}')
 router_hostname=$(oc get route api-monetization -n "$gateway_namespace" \
   -o jsonpath='{.status.ingress[0].routerCanonicalHostname}')
 if [[ -z $router_hostname ]]; then
   echo "error: the OpenShift router did not publish a canonical hostname" >&2
   exit 1
 fi
+echo "API-key endpoint: http://$api_hostname/inventory"
+echo "JWT endpoint: http://$jwt_hostname/inventory"
 secret_name=$(oc get apikey.devportal.kuadrant.io/demo-inventory-key \
   -n "$application_namespace" -o jsonpath='{.spec.secretRef.name}')
 api_key=$(oc get secret "$secret_name" -n "$application_namespace" \

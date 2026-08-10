@@ -75,16 +75,26 @@ management state, replicas, storage, or PVC, and complete demo removal leaves it
 untouched. `make preflight` blocks bootstrap unless the registry is Managed,
 Available, non-Degraded, and backed by persistent storage.
 
-The demo gateway intentionally uses HTTP and the synthetic hostnames
-`api-monetization.demo` and `jwt.api-monetization.demo`. The Gateway initially
-uses the controller's normal `LoadBalancer` Service. A GitOps sync hook waits for
-an external IP or hostname from MetalLB, a cloud integration, or another
-provider. When an address is assigned, the Service remains `LoadBalancer`. When
-none is assigned, the hook adds `networking.istio.io/service-type: ClusterIP` to
-the Gateway. OpenShift Routes expose both hosts in either mode, and the demo
-script uses curl address remapping to preserve the synthetic Host header without
-public DNS. Environment overlays can add `TLSPolicy` and `DNSPolicy` once a real
-domain and provider credentials are selected.
+The demo gateway intentionally uses HTTP. OpenShift generates the API-key and
+JWT hostnames beneath the cluster ingress domain from the Route subdomains
+`api-monetization` and `jwt.api-monetization`. A GitOps sync hook copies the
+admitted Route hosts into the corresponding Gateway API `HTTPRoute` resources,
+so edge and gateway routing agree without hard-coded cluster DNS names.
+
+The Gateway initially uses the controller's normal `LoadBalancer` Service. A
+GitOps sync hook waits for an external IP or hostname from MetalLB, a cloud
+integration, or another provider. When an address is assigned, the Service
+remains `LoadBalancer`. When none is assigned, the hook adds
+`networking.istio.io/service-type: ClusterIP` to the Gateway. OpenShift Routes
+expose both APIs in either mode. `make verify` prints the admitted URLs, and
+`make demo` discovers them dynamically. Environment overlays can add
+`TLSPolicy` and `DNSPolicy` once a real domain and provider credentials are
+selected.
+
+After the relevant Operators create their `ConsolePlugin` resources, GitOps
+enables the OpenShift GitOps and Connectivity Link plugins while preserving the
+default networking and monitoring plugins. The OpenShift console then exposes
+the GitOps and Connectivity Link navigation entries without a manual patch.
 
 ## Upgrade policy
 

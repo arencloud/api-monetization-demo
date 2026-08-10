@@ -6,9 +6,11 @@ Accepted.
 
 ## Decision
 
-The baseline uses an HTTP Gateway listener with synthetic hostnames and explicit
-Host headers. This makes the repository deployable to a fresh supported cluster
-without cloud DNS credentials. A real-domain overlay will add DNS and ACME-backed
+The baseline uses an HTTP Gateway listener with OpenShift-generated hostnames
+beneath the cluster ingress domain. A GitOps hook aligns each Gateway API
+`HTTPRoute` with its admitted OpenShift Route host. This makes the repository
+deployable to a fresh supported cluster without cloud DNS credentials or
+hard-coded cluster domains. A real-domain overlay will add DNS and ACME-backed
 TLS policies without changing applications or authentication rules.
 
 The Gateway-generated Service adapts to the cluster. It remains `LoadBalancer`

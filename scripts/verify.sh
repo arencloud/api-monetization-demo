@@ -87,6 +87,33 @@ oc wait --for=condition=Enforced planpolicies.extensions.kuadrant.io/inventory-a
 oc wait --for=condition=Ready apikeys.devportal.kuadrant.io/demo-inventory-key \
   -n api-monetization-apps --timeout=5m
 
+api_hostname=$(oc get route api-monetization -n api-monetization-gateway \
+  -o jsonpath='{.status.ingress[0].host}')
+jwt_hostname=$(oc get route api-monetization-jwt -n api-monetization-gateway \
+  -o jsonpath='{.status.ingress[0].host}')
+api_route_hostname=$(oc get httproute inventory-api-key -n api-monetization-apps \
+  -o jsonpath='{.spec.hostnames[0]}')
+jwt_route_hostname=$(oc get httproute inventory-jwt -n api-monetization-apps \
+  -o jsonpath='{.spec.hostnames[0]}')
+if [[ $api_hostname != "$api_route_hostname" || $jwt_hostname != "$jwt_route_hostname" ]]; then
+  echo "error: OpenShift Route and Gateway API HTTPRoute hostnames do not match" >&2
+  exit 1
+fi
+echo "API-key endpoint: http://$api_hostname/inventory"
+echo "JWT endpoint: http://$jwt_hostname/inventory"
+
+echo "waiting for operator console plugins"
+for plugin in gitops-plugin kuadrant-console-plugin; do
+  oc get consoleplugin.console.openshift.io "$plugin" >/dev/null
+  if ! oc get console.operator.openshift.io cluster \
+    -o jsonpath='{.spec.plugins}' | grep -qw "$plugin"; then
+    echo "error: Console plugin $plugin is installed but not enabled" >&2
+    exit 1
+  fi
+done
+oc wait clusteroperator/console --for=condition=Available=True --timeout=10m
+oc wait clusteroperator/console --for=condition=Progressing=False --timeout=10m
+
 echo "waiting for tracing and telemetry collection"
 oc wait --for=condition=Ready tempomonolithics.tempo.grafana.com/api-monetization \
   -n api-monetization-observability --timeout=10m

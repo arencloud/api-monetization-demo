@@ -9,7 +9,7 @@ metadata:
     app.kubernetes.io/name: api-monetization-gateway
     app.kubernetes.io/part-of: api-monetization
 spec:
-  host: api-monetization.demo
+  subdomain: api-monetization
   port:
     targetPort: http
   to:
@@ -28,7 +28,7 @@ metadata:
     app.kubernetes.io/name: api-monetization-gateway
     app.kubernetes.io/part-of: api-monetization
 spec:
-  host: jwt.api-monetization.demo
+  subdomain: jwt.api-monetization
   port:
     targetPort: http
   to:

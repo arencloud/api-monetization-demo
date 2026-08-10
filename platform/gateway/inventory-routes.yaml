@@ -18,7 +18,9 @@ spec:
       namespace: api-monetization-gateway
       sectionName: http
   hostnames:
-    - api-monetization.demo
+    # Replaced by the route-host alignment hook with the admitted OpenShift
+    # Route hostname. The reserved suffix keeps the pre-hook state harmless.
+    - api-monetization.invalid
   rules:
     - name: inventory
       matches:
@@ -27,8 +29,11 @@ spec:
             type: PathPrefix
             value: /inventory
       backendRefs:
-        - name: inventory-api
+        - group: ""
+          kind: Service
+          name: inventory-api
           port: 8080
+          weight: 1
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -50,7 +55,7 @@ spec:
       namespace: api-monetization-gateway
       sectionName: http
   hostnames:
-    - jwt.api-monetization.demo
+    - jwt.api-monetization.invalid
   rules:
     - name: inventory
       matches:
@@ -59,5 +64,8 @@ spec:
             type: PathPrefix
             value: /inventory
       backendRefs:
-        - name: inventory-api
+        - group: ""
+          kind: Service
+          name: inventory-api
           port: 8080
+          weight: 1

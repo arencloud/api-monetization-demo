@@ -1,0 +1,15 @@
+apiVersion: operator.openshift.io/v1
+kind: Console
+metadata:
+  name: cluster
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  labels:
+    app.kubernetes.io/name: api-monetization-console-plugins
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  plugins:
+    - networking-console-plugin
+    - monitoring-plugin
+    - gitops-plugin
+    - kuadrant-console-plugin
