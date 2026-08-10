@@ -71,9 +71,11 @@ metadata:
     app.kubernetes.io/part-of: api-monetization
 spec:
   backoffLimit: 2
-  activeDeadlineSeconds: 600
+  activeDeadlineSeconds: 900
   template:
     metadata:
+      annotations:
+        sidecar.istio.io/inject: "false"
       labels:
         app.kubernetes.io/name: api-monetization-gateway-service-mode
         app.kubernetes.io/part-of: api-monetization
@@ -93,27 +95,51 @@ spec:
               namespace=api-monetization-gateway
               gateway=api-monetization
 
+              api() {
+                timeout -k 2s 8s oc --cache-dir=/tmp/.kube/cache \
+                  --request-timeout=5s "$@"
+              }
+
+              retry_api() {
+                local attempt
+                for attempt in $(seq 1 6); do
+                  if api "$@"; then
+                    return 0
+                  fi
+                  if (( attempt < 6 )); then
+                    echo "API request failed on attempt $attempt/6; retrying" >&2
+                    sleep 5
+                  else
+                    echo "API request failed after 6 attempts" >&2
+                  fi
+                done
+                return 1
+              }
+
               echo "probing for a Service LoadBalancer provider"
-              oc patch gateway "$gateway" -n "$namespace" --type=merge --patch \
+              retry_api patch gateway "$gateway" -n "$namespace" --type=merge --patch \
                 '{"metadata":{"annotations":{"networking.istio.io/service-type":null}}}'
 
               gateway_service=""
+              service_type=""
               external_address=""
-              for _ in $(seq 1 60); do
-                gateway_service=$(oc get services -n "$namespace" \
+              for attempt in $(seq 1 30); do
+                service_state=""
+                if service_state=$(api get services -n "$namespace" \
                   -l "gateway.networking.k8s.io/gateway-name=$gateway" \
-                  -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-                if [[ -n $gateway_service ]]; then
-                  service_type=$(oc get service "$gateway_service" -n "$namespace" \
-                    -o jsonpath='{.spec.type}' 2>/dev/null || true)
-                  external_address=$(oc get service "$gateway_service" -n "$namespace" \
-                    -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}' \
-                    2>/dev/null || true)
+                  -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{.spec.type}{"|"}{range .status.loadBalancer.ingress[*]}{.ip}{.hostname}{end}{end}' \
+                  2>/dev/null); then
+                  IFS='|' read -r gateway_service service_type external_address <<<"$service_state"
                   if [[ $service_type == "LoadBalancer" && -n $external_address ]]; then
                     break
                   fi
                 fi
-                sleep 5
+                if (( attempt % 10 == 0 )); then
+                  echo "still waiting for an external address ($attempt/30 probes)"
+                fi
+                if (( attempt < 30 )); then
+                  sleep 5
+                fi
               done
 
               if [[ -z $gateway_service ]]; then
@@ -125,14 +151,47 @@ spec:
                 echo "LoadBalancer provider assigned $external_address; preserving the LoadBalancer Service"
               else
                 echo "no external address was assigned; selecting the portable ClusterIP plus OpenShift Route mode"
-                oc patch gateway "$gateway" -n "$namespace" --type=merge --patch \
+                retry_api patch gateway "$gateway" -n "$namespace" --type=merge --patch \
                   '{"metadata":{"annotations":{"networking.istio.io/service-type":"ClusterIP"}}}'
-                oc wait service "$gateway_service" -n "$namespace" \
-                  --for=jsonpath='{.spec.type}'=ClusterIP --timeout=2m
+
+                service_type=""
+                for attempt in $(seq 1 12); do
+                  service_type=$(api get service "$gateway_service" -n "$namespace" \
+                    -o jsonpath='{.spec.type}' 2>/dev/null || true)
+                  if [[ $service_type == "ClusterIP" ]]; then
+                    break
+                  fi
+                  if (( attempt < 12 )); then
+                    sleep 5
+                  fi
+                done
+                if [[ $service_type != "ClusterIP" ]]; then
+                  echo "error: the Gateway Service did not converge to ClusterIP" >&2
+                  exit 1
+                fi
               fi
 
-              oc wait gateway "$gateway" -n "$namespace" \
-                --for=condition=Programmed --timeout=2m
+              programmed=""
+              for attempt in $(seq 1 12); do
+                programmed=$(api get gateway "$gateway" -n "$namespace" \
+                  -o jsonpath='{range .status.conditions[?(@.type=="Programmed")]}{.status}{end}' \
+                  2>/dev/null || true)
+                if [[ $programmed == "True" ]]; then
+                  break
+                fi
+                if (( attempt < 12 )); then
+                  sleep 5
+                fi
+              done
+              if [[ $programmed != "True" ]]; then
+                echo "error: the Gateway did not become Programmed" >&2
+                retry_api get gateway "$gateway" -n "$namespace" \
+                  -o jsonpath='{range .status.conditions[*]}{.type}{"="}{.status}{" reason="}{.reason}{" message="}{.message}{"\n"}{end}' \
+                  >&2 || true
+                exit 1
+              fi
+
+              echo "Gateway service mode is ready: service=$gateway_service type=$service_type"
           resources:
             requests:
               cpu: 10m
