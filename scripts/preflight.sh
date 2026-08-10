@@ -93,18 +93,47 @@ registry_state=$(oc get configs.imageregistry.operator.openshift.io cluster \
   -o jsonpath='{.spec.managementState}' 2>/dev/null || true)
 case "$registry_state" in
   Managed)
+    registry_uses_empty_dir=$(oc get configs.imageregistry.operator.openshift.io cluster \
+      -o jsonpath='{.spec.storage.emptyDir}' 2>/dev/null || true)
+    registry_storage_entries=$(oc get configs.imageregistry.operator.openshift.io cluster \
+      -o go-template='{{len .spec.storage}}' 2>/dev/null || true)
     registry_deployment_available=$(oc get deployment/image-registry \
       -n openshift-image-registry \
       -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' \
       2>/dev/null || true)
-    if [[ $registry_deployment_available == "True" ]]; then
-      pass "integrated image registry is Managed and ready"
+    registry_operator_available=$(oc get clusteroperator/image-registry \
+      -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' \
+      2>/dev/null || true)
+    registry_operator_degraded=$(oc get clusteroperator/image-registry \
+      -o jsonpath='{.status.conditions[?(@.type=="Degraded")].status}' \
+      2>/dev/null || true)
+    if [[ $registry_storage_entries == 0 ]]; then
+      fail "integrated image registry is Managed but has no storage configuration"
+    elif [[ -n $registry_uses_empty_dir ]]; then
+      fail "integrated image registry uses non-persistent emptyDir storage; configure infrastructure-backed storage"
+    elif [[ $registry_deployment_available == "True" && \
+      $registry_operator_available == "True" && $registry_operator_degraded == "False" ]]; then
+      registry_pvc=$(oc get configs.imageregistry.operator.openshift.io cluster \
+        -o jsonpath='{.spec.storage.pvc.claim}' 2>/dev/null || true)
+      if [[ -n $registry_pvc ]]; then
+        registry_pvc_phase=$(oc get pvc "$registry_pvc" -n openshift-image-registry \
+          -o jsonpath='{.status.phase}' 2>/dev/null || true)
+        registry_pvc_size=$(oc get pvc "$registry_pvc" -n openshift-image-registry \
+          -o jsonpath='{.status.capacity.storage}' 2>/dev/null || true)
+        if [[ $registry_pvc_phase == "Bound" ]]; then
+          pass "integrated image registry is Managed and ready with bound PVC $registry_pvc (${registry_pvc_size:-unknown size})"
+        else
+          fail "integrated image registry PVC $registry_pvc is not Bound"
+        fi
+      else
+        pass "integrated image registry is Managed and ready with infrastructure-backed storage"
+      fi
     else
-      warn "integrated image registry is Managed but NOT READY; the GitOps registry gate will wait for it"
+      fail "integrated image registry is Managed but NOT READY"
     fi
     ;;
   Removed)
-    warn "integrated image registry is Removed and NOT READY; GitOps will enable ephemeral demo storage before creating child Applications"
+    fail "integrated image registry is Removed; configure persistent infrastructure storage and set it to Managed"
     ;;
   Unmanaged)
     fail "integrated image registry is Unmanaged; set it to Managed or Removed"

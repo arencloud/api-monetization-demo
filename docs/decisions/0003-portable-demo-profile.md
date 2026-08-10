@@ -19,11 +19,10 @@ Routes publish the API-key and JWT hostnames in either mode. This avoids assumin
 that a bare-metal cluster has a Service LoadBalancer provider while using one
 when it is available.
 
-OpenShift application builds require the integrated image registry. GitOps
-preserves an existing Managed registry. On a fresh cluster where the registry is
-Removed, a narrowly privileged initialization job enables one-replica
-`emptyDir` storage and waits for registry availability before application sync
-waves continue. This storage choice is intentionally limited to the demo.
+OpenShift application builds require the integrated image registry. The registry
+and its persistent storage are cluster infrastructure prerequisites, not part of
+the demo lifecycle. Preflight rejects a Removed, unavailable, unconfigured, or
+`emptyDir`-backed registry. GitOps does not modify registry configuration.
 
 The baseline uses OpenShift user-workload monitoring, structured container logs,
 and a Red Hat Operator-managed, in-memory `TempoMonolithic` instance. In-memory
@@ -41,7 +40,8 @@ OpenShift during the demo.
 
 - A fresh cluster needs no LoadBalancer provider, DNS, ACME, S3, or Grafana
   credentials.
-- Images in the demo-initialized registry do not survive a registry pod restart.
+- Registry capacity, availability, backup, and lifecycle remain infrastructure
+  responsibilities and are unaffected by demo installation or removal.
 - The complete authentication, rate limiting, upgrade, metrics, logging, and
   tracing story works before environment-specific integrations are selected.
 - TLS, long-lived traces, Loki, and Grafana are explicit production overlays,

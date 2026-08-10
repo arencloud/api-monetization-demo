@@ -10,8 +10,6 @@ resources:
   - tempo-operator.yaml
   - service-mesh-operator.yaml
   - keycloak-operator.yaml
-  - image-registry-rbac.yaml
-  - image-registry-initialize.yaml
   - external-secrets.yaml
   - demo-secrets.yaml
   - database.yaml

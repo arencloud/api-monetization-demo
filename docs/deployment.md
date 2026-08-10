@@ -10,6 +10,8 @@
 - Red Hat entitlements that expose the `rhcl-operator` package.
 - The repository is reachable by the in-cluster Argo CD repository server.
 - A default dynamic `StorageClass` is configured for PostgreSQL PVCs.
+- The integrated OpenShift image registry is `Managed`, Available, and uses
+  persistent infrastructure-backed storage rather than `emptyDir`.
 - Cluster nodes can pull from `registry.redhat.io`, `registry.access.redhat.com`,
   `ghcr.io`, and GitHub's `pkg-containers.githubusercontent.com` blob endpoint.
 
@@ -22,10 +24,10 @@ make preflight
 It fails if the cluster version, permissions, catalog sources, or required
 operator packages are incompatible. A missing RHCL package generally means the
 cluster pull secret/account does not include the required product entitlement.
-It also reports non-blocking warnings when the integrated registry is not yet
-ready or when no MetalLB, cloud, or other external Service LoadBalancer
-assignment is detected. The result is advisory because the Gateway performs a
-live assignment probe during its GitOps sync.
+It also reports a non-blocking warning when no MetalLB, cloud, or other external
+Service LoadBalancer assignment is detected. That result is advisory because the
+Gateway performs a live assignment probe during its GitOps sync. Registry
+readiness is mandatory because OpenShift builds publish their output there.
 
 ## Bootstrap
 
@@ -68,12 +70,10 @@ The expected end state is that every Argo CD application is `Synced` and
 the `Istio`/`IstioCNI` resources report healthy status, both PostgreSQL clusters
 are ready, and the Keycloak realm import reports `Done`.
 
-The GitOps registry initializer preserves a registry that is already `Managed`.
-If a fresh bare-metal cluster reports the integrated registry as `Removed`, it
-configures one replica with non-production `emptyDir` storage, changes the state
-to `Managed`, and blocks later application sync waves until the registry is
-Available. Images in this storage are lost when the registry pod restarts; use
-supported persistent or object storage for any non-demo environment.
+The integrated registry is infrastructure owned. GitOps does not change its
+management state, replicas, storage, or PVC, and complete demo removal leaves it
+untouched. `make preflight` blocks bootstrap unless the registry is Managed,
+Available, non-Degraded, and backed by persistent storage.
 
 The demo gateway intentionally uses HTTP and the synthetic hostnames
 `api-monetization.demo` and `jwt.api-monetization.demo`. The Gateway initially
@@ -138,8 +138,8 @@ CONFIRM_UNINSTALL=api-monetization make uninstall
 
 The workflow stops Argo CD reconciliation, removes operands before their
 Operators, removes cert-manager's separately managed operand, deletes the demo
-namespaces, restores a registry that the demo changed from `Removed`, and
-uninstalls OpenShift GitOps last. OLM-installed CRDs are retained
+namespaces, and uninstalls OpenShift GitOps last. The infrastructure registry and
+its data are preserved. OLM-installed CRDs are retained
 to avoid destructive cluster-wide data removal and to support clean
 reinstallation.
 

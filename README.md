@@ -108,7 +108,7 @@ Detailed prerequisites, verification, and recovery steps are in
 ## Implemented solution
 
 The repository now contains the complete single-cluster demo path: operator and
-GitOps bootstrap, safe integrated-registry initialization, OpenShift Routes,
+GitOps bootstrap, integrated-registry readiness validation, OpenShift Routes,
 Service Mesh, Connectivity Link, the RHCL developer catalog,
 External Secrets-generated API keys, Keycloak JWT clients, Free/Developer/Business/
 Enterprise plan policies, an Inventory API, a PostgreSQL-backed subscription
