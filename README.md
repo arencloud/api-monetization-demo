@@ -88,8 +88,10 @@ make bootstrap
 ```
 
 `make bootstrap` is the only imperative installation step. It installs the
-OpenShift GitOps Operator, waits for the default Argo CD instance, and applies
-the root application. Argo CD owns everything below that root.
+OpenShift GitOps Operator, waits for the default Argo CD instance, grants its
+dedicated application controller the cluster access required to reconcile this
+cluster-configuration repository, and applies the root application. Argo CD
+owns everything below that root.
 
 The root application currently points to this repository's canonical GitHub
 URL and the `main` branch. Before bootstrapping a fork or another branch, change

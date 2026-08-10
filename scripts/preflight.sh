@@ -39,6 +39,7 @@ fi
 
 for permission in \
   'create namespaces' \
+  'create clusterrolebindings.rbac.authorization.k8s.io --all-namespaces' \
   'create subscriptions.operators.coreos.com --all-namespaces' \
   'create operatorgroups.operators.coreos.com --all-namespaces'; do
   read -r verb resource scope <<<"$permission"
@@ -53,6 +54,13 @@ for permission in \
     fail "not authorized to $permission"
   fi
 done
+
+if [[ $(oc auth can-i bind clusterroles.rbac.authorization.k8s.io/cluster-admin \
+  2>/dev/null || true) == "yes" ]]; then
+  pass "authorized to bind the cluster-admin ClusterRole"
+else
+  fail "not authorized to bind the cluster-admin ClusterRole"
+fi
 
 if oc get catalogsource redhat-operators -n openshift-marketplace >/dev/null 2>&1; then
   pass "redhat-operators catalog source is available"

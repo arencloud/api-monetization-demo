@@ -120,6 +120,23 @@ echo "waiting for the default Argo CD server to become available"
 oc wait --for=condition=Available deployment/openshift-gitops-server \
   -n openshift-gitops --timeout=10m
 
+echo "granting the GitOps application controller cluster configuration access"
+oc apply -f bootstrap/root/application-controller-cluster-role-binding.yaml
+
+for attempt in $(seq 1 30); do
+  controller_access=$(oc auth can-i '*' '*' --all-namespaces \
+    --as=system:serviceaccount:openshift-gitops:openshift-gitops-argocd-application-controller \
+    2>/dev/null || true)
+  if [[ $controller_access == "yes" ]]; then
+    break
+  fi
+  if ((attempt == 30)); then
+    echo "error: GitOps application controller did not receive cluster configuration access" >&2
+    exit 1
+  fi
+  sleep 2
+done
+
 echo "registering the API monetization root application"
 oc apply -k bootstrap/root
 

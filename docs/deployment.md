@@ -35,7 +35,13 @@ The script performs only these mutations:
 1. Applies the OpenShift GitOps namespace, OperatorGroup, and Subscription.
 2. Waits for the subscription to report an installed CSV.
 3. Waits for the default Argo CD application controller.
-4. Applies the root `Application`.
+4. Grants `cluster-admin` to the dedicated OpenShift GitOps application
+   controller service account.
+5. Applies the root `Application`.
+
+The controller binding is required because this repository owns cluster-scoped
+Operators and Gateway resources and reconciles resources across multiple
+namespaces. It does not grant `cluster-admin` to users who log in to Argo CD.
 
 It does not directly apply any platform resource. Argo CD reconciles the child
 applications from Git.
@@ -102,6 +108,21 @@ oc describe application <name> -n openshift-gitops
 Do not delete CRDs to recover an operator. CRD deletion can remove all operand
 data. Any teardown workflow will be added separately with explicit ordering and
 backup requirements.
+
+## Complete removal
+
+The complete demo, including its databases and generated credentials, can be
+removed only with an explicit confirmation value:
+
+```bash
+CONFIRM_UNINSTALL=api-monetization make uninstall
+```
+
+The workflow stops Argo CD reconciliation, removes operands before their
+Operators, removes cert-manager's separately managed operand, deletes the demo
+namespaces, and uninstalls OpenShift GitOps last. OLM-installed CRDs are retained
+to avoid destructive cluster-wide data removal and to support clean
+reinstallation.
 
 ## Product references
 

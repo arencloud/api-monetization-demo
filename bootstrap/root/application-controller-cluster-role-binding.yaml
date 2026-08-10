@@ -1,0 +1,16 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: api-monetization-openshift-gitops-application-controller
+  labels:
+    app.kubernetes.io/name: api-monetization-gitops-controller
+    app.kubernetes.io/part-of: api-monetization
+    app.kubernetes.io/managed-by: bootstrap
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: openshift-gitops-argocd-application-controller
+    namespace: openshift-gitops

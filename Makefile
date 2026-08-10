@@ -1,6 +1,6 @@
 SHELL := /usr/bin/env bash
 
-.PHONY: help validate test preflight bootstrap render status verify demo reset-demo
+.PHONY: help validate test preflight bootstrap render status verify demo reset-demo uninstall
 
 help:
 	@echo "Targets:"
@@ -13,6 +13,7 @@ help:
 	@echo "  verify     Wait for secrets, databases, Keycloak, and realm readiness"
 	@echo "  demo       Run the API-key rate-limit and live-upgrade scenario"
 	@echo "  reset-demo Reset the demo subscription to the Free plan"
+	@echo "  uninstall  Remove the complete demo after explicit confirmation"
 
 validate:
 	@./scripts/validate.sh
@@ -44,3 +45,6 @@ demo:
 
 reset-demo:
 	@./scripts/reset-demo.sh
+
+uninstall:
+	@./scripts/uninstall.sh
