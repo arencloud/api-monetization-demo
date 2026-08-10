@@ -75,11 +75,14 @@ management state, replicas, storage, or PVC, and complete demo removal leaves it
 untouched. `make preflight` blocks bootstrap unless the registry is Managed,
 Available, non-Degraded, and backed by persistent storage.
 
-The demo gateway intentionally uses HTTP. OpenShift generates the API-key and
-JWT hostnames beneath the cluster ingress domain from the Route subdomains
+The demo Gateway listener uses HTTP inside the cluster. Edge-terminated
+OpenShift Routes provide HTTPS externally and generate the API-key and JWT
+hostnames beneath the cluster ingress domain from the Route subdomains
 `api-monetization` and `jwt.api-monetization`. A GitOps sync hook copies the
 admitted Route hosts into the corresponding Gateway API `HTTPRoute` resources,
-so edge and gateway routing agree without hard-coded cluster DNS names.
+and the Inventory API's published OpenAPI document, so edge routing, Gateway
+routing, and the APIProduct interactive documentation agree without hard-coded
+cluster DNS names.
 
 The Gateway initially uses the controller's normal `LoadBalancer` Service. A
 GitOps sync hook waits for an external IP or hostname from MetalLB, a cloud

@@ -5,3 +5,14 @@ resources:
   - deployment.yaml
   - service.yaml
   - monitoring.yaml
+configMapGenerator:
+  - name: inventory-api-openapi
+    namespace: api-monetization-apps
+    files:
+      - openapi.yaml
+    options:
+      labels:
+        app.kubernetes.io/name: inventory-api
+        app.kubernetes.io/part-of: api-monetization
+generatorOptions:
+  disableNameSuffixHash: true

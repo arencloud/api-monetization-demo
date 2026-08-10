@@ -109,6 +109,8 @@ with open("applications/inventory/openapi.yaml", encoding="utf-8") as stream:
     openapi = yaml.safe_load(stream)
 if not str(openapi.get("openapi", "")).startswith("3.") or not openapi.get("paths"):
     raise SystemExit("Inventory OpenAPI document is incomplete")
+if openapi.get("servers", [{}])[0].get("url") != "https://api-monetization.invalid":
+    raise SystemExit("Inventory OpenAPI document is missing its portable server placeholder")
 PY
 
 if unformatted=$(gofmt -l applications internal); [[ -n $unformatted ]]; then

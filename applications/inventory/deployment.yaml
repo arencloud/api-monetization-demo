@@ -65,6 +65,15 @@ spec:
               drop:
                 - ALL
             readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: openapi
+              mountPath: /opt/app-root/src/openapi.yaml
+              subPath: openapi.yaml
+              readOnly: true
+      volumes:
+        - name: openapi
+          configMap:
+            name: inventory-api-openapi
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname

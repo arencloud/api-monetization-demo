@@ -36,7 +36,9 @@ token then proves the parallel JWT path.
    ```
 
    `make verify` prints the cluster-generated API-key and JWT endpoint URLs.
-   Confirm that both use the current cluster's ingress domain.
+   Confirm that both use the current cluster's ingress domain. The APIProduct
+   **Try it out** view must show the same API-key endpoint rather than the
+   OpenShift console URL.
 
 6. Reset the commercial state, then allow one minute for any old rate-limit
    counters to expire:

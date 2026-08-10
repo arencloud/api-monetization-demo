@@ -16,11 +16,15 @@ data_namespace=api-monetization-data
 control_port=${CONTROL_LOCAL_PORT:-18080}
 keycloak_port=${KEYCLOAK_LOCAL_PORT:-18081}
 port_forward_pids=()
+route_ca_file=""
 
 cleanup() {
   for pid in "${port_forward_pids[@]:-}"; do
     kill "$pid" 2>/dev/null || true
   done
+  if [[ -n $route_ca_file ]]; then
+    rm -f "$route_ca_file"
+  fi
 }
 trap cleanup EXIT
 
@@ -44,8 +48,16 @@ if [[ -z $router_hostname ]]; then
   echo "error: the OpenShift router did not publish a canonical hostname" >&2
   exit 1
 fi
-echo "API-key endpoint: http://$api_hostname/inventory"
-echo "JWT endpoint: http://$jwt_hostname/inventory"
+ingress_certificate=$(oc get ingresscontroller.operator.openshift.io default \
+  -n openshift-ingress-operator -o jsonpath='{.spec.defaultCertificate.name}')
+if [[ -z $ingress_certificate ]]; then
+  ingress_certificate=router-certs-default
+fi
+route_ca_file=$(mktemp)
+oc get secret "$ingress_certificate" -n openshift-ingress \
+  -o go-template='{{index .data "tls.crt"}}' | base64 -d >"$route_ca_file"
+echo "API-key endpoint: https://$api_hostname/inventory"
+echo "JWT endpoint: https://$jwt_hostname/inventory"
 secret_name=$(oc get apikey.devportal.kuadrant.io/demo-inventory-key \
   -n "$application_namespace" -o jsonpath='{.spec.secretRef.name}')
 api_key=$(oc get secret "$secret_name" -n "$application_namespace" \
@@ -53,16 +65,18 @@ api_key=$(oc get secret "$secret_name" -n "$application_namespace" \
 
 request_api_key() {
   curl --silent --output /dev/null --write-out '%{http_code}' \
-    --connect-to "$api_hostname:80:$router_hostname:80" \
+    --cacert "$route_ca_file" \
+    --connect-to "$api_hostname:443:$router_hostname:443" \
     --header "Host: $api_hostname" \
     --header "Authorization: APIKEY $api_key" \
-    "http://$api_hostname/inventory"
+    "https://$api_hostname/inventory"
 }
 
 echo "baseline: unauthenticated request"
 unauthenticated=$(curl --silent --output /dev/null --write-out '%{http_code}' \
-  --connect-to "$api_hostname:80:$router_hostname:80" \
-  --header "Host: $api_hostname" "http://$api_hostname/inventory")
+  --cacert "$route_ca_file" \
+  --connect-to "$api_hostname:443:$router_hostname:443" \
+  --header "Host: $api_hostname" "https://$api_hostname/inventory")
 echo "HTTP $unauthenticated (expected 401)"
 
 echo "free plan burst: 12 requests against the 10/minute limit"
@@ -106,10 +120,11 @@ for _ in $(seq 1 30); do
 done
 jwt=$(jq -er '.access_token' <<<"$token_response")
 jwt_status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
-  --connect-to "$jwt_hostname:80:$router_hostname:80" \
+  --cacert "$route_ca_file" \
+  --connect-to "$jwt_hostname:443:$router_hostname:443" \
   --header "Host: $jwt_hostname" \
   --header "Authorization: Bearer $jwt" \
-  "http://$jwt_hostname/inventory")
+  "https://$jwt_hostname/inventory")
 echo "JWT request -> HTTP $jwt_status (expected 200)"
 
 echo "demo complete: authentication, Free-tier 429, live upgrade, and JWT validation were exercised"

@@ -67,6 +67,24 @@ rules:
     verbs:
       - get
       - patch
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    resourceNames:
+      - inventory-api-openapi
+    verbs:
+      - get
+      - patch
+  - apiGroups:
+      - apps
+    resources:
+      - deployments
+    resourceNames:
+      - inventory-api
+    verbs:
+      - get
+      - patch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -183,7 +201,7 @@ metadata:
     app.kubernetes.io/name: api-monetization-route-hosts
     app.kubernetes.io/part-of: api-monetization
 spec:
-  activeDeadlineSeconds: 600
+  activeDeadlineSeconds: 900
   backoffLimit: 2
   template:
     metadata:
@@ -243,20 +261,89 @@ spec:
               }
 
               align_route() {
-                local route_name=$1
+                local host=$1
                 local http_route=$2
-                local host
 
-                host=$(route_host "$route_name")
-                echo "aligning HTTPRoute $http_route with http://$host"
+                echo "aligning HTTPRoute $http_route with https://$host"
                 retry_api patch httproute "$http_route" \
                   -n api-monetization-apps \
                   --type=merge \
                   --patch "{\"spec\":{\"hostnames\":[\"$host\"]}}"
               }
 
-              align_route api-monetization inventory-api-key
-              align_route api-monetization-jwt inventory-jwt
+              publish_openapi() {
+                local host=$1
+                local openapi_document=""
+                local current_url
+                local rollout_state
+                local generation
+                local observed_generation
+                local desired_replicas
+                local updated_replicas
+                local available_replicas
+
+                for _ in $(seq 1 60); do
+                  openapi_document=$(api get configmap inventory-api-openapi \
+                    -n api-monetization-apps \
+                    -o go-template='{{index .data "openapi.yaml"}}' 2>/dev/null || true)
+                  [[ -n $openapi_document ]] && break
+                  sleep 5
+                done
+                if [[ -z $openapi_document ]]; then
+                  echo "ConfigMap inventory-api-openapi was not ready before the timeout" >&2
+                  return 1
+                fi
+
+                current_url=$(sed -n 's/^  - url: //p' <<<"$openapi_document" | head -n 1)
+                if [[ $current_url == "https://$host" ]]; then
+                  echo "OpenAPI server URL is already https://$host"
+                  return 0
+                fi
+
+                printf '%s\n' "$openapi_document" > /tmp/openapi.yaml
+                sed -i "s#^  - url: .*\$#  - url: https://$host#" /tmp/openapi.yaml
+                if ! grep -Fxq "  - url: https://$host" /tmp/openapi.yaml; then
+                  echo "error: OpenAPI document has no replaceable server URL" >&2
+                  return 1
+                fi
+                {
+                  printf 'data:\n'
+                  printf '  openapi.yaml: |-\n'
+                  sed 's/^/    /' /tmp/openapi.yaml
+                } > /tmp/openapi-patch.yaml
+
+                echo "publishing OpenAPI server URL https://$host"
+                retry_api patch configmap inventory-api-openapi \
+                  -n api-monetization-apps \
+                  --type=merge \
+                  --patch-file=/tmp/openapi-patch.yaml
+                retry_api rollout restart deployment/inventory-api \
+                  -n api-monetization-apps
+
+                for _ in $(seq 1 60); do
+                  rollout_state=$(api get deployment inventory-api \
+                    -n api-monetization-apps \
+                    -o jsonpath='{.metadata.generation}{"|"}{.status.observedGeneration}{"|"}{.spec.replicas}{"|"}{.status.updatedReplicas}{"|"}{.status.availableReplicas}' \
+                    2>/dev/null || true)
+                  IFS='|' read -r generation observed_generation desired_replicas updated_replicas available_replicas <<<"$rollout_state"
+                  if [[ -n $generation && $observed_generation == "$generation" && \
+                    $updated_replicas == "$desired_replicas" && \
+                    $available_replicas == "$desired_replicas" ]]; then
+                    echo "Inventory API is serving the updated OpenAPI document"
+                    return 0
+                  fi
+                  sleep 5
+                done
+
+                echo "Inventory API rollout did not complete before the timeout" >&2
+                return 1
+              }
+
+              api_hostname=$(route_host api-monetization)
+              jwt_hostname=$(route_host api-monetization-jwt)
+              align_route "$api_hostname" inventory-api-key
+              align_route "$jwt_hostname" inventory-jwt
+              publish_openapi "$api_hostname"
           resources:
             requests:
               cpu: 10m

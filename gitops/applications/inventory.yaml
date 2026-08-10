@@ -21,8 +21,16 @@ spec:
       kind: Deployment
       name: inventory-api
       namespace: api-monetization-apps
+      jsonPointers:
+        - /spec/template/metadata/annotations/kubectl.kubernetes.io~1restartedAt
       jqPathExpressions:
         - .spec.template.spec.containers[] | select(.name == "inventory-api").image
+    - group: ""
+      kind: ConfigMap
+      name: inventory-api-openapi
+      namespace: api-monetization-apps
+      jsonPointers:
+        - /data/openapi.yaml
   syncPolicy:
     automated:
       prune: true

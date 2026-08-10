@@ -6,8 +6,9 @@ Accepted.
 
 ## Decision
 
-The baseline uses an HTTP Gateway listener with OpenShift-generated hostnames
-beneath the cluster ingress domain. A GitOps hook aligns each Gateway API
+The baseline uses an HTTP Gateway listener behind edge-terminated HTTPS
+OpenShift Routes with generated hostnames beneath the cluster ingress domain.
+A GitOps hook aligns each Gateway API
 `HTTPRoute` with its admitted OpenShift Route host. This makes the repository
 deployable to a fresh supported cluster without cloud DNS credentials or
 hard-coded cluster domains. A real-domain overlay will add DNS and ACME-backed
@@ -46,5 +47,5 @@ OpenShift during the demo.
   responsibilities and are unaffected by demo installation or removal.
 - The complete authentication, rate limiting, upgrade, metrics, logging, and
   tracing story works before environment-specific integrations are selected.
-- TLS, long-lived traces, Loki, and Grafana are explicit production overlays,
-  not silently insecure defaults.
+- Custom-domain certificates and DNS, long-lived traces, Loki, and Grafana are
+  explicit production overlays rather than hidden environment assumptions.

@@ -99,8 +99,30 @@ if [[ $api_hostname != "$api_route_hostname" || $jwt_hostname != "$jwt_route_hos
   echo "error: OpenShift Route and Gateway API HTTPRoute hostnames do not match" >&2
   exit 1
 fi
-echo "API-key endpoint: http://$api_hostname/inventory"
-echo "JWT endpoint: http://$jwt_hostname/inventory"
+
+echo "waiting for the APIProduct to publish the admitted API URL"
+for _ in $(seq 1 60); do
+  api_product_state=$(oc get apiproduct inventory-api -n api-monetization-apps \
+    -o jsonpath='{.metadata.generation}{"|"}{.status.observedGeneration}' 2>/dev/null || true)
+  api_product_server=$(oc get apiproduct inventory-api -n api-monetization-apps \
+    -o jsonpath='{.status.openapi.raw}' 2>/dev/null \
+    | sed -n 's/^  - url: //p' | head -n 1) || true
+  if [[ $api_product_state == *"|"* ]]; then
+    IFS='|' read -r api_product_generation api_product_observed_generation \
+      <<<"$api_product_state"
+    if [[ $api_product_generation == "$api_product_observed_generation" && \
+      $api_product_server == "https://$api_hostname" ]]; then
+      break
+    fi
+  fi
+  sleep 5
+done
+if [[ ${api_product_server:-} != "https://$api_hostname" ]]; then
+  echo "error: APIProduct does not publish the admitted API URL" >&2
+  exit 1
+fi
+echo "API-key endpoint: https://$api_hostname/inventory"
+echo "JWT endpoint: https://$jwt_hostname/inventory"
 
 echo "waiting for operator console plugins"
 for plugin in gitops-plugin kuadrant-console-plugin; do

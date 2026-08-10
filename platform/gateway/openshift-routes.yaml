@@ -10,6 +10,9 @@ metadata:
     app.kubernetes.io/part-of: api-monetization
 spec:
   subdomain: api-monetization
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
   port:
     targetPort: http
   to:
@@ -29,6 +32,9 @@ metadata:
     app.kubernetes.io/part-of: api-monetization
 spec:
   subdomain: jwt.api-monetization
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
   port:
     targetPort: http
   to:
