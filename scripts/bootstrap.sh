@@ -41,22 +41,82 @@ fi
 echo "installing the OpenShift GitOps Operator"
 oc apply -k bootstrap/openshift-gitops
 
-echo "waiting for OLM to resolve the OpenShift GitOps subscription"
+echo "waiting for the OpenShift GitOps CSV to succeed"
+last_csv=""
 for attempt in $(seq 1 120); do
-  installed_csv=$(oc get subscription openshift-gitops-operator \
-    -n openshift-gitops-operator -o jsonpath='{.status.installedCSV}' 2>/dev/null || true)
-  if [[ -n $installed_csv ]]; then
-    echo "installed CSV: $installed_csv"
-    break
+  current_csv=$(oc get subscription openshift-gitops-operator \
+    -n openshift-gitops-operator -o jsonpath='{.status.currentCSV}' 2>/dev/null || true)
+  if [[ -z $current_csv ]]; then
+    current_csv=$(oc get subscription openshift-gitops-operator \
+      -n openshift-gitops-operator -o jsonpath='{.status.installedCSV}' 2>/dev/null || true)
   fi
+
+  if [[ -n $current_csv ]]; then
+    csv_phase=$(oc get clusterserviceversion.operators.coreos.com "$current_csv" \
+      -n openshift-gitops-operator -o jsonpath='{.status.phase}' 2>/dev/null || true)
+    if [[ $current_csv != "$last_csv" ]]; then
+      echo "OLM resolved CSV: $current_csv"
+      last_csv=$current_csv
+    fi
+    if [[ $csv_phase == "Succeeded" ]]; then
+      echo "CSV succeeded: $current_csv"
+      break
+    fi
+    if [[ $csv_phase == "Failed" ]]; then
+      echo "error: CSV $current_csv failed to install" >&2
+      oc get clusterserviceversion.operators.coreos.com "$current_csv" \
+        -n openshift-gitops-operator -o jsonpath='{range .status.conditions[*]}{.phase}{": "}{.message}{"\n"}{end}' \
+        >&2 || true
+      exit 1
+    fi
+  fi
+
   if ((attempt == 120)); then
-    echo "error: timed out waiting for the OpenShift GitOps Operator" >&2
+    echo "error: timed out waiting for the OpenShift GitOps CSV to succeed" >&2
+    oc describe subscription openshift-gitops-operator \
+      -n openshift-gitops-operator >&2 || true
+    [[ -n $current_csv ]] && oc describe clusterserviceversion.operators.coreos.com \
+      "$current_csv" -n openshift-gitops-operator >&2 || true
     exit 1
   fi
   sleep 5
 done
 
-echo "waiting for the default Argo CD server"
+if [[ -z $current_csv ]]; then
+  echo "error: OLM did not resolve an OpenShift GitOps CSV" >&2
+  exit 1
+fi
+
+wait_for_resource() {
+  local resource=$1
+  local namespace=${2:-}
+  local description=$3
+
+  for attempt in $(seq 1 120); do
+    if [[ -n $namespace ]]; then
+      if oc get "$resource" -n "$namespace" >/dev/null 2>&1; then
+        return 0
+      fi
+    elif oc get "$resource" >/dev/null 2>&1; then
+      return 0
+    fi
+
+    if ((attempt == 120)); then
+      echo "error: timed out waiting for $description to be created" >&2
+      return 1
+    fi
+    sleep 5
+  done
+}
+
+echo "waiting for the default Argo CD namespace"
+wait_for_resource namespace/openshift-gitops "" "namespace openshift-gitops"
+
+echo "waiting for the default Argo CD server deployment"
+wait_for_resource deployment/openshift-gitops-server openshift-gitops \
+  "deployment openshift-gitops/openshift-gitops-server"
+
+echo "waiting for the default Argo CD server to become available"
 oc wait --for=condition=Available deployment/openshift-gitops-server \
   -n openshift-gitops --timeout=10m
 
