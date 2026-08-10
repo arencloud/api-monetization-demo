@@ -396,21 +396,19 @@ func (k *kubeClient) changeAPIKeyPlan(ctx context.Context, namespace, name, plan
 	apiKeyPath := fmt.Sprintf("/apis/devportal.kuadrant.io/v1alpha1/namespaces/%s/apikeys/%s", namespace, name)
 	var current struct {
 		Spec struct {
-			PlanTier string `json:"planTier"`
-		} `json:"spec"`
-		Status struct {
 			SecretRef *struct {
 				Name string `json:"name"`
 			} `json:"secretRef"`
-		} `json:"status"`
+			PlanTier string `json:"planTier"`
+		} `json:"spec"`
 	}
 	if err := k.request(ctx, http.MethodGet, apiKeyPath, nil, &current); err != nil {
 		return "", err
 	}
-	if current.Status.SecretRef == nil || current.Status.SecretRef.Name == "" {
-		return "", errors.New("APIKey has no approved Secret reference")
+	if current.Spec.SecretRef == nil || current.Spec.SecretRef.Name == "" {
+		return "", errors.New("APIKey has no Secret reference")
 	}
-	secretPath := fmt.Sprintf("/api/v1/namespaces/%s/secrets/%s", namespace, current.Status.SecretRef.Name)
+	secretPath := fmt.Sprintf("/api/v1/namespaces/%s/secrets/%s", namespace, current.Spec.SecretRef.Name)
 	patch := map[string]any{"metadata": map[string]any{"annotations": map[string]string{"secret.kuadrant.io/plan-id": plan}}}
 	if err := k.request(ctx, http.MethodPatch, secretPath, patch, nil); err != nil {
 		return "", err
@@ -420,7 +418,7 @@ func (k *kubeClient) changeAPIKeyPlan(ctx context.Context, namespace, name, plan
 		_ = k.request(ctx, http.MethodPatch, secretPath, rollback, nil)
 		return "", err
 	}
-	return current.Status.SecretRef.Name, nil
+	return current.Spec.SecretRef.Name, nil
 }
 
 func (k *kubeClient) request(ctx context.Context, method, path string, body any, output any) error {

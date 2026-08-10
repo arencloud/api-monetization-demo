@@ -5,6 +5,7 @@ metadata:
   namespace: api-monetization-gateway
   annotations:
     argocd.argoproj.io/sync-wave: "0"
+    networking.istio.io/service-type: ClusterIP
   labels:
     app.kubernetes.io/name: api-monetization-gateway
     app.kubernetes.io/part-of: api-monetization

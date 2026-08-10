@@ -29,26 +29,36 @@ trap cleanup EXIT
 echo "waiting for gateway and generated demo API key"
 oc wait --for=condition=Programmed "gateway.gateway.networking.k8s.io/$gateway_name" \
   -n "$gateway_namespace" --timeout=10m
+oc wait route/api-monetization -n "$gateway_namespace" \
+  --for=jsonpath='{.status.ingress[0].conditions[0].status}'=True --timeout=5m
+oc wait route/api-monetization-jwt -n "$gateway_namespace" \
+  --for=jsonpath='{.status.ingress[0].conditions[0].status}'=True --timeout=5m
 oc wait --for=condition=Ready apikey.devportal.kuadrant.io/demo-inventory-key \
   -n "$application_namespace" --timeout=5m
 
-gateway_address=$(oc get gateway "$gateway_name" -n "$gateway_namespace" \
-  -o jsonpath='{.status.addresses[0].value}')
+router_hostname=$(oc get route api-monetization -n "$gateway_namespace" \
+  -o jsonpath='{.status.ingress[0].routerCanonicalHostname}')
+if [[ -z $router_hostname ]]; then
+  echo "error: the OpenShift router did not publish a canonical hostname" >&2
+  exit 1
+fi
 secret_name=$(oc get apikey.devportal.kuadrant.io/demo-inventory-key \
-  -n "$application_namespace" -o jsonpath='{.status.secretRef.name}')
+  -n "$application_namespace" -o jsonpath='{.spec.secretRef.name}')
 api_key=$(oc get secret "$secret_name" -n "$application_namespace" \
   -o go-template='{{index .data "api_key"}}' | base64 -d)
 
 request_api_key() {
   curl --silent --output /dev/null --write-out '%{http_code}' \
+    --connect-to "$api_hostname:80:$router_hostname:80" \
     --header "Host: $api_hostname" \
     --header "Authorization: APIKEY $api_key" \
-    "http://$gateway_address/inventory"
+    "http://$api_hostname/inventory"
 }
 
 echo "baseline: unauthenticated request"
 unauthenticated=$(curl --silent --output /dev/null --write-out '%{http_code}' \
-  --header "Host: $api_hostname" "http://$gateway_address/inventory")
+  --connect-to "$api_hostname:80:$router_hostname:80" \
+  --header "Host: $api_hostname" "http://$api_hostname/inventory")
 echo "HTTP $unauthenticated (expected 401)"
 
 echo "free plan burst: 12 requests against the 10/minute limit"
@@ -92,9 +102,10 @@ for _ in $(seq 1 30); do
 done
 jwt=$(jq -er '.access_token' <<<"$token_response")
 jwt_status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+  --connect-to "$jwt_hostname:80:$router_hostname:80" \
   --header "Host: $jwt_hostname" \
   --header "Authorization: Bearer $jwt" \
-  "http://$gateway_address/inventory")
+  "http://$jwt_hostname/inventory")
 echo "JWT request -> HTTP $jwt_status (expected 200)"
 
 echo "demo complete: authentication, Free-tier 429, live upgrade, and JWT validation were exercised"

@@ -28,7 +28,7 @@ rules:
     resources:
       - secrets
     resourceNames:
-      - demo-inventory-key-apikey-secret
+      - demo-inventory-api-key
     verbs:
       - get
       - patch

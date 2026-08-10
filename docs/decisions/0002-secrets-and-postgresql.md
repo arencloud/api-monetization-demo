@@ -18,8 +18,8 @@ Red Hat-certified CloudNativePG 1.30 Operator from the certified catalog for
 PostgreSQL lifecycle management.
 
 The self-contained demo overlay uses External Secrets password generators. Each
-database/client credential is created with `CreatedOnce`, an immutable target,
-and orphan ownership. This avoids rotating a bootstrap password after the
+database, client, and API-key credential is created with `CreatedOnce`, an
+immutable target, and orphan ownership. This avoids rotating a bootstrap password after the
 database has persisted it and prevents Argo CD pruning from silently deleting
 credentials.
 
@@ -40,4 +40,3 @@ an object-store backup target, disruption budgets, and topology-aware placement.
   database inaccessible.
 - CloudNativePG bootstrap SQL runs once. Application schema changes after the
   first release require a versioned migration tool.
-

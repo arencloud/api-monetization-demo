@@ -10,6 +10,8 @@ metadata:
 spec:
   apiProductRef:
     name: inventory-api
+  secretRef:
+    name: demo-inventory-api-key
   planTier: free
   requestedBy:
     userId: demo-company

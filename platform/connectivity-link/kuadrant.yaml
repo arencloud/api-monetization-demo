@@ -13,7 +13,7 @@ spec:
   observability:
     enable: true
     tracing:
-      defaultEndpoint: api-monetization-collector.api-monetization-observability.svc.cluster.local:4317
+      defaultEndpoint: rpc://api-monetization-collector.api-monetization-observability.svc.cluster.local:4317
       insecure: true
     dataPlane:
       httpHeaderIdentifier: x-request-id

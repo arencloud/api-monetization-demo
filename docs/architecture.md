@@ -12,7 +12,7 @@ allows commercial workflows to evolve without changing API workloads.
          |                        |                         |
          +------------------------+-------------------------+
                               |
-Internet -> Gateway API -> RHCL policies -> Service Mesh -> OpenShift APIs
+Internet -> OpenShift Route -> Gateway API -> RHCL policies -> Service Mesh -> OpenShift APIs
                               |
                               v
           Prometheus / structured logs / Tempo -> billing dashboard
@@ -84,6 +84,8 @@ GitOps bootstrap
 shared namespaces
       |
 OLM subscriptions
+      |
+integrated registry readiness
       |
 operator operands and generated secret contracts
       |

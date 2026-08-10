@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
   - gateway-class.yaml
   - gateway.yaml
+  - openshift-routes.yaml
   - default-auth-policy.yaml
   - inventory-routes.yaml
   - inventory-auth-policies.yaml

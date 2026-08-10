@@ -1,0 +1,37 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: api-monetization
+  namespace: api-monetization-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+  labels:
+    app.kubernetes.io/name: api-monetization-gateway
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  host: api-monetization.demo
+  port:
+    targetPort: http
+  to:
+    kind: Service
+    name: api-monetization-openshift-default
+    weight: 100
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: api-monetization-jwt
+  namespace: api-monetization-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+  labels:
+    app.kubernetes.io/name: api-monetization-gateway
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  host: jwt.api-monetization.demo
+  port:
+    targetPort: http
+  to:
+    kind: Service
+    name: api-monetization-openshift-default
+    weight: 100

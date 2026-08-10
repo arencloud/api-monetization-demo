@@ -10,6 +10,8 @@
 - Red Hat entitlements that expose the `rhcl-operator` package.
 - The repository is reachable by the in-cluster Argo CD repository server.
 - A default dynamic `StorageClass` is configured for PostgreSQL PVCs.
+- Cluster nodes can pull from `registry.redhat.io`, `registry.access.redhat.com`,
+  `ghcr.io`, and GitHub's `pkg-containers.githubusercontent.com` blob endpoint.
 
 The preflight check is read-only:
 
@@ -20,6 +22,10 @@ make preflight
 It fails if the cluster version, permissions, catalog sources, or required
 operator packages are incompatible. A missing RHCL package generally means the
 cluster pull secret/account does not include the required product entitlement.
+It also reports non-blocking warnings when the integrated registry is not yet
+ready or when no MetalLB, cloud, or other external Service LoadBalancer
+assignment is detected. The portable demo does not require a LoadBalancer
+provider because OpenShift Routes expose its `ClusterIP` Gateway.
 
 ## Bootstrap
 
@@ -62,11 +68,21 @@ The expected end state is that every Argo CD application is `Synced` and
 the `Istio`/`IstioCNI` resources report healthy status, both PostgreSQL clusters
 are ready, and the Keycloak realm import reports `Done`.
 
+The GitOps registry initializer preserves a registry that is already `Managed`.
+If a fresh bare-metal cluster reports the integrated registry as `Removed`, it
+configures one replica with non-production `emptyDir` storage, changes the state
+to `Managed`, and blocks later application sync waves until the registry is
+Available. Images in this storage are lost when the registry pod restarts; use
+supported persistent or object storage for any non-demo environment.
+
 The demo gateway intentionally uses HTTP and the synthetic hostnames
-`api-monetization.demo` and `jwt.api-monetization.demo`. The scripts send an
-explicit `Host` header to the provisioned Gateway address, so the baseline needs
-no DNS account or ACME credentials. Environment overlays can add `TLSPolicy` and
-`DNSPolicy` once a real domain and provider credentials are selected.
+`api-monetization.demo` and `jwt.api-monetization.demo`. Its generated Service is
+`ClusterIP`, so a bare-metal cluster does not need a separate LoadBalancer
+implementation. OpenShift Routes expose both hosts through the default ingress
+controller, and the demo script uses curl address remapping to preserve the
+synthetic Host header without public DNS. Environment overlays can add
+`TLSPolicy` and `DNSPolicy` once a real domain and provider credentials are
+selected.
 
 ## Upgrade policy
 
@@ -120,7 +136,8 @@ CONFIRM_UNINSTALL=api-monetization make uninstall
 
 The workflow stops Argo CD reconciliation, removes operands before their
 Operators, removes cert-manager's separately managed operand, deletes the demo
-namespaces, and uninstalls OpenShift GitOps last. OLM-installed CRDs are retained
+namespaces, restores a registry that the demo changed from `Removed`, and
+uninstalls OpenShift GitOps last. OLM-installed CRDs are retained
 to avoid destructive cluster-wide data removal and to support clean
 reinstallation.
 
@@ -131,6 +148,8 @@ reinstallation.
 - [RHCL observability](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/observability/)
 - [Installing OpenShift Service Mesh 3.4](https://docs.redhat.com/en/documentation/red_hat_openshift_service_mesh/3.4/html/installing/)
 - [Installing OpenShift GitOps](https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.21/html/installing_gitops/)
+- [Configuring the OpenShift image registry](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/registry/setting-up-and-configuring-the-registry)
+- [OpenShift Service Mesh gateways](https://docs.redhat.com/en/documentation/red_hat_openshift_service_mesh/3.4/html/gateways/)
 - [External Secrets Operator for Red Hat OpenShift](https://docs.redhat.com/en/documentation/openshift_container_platform/4.21/html/security_and_compliance/external-secrets-operator-for-red-hat-openshift)
 - [CloudNativePG installation and upgrades](https://cloudnative-pg.io/docs/1.30/installation_upgrade/)
 - [Red Hat build of Keycloak Operator guide](https://docs.redhat.com/en/documentation/red_hat_build_of_keycloak/26.6/html/operator_guide/)

@@ -32,6 +32,7 @@ token then proves the parallel JWT path.
    oc get apiproduct,apikey,planpolicy,authpolicy,ratelimitpolicy \
      -n api-monetization-apps
    oc get gateway -n api-monetization-gateway
+   oc get route -n api-monetization-gateway
    ```
 
 6. Reset the commercial state, then allow one minute for any old rate-limit

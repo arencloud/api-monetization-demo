@@ -9,6 +9,8 @@ oc wait --for=condition=Ready externalsecret/keycloak-demo-clients \
   -n api-monetization-identity --timeout=5m
 oc wait --for=condition=Ready externalsecret/subscriptions-db-credentials \
   -n api-monetization-data --timeout=5m
+oc wait --for=condition=Ready externalsecret/demo-inventory-api-key \
+  -n api-monetization-apps --timeout=5m
 
 echo "waiting for PostgreSQL clusters"
 oc wait --for=condition=Ready clusters.postgresql.cnpg.io/keycloak-postgres \
@@ -23,6 +25,7 @@ oc wait --for=condition=Done keycloakrealmimports.k8s.keycloak.org/api-monetizat
   -n api-monetization-identity --timeout=10m
 
 echo "waiting for application builds and workloads"
+oc wait clusteroperator/image-registry --for=condition=Available --timeout=10m
 oc wait --for=jsonpath='{.image.dockerImageReference}' \
   imagestreamtags.image.openshift.io/inventory-api:demo \
   -n api-monetization-apps --timeout=15m
@@ -33,8 +36,18 @@ oc rollout status deployment/inventory-api -n api-monetization-apps --timeout=10
 oc rollout status deployment/monetization-control -n api-monetization-data --timeout=10m
 
 echo "waiting for gateway, routes, policies, and catalog resources"
+oc wait --for=condition=Ready kuadrants.kuadrant.io/kuadrant \
+  -n kuadrant-system --timeout=10m
+oc wait --for=condition=Ready authorinos.operator.authorino.kuadrant.io/authorino \
+  -n kuadrant-system --timeout=10m
+oc wait --for=condition=Ready limitadors.limitador.kuadrant.io/limitador \
+  -n kuadrant-system --timeout=10m
 oc wait --for=condition=Programmed gateways.gateway.networking.k8s.io/api-monetization \
   -n api-monetization-gateway --timeout=10m
+oc wait route/api-monetization -n api-monetization-gateway \
+  --for=jsonpath='{.status.ingress[0].conditions[0].status}'=True --timeout=5m
+oc wait route/api-monetization-jwt -n api-monetization-gateway \
+  --for=jsonpath='{.status.ingress[0].conditions[0].status}'=True --timeout=5m
 oc wait --for=condition=Accepted httproutes.gateway.networking.k8s.io/inventory-api-key \
   -n api-monetization-apps --timeout=5m
 oc wait --for=condition=Accepted httproutes.gateway.networking.k8s.io/inventory-jwt \

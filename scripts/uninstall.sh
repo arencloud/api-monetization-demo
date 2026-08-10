@@ -49,6 +49,28 @@ delete_package platform/connectivity-link
 delete_package platform/external-secrets
 delete_package platform/service-mesh
 
+oc delete job,serviceaccount api-monetization-registry-initializer \
+  -n openshift-image-registry --ignore-not-found --wait=true --timeout=2m
+oc delete clusterrole,clusterrolebinding api-monetization-registry-initializer \
+  --ignore-not-found --wait=true --timeout=2m
+
+registry_config=config.imageregistry.operator.openshift.io/cluster
+registry_previous_state=$(oc get "$registry_config" \
+  -o jsonpath='{.metadata.annotations.api-monetization\.io/registry-previous-state}' \
+  2>/dev/null || true)
+if [[ $registry_previous_state == "Removed" ]]; then
+  echo "restoring the image registry state recorded before the demo"
+  registry_storage_added=$(oc get "$registry_config" \
+    -o jsonpath='{.metadata.annotations.api-monetization\.io/registry-storage-added}' \
+    2>/dev/null || true)
+  oc patch "$registry_config" --type=merge --patch \
+    '{"metadata":{"annotations":{"api-monetization.io/registry-previous-state":null,"api-monetization.io/registry-storage-added":null}},"spec":{"managementState":"Removed"}}'
+  if [[ $registry_storage_added == "emptyDir" ]]; then
+    oc patch "$registry_config" --type=merge --patch \
+      '{"spec":{"storage":{"emptyDir":null}}}'
+  fi
+fi
+
 echo "removing the cert-manager operand before its Operator"
 if oc get certmanager.operator.openshift.io cluster >/dev/null 2>&1; then
   oc delete certmanager.operator.openshift.io cluster --wait=true --timeout=10m

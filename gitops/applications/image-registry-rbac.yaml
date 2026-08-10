@@ -1,0 +1,55 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: api-monetization-registry-initializer
+  namespace: openshift-image-registry
+  annotations:
+    argocd.argoproj.io/sync-wave: "-15"
+  labels:
+    app.kubernetes.io/name: api-monetization-registry-initializer
+    app.kubernetes.io/part-of: api-monetization
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: api-monetization-registry-initializer
+  annotations:
+    argocd.argoproj.io/sync-wave: "-15"
+  labels:
+    app.kubernetes.io/name: api-monetization-registry-initializer
+    app.kubernetes.io/part-of: api-monetization
+rules:
+  - apiGroups:
+      - imageregistry.operator.openshift.io
+    resources:
+      - configs
+    verbs:
+      - get
+      - patch
+  - apiGroups:
+      - apps
+    resources:
+      - deployments
+    resourceNames:
+      - image-registry
+    verbs:
+      - get
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: api-monetization-registry-initializer
+  annotations:
+    argocd.argoproj.io/sync-wave: "-15"
+  labels:
+    app.kubernetes.io/name: api-monetization-registry-initializer
+    app.kubernetes.io/part-of: api-monetization
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: api-monetization-registry-initializer
+subjects:
+  - kind: ServiceAccount
+    name: api-monetization-registry-initializer
+    namespace: openshift-image-registry

@@ -8,6 +8,7 @@ if ! command -v oc >/dev/null 2>&1; then
 fi
 
 failures=0
+warnings=0
 
 pass() {
   echo "PASS: $*"
@@ -16,6 +17,11 @@ pass() {
 fail() {
   echo "FAIL: $*" >&2
   failures=$((failures + 1))
+}
+
+warn() {
+  echo "WARN: $*" >&2
+  warnings=$((warnings + 1))
 }
 
 if user_name=$(oc whoami 2>/dev/null); then
@@ -83,6 +89,74 @@ else
   fail "no default StorageClass is configured for PostgreSQL PVCs"
 fi
 
+registry_state=$(oc get configs.imageregistry.operator.openshift.io cluster \
+  -o jsonpath='{.spec.managementState}' 2>/dev/null || true)
+case "$registry_state" in
+  Managed)
+    registry_deployment_available=$(oc get deployment/image-registry \
+      -n openshift-image-registry \
+      -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' \
+      2>/dev/null || true)
+    if [[ $registry_deployment_available == "True" ]]; then
+      pass "integrated image registry is Managed and ready"
+    else
+      warn "integrated image registry is Managed but NOT READY; the GitOps registry gate will wait for it"
+    fi
+    ;;
+  Removed)
+    warn "integrated image registry is Removed and NOT READY; GitOps will enable ephemeral demo storage before creating child Applications"
+    ;;
+  Unmanaged)
+    fail "integrated image registry is Unmanaged; set it to Managed or Removed"
+    ;;
+  *)
+    fail "could not determine the integrated image registry management state"
+    ;;
+esac
+
+assigned_load_balancers=$(oc get services -A \
+  -o go-template='{{range .items}}{{if eq .spec.type "LoadBalancer"}}{{if .status.loadBalancer.ingress}}{{.metadata.namespace}}{{"/"}}{{.metadata.name}}{{"\n"}}{{end}}{{end}}{{end}}' \
+  2>/dev/null || true)
+metallb_instances=$(oc get metallbs.metallb.io -A \
+  -o go-template='{{range .items}}{{.metadata.namespace}}{{"/"}}{{.metadata.name}}{{"\n"}}{{end}}' \
+  2>/dev/null || true)
+
+if [[ -n $assigned_load_balancers ]]; then
+  pass "external Service LoadBalancer assignment detected: $(paste -sd, <<<"$assigned_load_balancers")"
+elif [[ -n $metallb_instances ]]; then
+  metallb_ready=false
+  while IFS=/ read -r metallb_namespace metallb_name; do
+    [[ -z $metallb_namespace ]] && continue
+    controller_available=$(oc get deployment/controller -n "$metallb_namespace" \
+      -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' \
+      2>/dev/null || true)
+    speaker_desired=$(oc get daemonset/speaker -n "$metallb_namespace" \
+      -o jsonpath='{.status.desiredNumberScheduled}' 2>/dev/null || true)
+    speaker_ready=$(oc get daemonset/speaker -n "$metallb_namespace" \
+      -o jsonpath='{.status.numberReady}' 2>/dev/null || true)
+    address_pools=$(oc get ipaddresspools.metallb.io -n "$metallb_namespace" \
+      -o name 2>/dev/null || true)
+    if [[ $controller_available == "True" && $speaker_desired =~ ^[1-9][0-9]*$ && \
+      $speaker_desired == "$speaker_ready" && -n $address_pools ]]; then
+      pass "MetalLB $metallb_namespace/$metallb_name is ready with an IP address pool"
+      metallb_ready=true
+    fi
+  done <<<"$metallb_instances"
+  if [[ $metallb_ready != "true" ]]; then
+    warn "MetalLB is installed but NOT READY to assign external Service IPs; check its controller, speakers, and IPAddressPool"
+  fi
+else
+  platform_type=$(oc get infrastructure cluster \
+    -o jsonpath='{.status.platformStatus.type}' 2>/dev/null || true)
+  warn "no external Service LoadBalancer provider detected on platform ${platform_type:-unknown}: MetalLB is not installed and no LoadBalancer Service has an assigned ingress; this demo uses ClusterIP plus OpenShift Routes and does not require one"
+fi
+
+if oc get ingresscontroller/default -n openshift-ingress-operator >/dev/null 2>&1; then
+  pass "default OpenShift ingress controller is available for demo Routes"
+else
+  fail "default OpenShift ingress controller is unavailable"
+fi
+
 check_package_channel() {
   local package_name=$1
   local required_channel=$2
@@ -145,4 +219,8 @@ if ((failures > 0)); then
   exit 1
 fi
 
-echo "preflight passed; the cluster is ready for bootstrap"
+if ((warnings > 0)); then
+  echo "preflight passed with $warnings warning(s); review them above before bootstrap (non-required capabilities do not block this demo)"
+else
+  echo "preflight passed; the cluster is ready for bootstrap"
+fi

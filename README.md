@@ -14,10 +14,10 @@ administrator upgrades the subscription and the new limits take effect without
 restarting the gateway or application.
 
 ```text
-Internet -> Gateway API -> Connectivity Link -> Service Mesh -> APIs
-                    |              |                 |
-                 TLS/DNS      Auth and limits   mTLS and traces
-                    +--------------+-----------------+
+Internet -> OpenShift Route -> Gateway API -> Connectivity Link -> Service Mesh -> APIs
+                                 |              |                 |
+                              TLS/DNS      Auth and limits   mTLS and traces
+                                 +--------------+-----------------+
                                    |
                     Metrics, logs, traces, usage, billing
 ```
@@ -104,8 +104,9 @@ Detailed prerequisites, verification, and recovery steps are in
 ## Implemented solution
 
 The repository now contains the complete single-cluster demo path: operator and
-GitOps bootstrap, Service Mesh, Connectivity Link, the RHCL developer catalog,
-operator-generated API keys, Keycloak JWT clients, Free/Developer/Business/
+GitOps bootstrap, safe integrated-registry initialization, OpenShift Routes,
+Service Mesh, Connectivity Link, the RHCL developer catalog,
+External Secrets-generated API keys, Keycloak JWT clients, Free/Developer/Business/
 Enterprise plan policies, an Inventory API, a PostgreSQL-backed subscription
 control plane, live plan changes, Prometheus metrics, a Grafana dashboard,
 structured logs, and an OpenTelemetry-to-Tempo trace pipeline.
