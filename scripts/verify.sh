@@ -2,6 +2,87 @@
 
 set -Eeuo pipefail
 
+wait_for_application() {
+  local application_name=$1
+  local state=""
+
+  for _ in $(seq 1 270); do
+    state=$(oc get application "$application_name" -n openshift-gitops \
+      -o jsonpath='{.status.sync.status}{"|"}{.status.health.status}' \
+      2>/dev/null || true)
+    if [[ $state == "Synced|Healthy" ]]; then
+      echo "$application_name is Synced and Healthy"
+      return 0
+    fi
+    sleep 10
+  done
+
+  echo "error: $application_name did not become Synced and Healthy (last state: ${state:-not created})" >&2
+  return 1
+}
+
+wait_for_image_stream_tag() {
+  local tag_name=$1
+  local namespace=$2
+  local image_reference=""
+
+  for _ in $(seq 1 180); do
+    image_reference=$(oc get imagestreamtag.image.openshift.io "$tag_name" \
+      -n "$namespace" -o jsonpath='{.image.dockerImageReference}' \
+      2>/dev/null || true)
+    if [[ -n $image_reference ]]; then
+      echo "$tag_name is available as $image_reference"
+      return 0
+    fi
+    sleep 5
+  done
+
+  echo "error: ImageStreamTag $namespace/$tag_name did not become available" >&2
+  return 1
+}
+
+wait_for_http_route() {
+  local route_name=$1
+  local namespace=$2
+  local generation=""
+  local accepted=""
+
+  for _ in $(seq 1 120); do
+    generation=$(oc get httproute.gateway.networking.k8s.io "$route_name" \
+      -n "$namespace" -o jsonpath='{.metadata.generation}' \
+      2>/dev/null || true)
+    accepted=$(oc get httproute.gateway.networking.k8s.io "$route_name" \
+      -n "$namespace" \
+      -o jsonpath='{range .status.parents[?(@.controllerName=="openshift.io/gateway-controller/v1")].conditions[?(@.type=="Accepted")]}{.status}{"|"}{.observedGeneration}{end}' \
+      2>/dev/null || true)
+    if [[ -n $generation && $accepted == "True|$generation" ]]; then
+      echo "HTTPRoute $namespace/$route_name is Accepted"
+      return 0
+    fi
+    sleep 5
+  done
+
+  echo "error: HTTPRoute $namespace/$route_name was not accepted (last condition: ${accepted:-not reported})" >&2
+  return 1
+}
+
+echo "waiting for GitOps applications"
+for application_name in \
+  api-monetization-namespaces \
+  api-monetization-external-secrets \
+  api-monetization-demo-secrets \
+  api-monetization-database \
+  api-monetization-identity \
+  api-monetization-inventory \
+  api-monetization-control \
+  api-monetization-service-mesh \
+  api-monetization-connectivity-link \
+  api-monetization-gateway \
+  api-monetization-observability \
+  api-monetization-console-plugins; do
+  wait_for_application "$application_name"
+done
+
 echo "waiting for generated credentials"
 oc wait --for=condition=Ready externalsecret/keycloak-db-credentials \
   -n api-monetization-identity --timeout=5m
@@ -26,12 +107,8 @@ oc wait --for=condition=Done keycloakrealmimports.k8s.keycloak.org/api-monetizat
 
 echo "waiting for application builds and workloads"
 oc wait clusteroperator/image-registry --for=condition=Available --timeout=10m
-oc wait --for=jsonpath='{.image.dockerImageReference}' \
-  imagestreamtags.image.openshift.io/inventory-api:demo \
-  -n api-monetization-apps --timeout=15m
-oc wait --for=jsonpath='{.image.dockerImageReference}' \
-  imagestreamtags.image.openshift.io/monetization-control:demo \
-  -n api-monetization-data --timeout=15m
+wait_for_image_stream_tag inventory-api:demo api-monetization-apps
+wait_for_image_stream_tag monetization-control:demo api-monetization-data
 oc rollout status deployment/inventory-api -n api-monetization-apps --timeout=10m
 oc rollout status deployment/monetization-control -n api-monetization-data --timeout=10m
 
@@ -72,10 +149,8 @@ oc wait route/api-monetization -n api-monetization-gateway \
   --for=jsonpath='{.status.ingress[0].conditions[0].status}'=True --timeout=5m
 oc wait route/api-monetization-jwt -n api-monetization-gateway \
   --for=jsonpath='{.status.ingress[0].conditions[0].status}'=True --timeout=5m
-oc wait --for=condition=Accepted httproutes.gateway.networking.k8s.io/inventory-api-key \
-  -n api-monetization-apps --timeout=5m
-oc wait --for=condition=Accepted httproutes.gateway.networking.k8s.io/inventory-jwt \
-  -n api-monetization-apps --timeout=5m
+wait_for_http_route inventory-api-key api-monetization-apps
+wait_for_http_route inventory-jwt api-monetization-apps
 for policy in inventory-api-key inventory-jwt; do
   oc wait --for=condition=Enforced "authpolicies.kuadrant.io/$policy" \
     -n api-monetization-apps --timeout=5m
@@ -84,7 +159,7 @@ oc wait --for=condition=Enforced ratelimitpolicies.kuadrant.io/inventory-jwt-pla
   -n api-monetization-apps --timeout=5m
 oc wait --for=condition=Enforced planpolicies.extensions.kuadrant.io/inventory-api-plans \
   -n api-monetization-apps --timeout=5m
-oc wait --for=condition=Ready apikeys.devportal.kuadrant.io/demo-inventory-key \
+oc wait --for=condition=Approved apikeys.devportal.kuadrant.io/demo-inventory-key \
   -n api-monetization-apps --timeout=5m
 
 api_hostname=$(oc get route api-monetization -n api-monetization-gateway \

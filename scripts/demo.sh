@@ -35,7 +35,7 @@ oc wait route/api-monetization -n "$gateway_namespace" \
   --for=jsonpath='{.status.ingress[0].conditions[0].status}'=True --timeout=5m
 oc wait route/api-monetization-jwt -n "$gateway_namespace" \
   --for=jsonpath='{.status.ingress[0].conditions[0].status}'=True --timeout=5m
-oc wait --for=condition=Ready apikey.devportal.kuadrant.io/demo-inventory-key \
+oc wait --for=condition=Approved apikey.devportal.kuadrant.io/demo-inventory-key \
   -n "$application_namespace" --timeout=5m
 
 api_hostname=$(oc get route api-monetization -n "$gateway_namespace" \
