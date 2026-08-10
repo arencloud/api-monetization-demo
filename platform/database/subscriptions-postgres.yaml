@@ -1,0 +1,34 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: subscriptions-postgres
+  namespace: api-monetization-data
+  labels:
+    app.kubernetes.io/name: subscriptions-postgres
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  instances: 1
+  enableSuperuserAccess: false
+  primaryUpdateStrategy: unsupervised
+  bootstrap:
+    initdb:
+      database: monetization
+      owner: monetization_app
+      secret:
+        name: subscriptions-db-credentials
+      postInitApplicationSQLRefs:
+        configMapRefs:
+          - name: subscriptions-bootstrap-schema
+            key: schema.sql
+  storage:
+    size: 2Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  monitoring:
+    enablePodMonitor: true
+

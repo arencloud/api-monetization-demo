@@ -1,0 +1,111 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cert-manager-operator
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+    app.kubernetes.io/component: certificate-management
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kuadrant-system
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+    app.kubernetes.io/component: connectivity
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: api-monetization-mesh-system
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+    app.kubernetes.io/component: service-mesh
+    istio-discovery: enabled
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: api-monetization-istio-cni
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+    app.kubernetes.io/component: service-mesh-cni
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: external-secrets-operator
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+    app.kubernetes.io/component: secret-management
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: external-secrets
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+    app.kubernetes.io/component: secret-management
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: api-monetization-identity
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+    app.kubernetes.io/component: identity
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: api-monetization-data
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+    app.kubernetes.io/component: data
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: api-monetization-gateway
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+    app.kubernetes.io/component: gateway
+    istio-discovery: enabled
+    istio.io/rev: default
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: api-monetization-apps
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+    app.kubernetes.io/component: applications
+    api-monetization.io/gateway-access: "true"
+    istio-discovery: enabled
+    istio.io/rev: default
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openshift-opentelemetry-operator
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+    app.kubernetes.io/component: observability-operator
+    openshift.io/cluster-monitoring: "true"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openshift-tempo-operator
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+    app.kubernetes.io/component: observability-operator
+    openshift.io/cluster-monitoring: "true"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: api-monetization-observability
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+    app.kubernetes.io/component: observability

@@ -1,0 +1,11 @@
+apiVersion: sailoperator.io/v1
+kind: IstioCNI
+metadata:
+  name: default
+  namespace: api-monetization-istio-cni
+  labels:
+    app.kubernetes.io/name: istio-cni
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  namespace: api-monetization-istio-cni
+

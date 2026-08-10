@@ -1,0 +1,15 @@
+FROM registry.access.redhat.com/ubi9/go-toolset:1.26.5 AS builder
+WORKDIR /opt/app-root/src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY internal/ internal/
+COPY applications/inventory/ applications/inventory/
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /tmp/inventory-api ./applications/inventory
+
+FROM registry.access.redhat.com/ubi9-micro:9.7
+WORKDIR /opt/app-root/src
+COPY --from=builder /tmp/inventory-api /usr/local/bin/inventory-api
+COPY applications/inventory/openapi.yaml ./openapi.yaml
+USER 1001
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/inventory-api"]

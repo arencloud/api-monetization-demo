@@ -1,0 +1,16 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: monetization-control
+  namespace: api-monetization-data
+  labels:
+    app.kubernetes.io/name: monetization-control
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: monetization-control
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

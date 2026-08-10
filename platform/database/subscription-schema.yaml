@@ -1,0 +1,159 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: subscriptions-bootstrap-schema
+  namespace: api-monetization-data
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  labels:
+    app.kubernetes.io/name: subscriptions-schema
+    app.kubernetes.io/part-of: api-monetization
+data:
+  schema.sql: |
+    CREATE EXTENSION IF NOT EXISTS pgcrypto;
+    CREATE SCHEMA IF NOT EXISTS monetization AUTHORIZATION monetization_app;
+    SET ROLE monetization_app;
+
+    CREATE TABLE monetization.plans (
+      id text PRIMARY KEY,
+      display_name text NOT NULL,
+      monthly_price_cents bigint,
+      included_requests bigint,
+      rate_limit_requests integer,
+      rate_limit_window_seconds integer,
+      overage_micros_per_request bigint NOT NULL DEFAULT 0,
+      active boolean NOT NULL DEFAULT true,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT plans_price_nonnegative CHECK (monthly_price_cents IS NULL OR monthly_price_cents >= 0),
+      CONSTRAINT plans_requests_nonnegative CHECK (included_requests IS NULL OR included_requests >= 0),
+      CONSTRAINT plans_rate_limit_pair CHECK (
+        (rate_limit_requests IS NULL AND rate_limit_window_seconds IS NULL)
+        OR (rate_limit_requests > 0 AND rate_limit_window_seconds > 0)
+      )
+    );
+
+    CREATE TABLE monetization.api_products (
+      id text PRIMARY KEY,
+      display_name text NOT NULL,
+      description text NOT NULL,
+      unit_name text NOT NULL DEFAULT 'request',
+      active boolean NOT NULL DEFAULT true,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE monetization.customers (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      external_id text NOT NULL UNIQUE,
+      display_name text NOT NULL,
+      billing_email text,
+      status text NOT NULL DEFAULT 'active',
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT customers_status CHECK (status IN ('active', 'suspended', 'closed'))
+    );
+
+    CREATE TABLE monetization.subscriptions (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      customer_id uuid NOT NULL REFERENCES monetization.customers(id),
+      api_product_id text NOT NULL REFERENCES monetization.api_products(id),
+      plan_id text NOT NULL REFERENCES monetization.plans(id),
+      status text NOT NULL DEFAULT 'active',
+      version bigint NOT NULL DEFAULT 1,
+      starts_at timestamptz NOT NULL DEFAULT now(),
+      ends_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT subscriptions_status CHECK (status IN ('pending', 'active', 'suspended', 'cancelled')),
+      CONSTRAINT subscriptions_dates CHECK (ends_at IS NULL OR ends_at > starts_at)
+    );
+
+    CREATE UNIQUE INDEX subscriptions_one_active_product
+      ON monetization.subscriptions (customer_id, api_product_id)
+      WHERE status = 'active';
+
+    CREATE TABLE monetization.api_credentials (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      subscription_id uuid NOT NULL REFERENCES monetization.subscriptions(id),
+      key_prefix varchar(16) NOT NULL UNIQUE,
+      key_digest text NOT NULL UNIQUE,
+      digest_algorithm text NOT NULL DEFAULT 'argon2id',
+      status text NOT NULL DEFAULT 'active',
+      created_at timestamptz NOT NULL DEFAULT now(),
+      expires_at timestamptz,
+      revoked_at timestamptz,
+      last_used_at timestamptz,
+      CONSTRAINT api_credentials_status CHECK (status IN ('active', 'revoked', 'expired'))
+    );
+
+    CREATE TABLE monetization.plan_changes (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      subscription_id uuid NOT NULL REFERENCES monetization.subscriptions(id),
+      previous_plan_id text REFERENCES monetization.plans(id),
+      new_plan_id text NOT NULL REFERENCES monetization.plans(id),
+      changed_by text NOT NULL,
+      reason text,
+      changed_at timestamptz NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE monetization.usage_events (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      request_id text NOT NULL UNIQUE,
+      subscription_id uuid NOT NULL REFERENCES monetization.subscriptions(id),
+      api_product_id text NOT NULL REFERENCES monetization.api_products(id),
+      operation text NOT NULL,
+      occurred_at timestamptz NOT NULL,
+      status_code integer NOT NULL,
+      duration_ms numeric(12,3) NOT NULL,
+      request_bytes bigint NOT NULL DEFAULT 0,
+      response_bytes bigint NOT NULL DEFAULT 0,
+      billable_units bigint NOT NULL DEFAULT 1,
+      attributes jsonb NOT NULL DEFAULT '{}'::jsonb,
+      CONSTRAINT usage_status_code CHECK (status_code BETWEEN 100 AND 599),
+      CONSTRAINT usage_values_nonnegative CHECK (
+        duration_ms >= 0 AND request_bytes >= 0 AND response_bytes >= 0 AND billable_units >= 0
+      )
+    );
+
+    CREATE INDEX usage_events_subscription_time
+      ON monetization.usage_events (subscription_id, occurred_at DESC);
+    CREATE INDEX usage_events_product_time
+      ON monetization.usage_events (api_product_id, occurred_at DESC);
+
+    CREATE TABLE monetization.invoices (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      customer_id uuid NOT NULL REFERENCES monetization.customers(id),
+      period_start date NOT NULL,
+      period_end date NOT NULL,
+      currency char(3) NOT NULL DEFAULT 'EUR',
+      subtotal_cents bigint NOT NULL DEFAULT 0,
+      overage_cents bigint NOT NULL DEFAULT 0,
+      total_cents bigint NOT NULL DEFAULT 0,
+      status text NOT NULL DEFAULT 'draft',
+      created_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT invoice_period CHECK (period_end > period_start),
+      CONSTRAINT invoice_status CHECK (status IN ('draft', 'issued', 'paid', 'void'))
+    );
+
+    INSERT INTO monetization.plans (
+      id, display_name, monthly_price_cents, included_requests,
+      rate_limit_requests, rate_limit_window_seconds, overage_micros_per_request
+    ) VALUES
+      ('free', 'Free', 0, 1000, 10, 60, 0),
+      ('developer', 'Developer', 4900, 100000, 1000, 60, 1000),
+      ('business', 'Business', 49900, 5000000, 10000, 60, 500),
+      ('enterprise', 'Enterprise', NULL, NULL, NULL, NULL, 0);
+
+    INSERT INTO monetization.api_products (id, display_name, description) VALUES
+      ('inventory', 'Inventory API', 'Product and stock inventory operations'),
+      ('payments', 'Payment API', 'Payment authorization and settlement operations'),
+      ('ai-chat', 'AI Chat API', 'Metered AI inference operations');
+
+    INSERT INTO monetization.customers (external_id, display_name, billing_email)
+      VALUES ('demo-company', 'Demo Company', 'billing@example.invalid');
+
+    INSERT INTO monetization.subscriptions (customer_id, api_product_id, plan_id)
+      SELECT id, 'inventory', 'free'
+      FROM monetization.customers
+      WHERE external_id = 'demo-company';
+

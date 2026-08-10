@@ -1,0 +1,38 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: api-monetization-gateway
+  namespace: openshift-gitops
+  annotations:
+    argocd.argoproj.io/sync-wave: "50"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  project: api-monetization
+  source:
+    repoURL: https://github.com/arencloud/api-monetization-demo.git
+    targetRevision: main
+    path: platform/gateway
+  destination:
+    server: https://kubernetes.default.svc
+  ignoreDifferences:
+    - group: devportal.kuadrant.io
+      kind: APIKey
+      name: demo-inventory-key
+      namespace: api-monetization-apps
+      jsonPointers:
+        - /spec/planTier
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 30
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 3m
+    syncOptions:
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+      - RespectIgnoreDifferences=true

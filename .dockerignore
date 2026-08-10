@@ -1,0 +1,16 @@
+.git
+.github
+.idea
+.vscode
+bootstrap
+config
+dashboards
+docs
+environments
+gitops
+operators
+platform
+policies
+scripts
+*.md
+LICENSE

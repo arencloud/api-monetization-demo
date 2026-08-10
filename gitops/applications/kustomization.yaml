@@ -1,0 +1,54 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - project.yaml
+  - namespaces.yaml
+  - cert-manager-operator.yaml
+  - external-secrets-operator.yaml
+  - cloudnative-pg-operator.yaml
+  - opentelemetry-operator.yaml
+  - tempo-operator.yaml
+  - service-mesh-operator.yaml
+  - keycloak-operator.yaml
+  - external-secrets.yaml
+  - demo-secrets.yaml
+  - database.yaml
+  - identity.yaml
+  - inventory.yaml
+  - control.yaml
+  - gateway.yaml
+  - observability.yaml
+  - service-mesh.yaml
+  - connectivity-link-operator.yaml
+  - connectivity-link.yaml
+configMapGenerator:
+  - name: api-monetization-gitops-source
+    namespace: openshift-gitops
+    literals:
+      - repoURL=https://github.com/arencloud/api-monetization-demo.git
+      - targetRevision=main
+generatorOptions:
+  disableNameSuffixHash: true
+replacements:
+  - source:
+      kind: ConfigMap
+      name: api-monetization-gitops-source
+      fieldPath: data.repoURL
+    targets:
+      - select:
+          kind: Application
+        fieldPaths:
+          - spec.source.repoURL
+      - select:
+          kind: AppProject
+        fieldPaths:
+          - spec.sourceRepos.0
+  - source:
+      kind: ConfigMap
+      name: api-monetization-gitops-source
+      fieldPath: data.targetRevision
+    targets:
+      - select:
+          kind: Application
+        fieldPaths:
+          - spec.source.targetRevision

@@ -1,0 +1,8 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: openshift-default
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  controllerName: openshift.io/gateway-controller/v1

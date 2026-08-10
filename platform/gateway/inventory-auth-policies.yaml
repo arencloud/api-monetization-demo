@@ -1,0 +1,91 @@
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: inventory-api-key
+  namespace: api-monetization-apps
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: inventory-api-key
+  rules:
+    authentication:
+      api-key:
+        apiKey:
+          selector:
+            matchLabels:
+              devportal.kuadrant.io/apiproduct: inventory-api
+          allNamespaces: true
+        credentials:
+          authorizationHeader:
+            prefix: APIKEY
+    response:
+      success:
+        headers:
+          x-monetization-customer:
+            plain:
+              selector: auth.identity.metadata.annotations.secret\.kuadrant\.io/user-id
+          x-monetization-plan:
+            plain:
+              selector: auth.identity.metadata.annotations.secret\.kuadrant\.io/plan-id
+      unauthenticated:
+        code: 401
+        headers:
+          content-type:
+            value: application/json
+        body:
+          value: '{"error":"valid API key required"}'
+---
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: inventory-jwt
+  namespace: api-monetization-apps
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: inventory-jwt
+  rules:
+    authentication:
+      keycloak:
+        jwt:
+          issuerUrl: http://api-monetization-service.api-monetization-identity.svc.cluster.local:8080/realms/api-monetization
+    authorization:
+      api-audience:
+        patternMatching:
+          patterns:
+            - selector: auth.identity.aud
+              operator: incl
+              value: api-monetization
+    response:
+      success:
+        headers:
+          x-monetization-customer:
+            plain:
+              selector: auth.identity.azp
+          x-monetization-plan:
+            plain:
+              selector: auth.identity.plan
+      unauthenticated:
+        code: 401
+        headers:
+          content-type:
+            value: application/json
+        body:
+          value: '{"error":"valid Keycloak bearer token required"}'
+      unauthorized:
+        code: 403
+        headers:
+          content-type:
+            value: application/json
+        body:
+          value: '{"error":"token audience is not authorized"}'

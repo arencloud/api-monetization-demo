@@ -1,0 +1,28 @@
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: api-monetization-default-deny
+  namespace: api-monetization-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: api-monetization
+  defaults:
+    rules:
+      authorization:
+        deny-all:
+          opa:
+            rego: allow = false
+      response:
+        unauthorized:
+          code: 403
+          headers:
+            content-type:
+              value: application/json
+          body:
+            value: '{"error":"route has no explicit authentication policy"}'

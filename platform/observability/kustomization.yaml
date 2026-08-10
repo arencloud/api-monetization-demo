@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - user-workload-monitoring.yaml
+  - tempo.yaml
+  - collector.yaml
+  - alerts.yaml
+configMapGenerator:
+  - name: api-monetization-grafana-dashboard
+    namespace: api-monetization-observability
+    files:
+      - api-monetization.json
+    options:
+      labels:
+        app.kubernetes.io/part-of: api-monetization
+        grafana_dashboard: "1"
+generatorOptions:
+  disableNameSuffixHash: true

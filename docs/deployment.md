@@ -1,0 +1,117 @@
+# Deployment guide
+
+## Prerequisites
+
+- OpenShift Container Platform 4.21 or 4.22.
+- A user with `cluster-admin` privileges.
+- The `oc` CLI and network access to the cluster.
+- `redhat-operators` available in `openshift-marketplace`.
+- `certified-operators` available in `openshift-marketplace`.
+- Red Hat entitlements that expose the `rhcl-operator` package.
+- The repository is reachable by the in-cluster Argo CD repository server.
+- A default dynamic `StorageClass` is configured for PostgreSQL PVCs.
+
+The preflight check is read-only:
+
+```bash
+make preflight
+```
+
+It fails if the cluster version, permissions, catalog sources, or required
+operator packages are incompatible. A missing RHCL package generally means the
+cluster pull secret/account does not include the required product entitlement.
+
+## Bootstrap
+
+Review the repository URL and revision in `bootstrap/root/application.yaml` and
+`gitops/applications/kustomization.yaml`, then run:
+
+```bash
+make bootstrap
+```
+
+The script performs only these mutations:
+
+1. Applies the OpenShift GitOps namespace, OperatorGroup, and Subscription.
+2. Waits for the subscription to report an installed CSV.
+3. Waits for the default Argo CD application controller.
+4. Applies the root `Application`.
+
+It does not directly apply any platform resource. Argo CD reconciles the child
+applications from Git.
+
+## Verify
+
+```bash
+make status
+oc get kuadrant -n kuadrant-system
+oc get istio -n api-monetization-mesh-system
+oc get istiocni -n api-monetization-istio-cni
+make verify
+make demo
+```
+
+The expected end state is that every Argo CD application is `Synced` and
+`Healthy`, every operator CSV is `Succeeded`, the `Kuadrant` resource is ready,
+the `Istio`/`IstioCNI` resources report healthy status, both PostgreSQL clusters
+are ready, and the Keycloak realm import reports `Done`.
+
+The demo gateway intentionally uses HTTP and the synthetic hostnames
+`api-monetization.demo` and `jwt.api-monetization.demo`. The scripts send an
+explicit `Host` header to the provisioned Gateway address, so the baseline needs
+no DNS account or ACME credentials. Environment overlays can add `TLSPolicy` and
+`DNSPolicy` once a real domain and provider credentials are selected.
+
+## Upgrade policy
+
+Subscriptions use minor-version channels where the Red Hat catalog provides
+them. Automatic approval accepts compatible patch releases in that lane. Major
+or minor lane changes require a pull request that updates the support matrix,
+subscriptions, operands, and validation evidence together.
+
+The RHCL catalog currently exposes a single `stable` channel. Before every demo
+release, record its resolved CSV and dependent operator versions in the release
+notes. Do not approve an RHCL minor upgrade until the complete Red Hat supported
+configuration matrix has been reviewed.
+
+## Secrets
+
+Plain Kubernetes `Secret` resources are rejected by repository validation. The
+demo profile uses one-time immutable password generators managed by External
+Secrets. A production overlay must replace those generators with provider-backed
+External Secrets while retaining the same target Secret contracts. Bootstrap
+credentials must never be committed, even for a demonstration.
+
+The generated Secrets use orphan ownership and remain if their `ExternalSecret`
+is pruned. This is intentional: database bootstrap credentials must not rotate
+without changing the persisted database role password. During a complete demo
+reset, delete the PostgreSQL cluster/PVC and its corresponding generated Secret
+together, after confirming that no retained data is required.
+
+## Recovery
+
+Argo CD self-heals managed resources. For diagnosis, inspect the child
+application first, then the owning operator and operand conditions:
+
+```bash
+oc get applications.argoproj.io -n openshift-gitops
+oc get subscriptions,csv,installplans -A
+oc describe application <name> -n openshift-gitops
+```
+
+Do not delete CRDs to recover an operator. CRD deletion can remove all operand
+data. Any teardown workflow will be added separately with explicit ordering and
+backup requirements.
+
+## Product references
+
+- [RHCL supported configurations](https://access.redhat.com/articles/7092611)
+- [Installing Red Hat Connectivity Link 1.4](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/installing_connectivity_link/)
+- [RHCL observability](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/observability/)
+- [Installing OpenShift Service Mesh 3.4](https://docs.redhat.com/en/documentation/red_hat_openshift_service_mesh/3.4/html/installing/)
+- [Installing OpenShift GitOps](https://docs.redhat.com/en/documentation/red_hat_openshift_gitops/1.21/html/installing_gitops/)
+- [External Secrets Operator for Red Hat OpenShift](https://docs.redhat.com/en/documentation/openshift_container_platform/4.21/html/security_and_compliance/external-secrets-operator-for-red-hat-openshift)
+- [CloudNativePG installation and upgrades](https://cloudnative-pg.io/docs/1.30/installation_upgrade/)
+- [Red Hat build of Keycloak Operator guide](https://docs.redhat.com/en/documentation/red_hat_build_of_keycloak/26.6/html/operator_guide/)
+- [Red Hat build of OpenTelemetry](https://docs.redhat.com/en/documentation/red_hat_build_of_opentelemetry/3.10/html/installing_red_hat_build_of_opentelemetry/)
+- [Red Hat OpenShift distributed tracing](https://docs.redhat.com/en/documentation/red_hat_openshift_distributed_tracing_platform/3.9/html/installing_distributed_tracing/)

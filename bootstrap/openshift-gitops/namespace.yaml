@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openshift-gitops-operator
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+    app.kubernetes.io/managed-by: bootstrap
+

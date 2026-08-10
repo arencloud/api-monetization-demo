@@ -1,0 +1,51 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Accepted requests (24h)",
+      "targets": [{"expr": "sum(increase(api_requests_total{service=\"inventory-api\"}[24h]))", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0}
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests by plan",
+      "targets": [{"expr": "sum by (plan) (rate(api_requests_total{service=\"inventory-api\"}[5m]))", "legendFormat": "{{plan}}", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 12, "x": 6, "y": 0}
+    },
+    {
+      "type": "stat",
+      "title": "Live plan upgrades",
+      "targets": [{"expr": "sum(monetization_plan_upgrades_total)", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0}
+    },
+    {
+      "type": "stat",
+      "title": "Projected revenue (EUR)",
+      "targets": [{"expr": "sum(monetization_projected_revenue_euros)", "refId": "A"}],
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 8}
+    },
+    {
+      "type": "table",
+      "title": "Customers and plans",
+      "targets": [{"expr": "sum by (customer, plan) (increase(api_requests_total{service=\"inventory-api\"}[1h]))", "format": "table", "instant": true, "refId": "A"}],
+      "gridPos": {"h": 9, "w": 9, "x": 6, "y": 8}
+    },
+    {
+      "type": "timeseries",
+      "title": "Mean accepted-request latency (ms)",
+      "targets": [{"expr": "sum(rate(api_request_duration_milliseconds_total{service=\"inventory-api\"}[5m])) / clamp_min(sum(rate(api_requests_total{service=\"inventory-api\"}[5m])), 0.001)", "refId": "A"}],
+      "gridPos": {"h": 9, "w": 9, "x": 15, "y": 8}
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["api-monetization", "rhcl"],
+  "templating": {"list": []},
+  "time": {"from": "now-1h", "to": "now"},
+  "timezone": "browser",
+  "title": "API Monetization Business Dashboard",
+  "uid": "api-monetization",
+  "version": 1
+}

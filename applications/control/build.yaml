@@ -1,0 +1,42 @@
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: monetization-control
+  namespace: api-monetization-data
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: monetization-control
+  namespace: api-monetization-data
+  labels:
+    app.kubernetes.io/name: monetization-control
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  runPolicy: SerialLatestOnly
+  source:
+    type: Git
+    git:
+      uri: https://github.com/arencloud/api-monetization-demo.git
+      ref: main
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: applications/control/Containerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: monetization-control:demo
+  triggers:
+    - type: ConfigChange
+  successfulBuildsHistoryLimit: 3
+  failedBuildsHistoryLimit: 3
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi

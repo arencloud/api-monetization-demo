@@ -1,0 +1,17 @@
+apiVersion: devportal.kuadrant.io/v1alpha1
+kind: APIKey
+metadata:
+  name: demo-inventory-key
+  namespace: api-monetization-apps
+  annotations:
+    argocd.argoproj.io/sync-wave: "50"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  apiProductRef:
+    name: inventory-api
+  planTier: free
+  requestedBy:
+    userId: demo-company
+    email: developer@example.invalid
+  useCase: Reproducible API monetization live demonstration

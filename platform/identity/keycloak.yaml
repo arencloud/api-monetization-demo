@@ -1,0 +1,43 @@
+apiVersion: k8s.keycloak.org/v2beta1
+kind: Keycloak
+metadata:
+  name: api-monetization
+  namespace: api-monetization-identity
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  instances: 1
+  db:
+    vendor: postgres
+    host: keycloak-postgres-rw
+    port: 5432
+    database: keycloak
+    schema: public
+    usernameSecret:
+      name: keycloak-db-credentials
+      key: username
+    passwordSecret:
+      name: keycloak-db-credentials
+      key: password
+    poolInitialSize: 5
+    poolMinSize: 5
+    poolMaxSize: 30
+  http:
+    httpEnabled: true
+  hostname:
+    strict: false
+  ingress:
+    enabled: false
+  transaction:
+    xaEnabled: false
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1700Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+

@@ -1,0 +1,28 @@
+openapi: 3.0.3
+info:
+  title: Inventory API
+  version: 1.0.0
+  description: Demonstration API protected and monetized by Red Hat Connectivity Link.
+paths:
+  /inventory:
+    get:
+      operationId: listInventory
+      summary: List inventory
+      responses:
+        "200":
+          description: Current inventory
+  /inventory/{sku}:
+    get:
+      operationId: getInventoryItem
+      summary: Get one inventory item
+      parameters:
+        - name: sku
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Inventory item
+        "404":
+          description: Item not found

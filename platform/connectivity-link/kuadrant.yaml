@@ -1,0 +1,21 @@
+apiVersion: kuadrant.io/v1beta1
+kind: Kuadrant
+metadata:
+  name: kuadrant
+  namespace: kuadrant-system
+  labels:
+    app.kubernetes.io/name: kuadrant
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  components:
+    developerPortal:
+      enabled: true
+  observability:
+    enable: true
+    tracing:
+      defaultEndpoint: api-monetization-collector.api-monetization-observability.svc.cluster.local:4317
+      insecure: true
+    dataPlane:
+      httpHeaderIdentifier: x-request-id
+      defaultLevels:
+        - info: "true"

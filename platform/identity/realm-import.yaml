@@ -1,0 +1,139 @@
+apiVersion: k8s.keycloak.org/v2beta1
+kind: KeycloakRealmImport
+metadata:
+  name: api-monetization-realm
+  namespace: api-monetization-identity
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+  labels:
+    app.kubernetes.io/name: api-monetization-realm
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  keycloakCRName: api-monetization
+  placeholders:
+    FREE_CLIENT_SECRET:
+      secret:
+        name: keycloak-demo-clients
+        key: free-client-secret
+    DEVELOPER_CLIENT_SECRET:
+      secret:
+        name: keycloak-demo-clients
+        key: developer-client-secret
+    BUSINESS_CLIENT_SECRET:
+      secret:
+        name: keycloak-demo-clients
+        key: business-client-secret
+  realm:
+    id: api-monetization
+    realm: api-monetization
+    displayName: API Monetization
+    enabled: true
+    sslRequired: external
+    registrationAllowed: false
+    loginWithEmailAllowed: true
+    duplicateEmailsAllowed: false
+    resetPasswordAllowed: true
+    bruteForceProtected: true
+    accessTokenLifespan: 300
+    ssoSessionIdleTimeout: 1800
+    roles:
+      realm:
+        - name: plan-free
+          description: Free API plan
+        - name: plan-developer
+          description: Developer API plan
+        - name: plan-business
+          description: Business API plan
+    clients:
+      - clientId: demo-free-client
+        name: Demo Free Plan Client
+        description: Machine client used to demonstrate the Free plan
+        enabled: true
+        protocol: openid-connect
+        publicClient: false
+        clientAuthenticatorType: client-secret
+        secret: ${FREE_CLIENT_SECRET}
+        serviceAccountsEnabled: true
+        standardFlowEnabled: false
+        directAccessGrantsEnabled: false
+        fullScopeAllowed: false
+        protocolMappers:
+          - name: plan
+            protocol: openid-connect
+            protocolMapper: oidc-hardcoded-claim-mapper
+            config:
+              claim.name: plan
+              claim.value: free
+              jsonType.label: String
+              access.token.claim: "true"
+              id.token.claim: "true"
+          - name: api-audience
+            protocol: openid-connect
+            protocolMapper: oidc-audience-mapper
+            config:
+              included.custom.audience: api-monetization
+              access.token.claim: "true"
+      - clientId: demo-developer-client
+        name: Demo Developer Plan Client
+        description: Machine client used to demonstrate the Developer plan
+        enabled: true
+        protocol: openid-connect
+        publicClient: false
+        clientAuthenticatorType: client-secret
+        secret: ${DEVELOPER_CLIENT_SECRET}
+        serviceAccountsEnabled: true
+        standardFlowEnabled: false
+        directAccessGrantsEnabled: false
+        fullScopeAllowed: false
+        protocolMappers:
+          - name: plan
+            protocol: openid-connect
+            protocolMapper: oidc-hardcoded-claim-mapper
+            config:
+              claim.name: plan
+              claim.value: developer
+              jsonType.label: String
+              access.token.claim: "true"
+              id.token.claim: "true"
+          - name: api-audience
+            protocol: openid-connect
+            protocolMapper: oidc-audience-mapper
+            config:
+              included.custom.audience: api-monetization
+              access.token.claim: "true"
+      - clientId: demo-business-client
+        name: Demo Business Plan Client
+        description: Machine client used to demonstrate the Business plan
+        enabled: true
+        protocol: openid-connect
+        publicClient: false
+        clientAuthenticatorType: client-secret
+        secret: ${BUSINESS_CLIENT_SECRET}
+        serviceAccountsEnabled: true
+        standardFlowEnabled: false
+        directAccessGrantsEnabled: false
+        fullScopeAllowed: false
+        protocolMappers:
+          - name: plan
+            protocol: openid-connect
+            protocolMapper: oidc-hardcoded-claim-mapper
+            config:
+              claim.name: plan
+              claim.value: business
+              jsonType.label: String
+              access.token.claim: "true"
+              id.token.claim: "true"
+          - name: api-audience
+            protocol: openid-connect
+            protocolMapper: oidc-audience-mapper
+            config:
+              included.custom.audience: api-monetization
+              access.token.claim: "true"
+  resources:
+    requests:
+      cpu: 250m
+      memory: 1Gi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+

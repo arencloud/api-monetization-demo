@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: monetization-control
+  namespace: api-monetization-data
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: monetization-plan-updater
+  namespace: api-monetization-apps
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+rules:
+  - apiGroups:
+      - devportal.kuadrant.io
+    resources:
+      - apikeys
+    resourceNames:
+      - demo-inventory-key
+    verbs:
+      - get
+      - patch
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    resourceNames:
+      - demo-inventory-key-apikey-secret
+    verbs:
+      - get
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: monetization-control-plan-updater
+  namespace: api-monetization-apps
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: monetization-plan-updater
+subjects:
+  - kind: ServiceAccount
+    name: monetization-control
+    namespace: api-monetization-data

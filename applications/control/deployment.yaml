@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monetization-control
+  namespace: api-monetization-data
+  annotations:
+    image.openshift.io/triggers: >-
+      [{"from":{"kind":"ImageStreamTag","name":"monetization-control:demo","namespace":"api-monetization-data"},"fieldPath":"spec.template.spec.containers[?(@.name==\"monetization-control\")].image","paused":false}]
+  labels:
+    app.kubernetes.io/name: monetization-control
+    app.kubernetes.io/part-of: api-monetization
+    app.kubernetes.io/component: control-plane
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: monetization-control
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: monetization-control
+        app.kubernetes.io/part-of: api-monetization
+        app.kubernetes.io/component: control-plane
+    spec:
+      serviceAccountName: monetization-control
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: monetization-control
+          image: image-registry.openshift-image-registry.svc:5000/api-monetization-data/monetization-control:demo
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: DATABASE_URL
+              value: postgres://monetization_app@subscriptions-postgres-rw:5432/monetization?sslmode=require
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: subscriptions-db-credentials
+                  key: password
+            - name: DEMO_APIKEY_NAME
+              value: demo-inventory-key
+            - name: DEMO_APIKEY_NAMESPACE
+              value: api-monetization-apps
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true

@@ -1,0 +1,17 @@
+apiVersion: sailoperator.io/v1
+kind: Istio
+metadata:
+  name: default
+  namespace: api-monetization-mesh-system
+  labels:
+    app.kubernetes.io/name: istio
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  namespace: api-monetization-mesh-system
+  updateStrategy:
+    type: InPlace
+  values:
+    meshConfig:
+      discoverySelectors:
+        - matchLabels:
+            istio-discovery: enabled

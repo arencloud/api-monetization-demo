@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory-api
+  namespace: api-monetization-apps
+  labels:
+    app.kubernetes.io/name: inventory-api
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  selector:
+    app.kubernetes.io/name: inventory-api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

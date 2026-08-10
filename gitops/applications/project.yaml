@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: api-monetization
+  namespace: openshift-gitops
+  annotations:
+    argocd.argoproj.io/sync-wave: "-30"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  description: API monetization platform and demo workloads
+  sourceRepos:
+    - https://github.com/arencloud/api-monetization-demo.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: '*'
+  clusterResourceWhitelist:
+    - group: '*'
+      kind: '*'
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+  orphanedResources:
+    warn: true
+
