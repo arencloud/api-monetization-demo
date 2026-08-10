@@ -22,6 +22,10 @@ Internet -> OpenShift Route -> Gateway API -> Connectivity Link -> Service Mesh 
                     Metrics, logs, traces, usage, billing
 ```
 
+OpenShift Routes always provide the portable entry path shown above. When
+MetalLB, a cloud integration, or another Service LoadBalancer provider assigns
+an external address, the Gateway also retains that direct LoadBalancer entry.
+
 See [the architecture](docs/architecture.md) for component responsibilities and
 trust boundaries.
 

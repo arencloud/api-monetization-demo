@@ -1,0 +1,150 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: api-monetization-gateway-service-mode
+  namespace: api-monetization-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  labels:
+    app.kubernetes.io/name: api-monetization-gateway-service-mode
+    app.kubernetes.io/part-of: api-monetization
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: api-monetization-gateway-service-mode
+  namespace: api-monetization-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  labels:
+    app.kubernetes.io/name: api-monetization-gateway-service-mode
+    app.kubernetes.io/part-of: api-monetization
+rules:
+  - apiGroups:
+      - gateway.networking.k8s.io
+    resources:
+      - gateways
+    verbs:
+      - get
+      - list
+      - patch
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - services
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: api-monetization-gateway-service-mode
+  namespace: api-monetization-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  labels:
+    app.kubernetes.io/name: api-monetization-gateway-service-mode
+    app.kubernetes.io/part-of: api-monetization
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: api-monetization-gateway-service-mode
+subjects:
+  - kind: ServiceAccount
+    name: api-monetization-gateway-service-mode
+    namespace: api-monetization-gateway
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: api-monetization-gateway-service-mode
+  namespace: api-monetization-gateway
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "0"
+  labels:
+    app.kubernetes.io/name: api-monetization-gateway-service-mode
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: api-monetization-gateway-service-mode
+        app.kubernetes.io/part-of: api-monetization
+    spec:
+      serviceAccountName: api-monetization-gateway-service-mode
+      restartPolicy: Never
+      containers:
+        - name: select-service-mode
+          image: registry.redhat.io/openshift4/ose-cli-rhel9:v4.22
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -Eeuo
+            - pipefail
+            - -c
+            - |
+              namespace=api-monetization-gateway
+              gateway=api-monetization
+
+              echo "probing for a Service LoadBalancer provider"
+              oc patch gateway "$gateway" -n "$namespace" --type=merge --patch \
+                '{"metadata":{"annotations":{"networking.istio.io/service-type":null}}}'
+
+              gateway_service=""
+              external_address=""
+              for _ in $(seq 1 60); do
+                gateway_service=$(oc get services -n "$namespace" \
+                  -l "gateway.networking.k8s.io/gateway-name=$gateway" \
+                  -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+                if [[ -n $gateway_service ]]; then
+                  service_type=$(oc get service "$gateway_service" -n "$namespace" \
+                    -o jsonpath='{.spec.type}' 2>/dev/null || true)
+                  external_address=$(oc get service "$gateway_service" -n "$namespace" \
+                    -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}' \
+                    2>/dev/null || true)
+                  if [[ $service_type == "LoadBalancer" && -n $external_address ]]; then
+                    break
+                  fi
+                fi
+                sleep 5
+              done
+
+              if [[ -z $gateway_service ]]; then
+                echo "error: the Gateway controller did not create a Service" >&2
+                exit 1
+              fi
+
+              if [[ -n $external_address ]]; then
+                echo "LoadBalancer provider assigned $external_address; preserving the LoadBalancer Service"
+              else
+                echo "no external address was assigned; selecting the portable ClusterIP plus OpenShift Route mode"
+                oc patch gateway "$gateway" -n "$namespace" --type=merge --patch \
+                  '{"metadata":{"annotations":{"networking.istio.io/service-type":"ClusterIP"}}}'
+                oc wait service "$gateway_service" -n "$namespace" \
+                  --for=jsonpath='{.spec.type}'=ClusterIP --timeout=2m
+              fi
+
+              oc wait gateway "$gateway" -n "$namespace" \
+                --for=condition=Programmed --timeout=2m
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault

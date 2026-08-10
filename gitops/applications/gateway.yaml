@@ -16,6 +16,12 @@ spec:
   destination:
     server: https://kubernetes.default.svc
   ignoreDifferences:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: api-monetization
+      namespace: api-monetization-gateway
+      jsonPointers:
+        - /metadata/annotations/networking.istio.io~1service-type
     - group: devportal.kuadrant.io
       kind: APIKey
       name: demo-inventory-key

@@ -19,6 +19,10 @@ Internet -> OpenShift Route -> Gateway API -> RHCL policies -> Service Mesh -> O
                                DATA PLANE
 ```
 
+The OpenShift Route path is always available. A cluster with a functioning
+Service LoadBalancer provider additionally exposes the same Gateway through its
+assigned external address; the request-time policy path is unchanged.
+
 ## Responsibilities
 
 | Capability | Owner |

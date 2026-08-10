@@ -11,9 +11,13 @@ Host headers. This makes the repository deployable to a fresh supported cluster
 without cloud DNS credentials. A real-domain overlay will add DNS and ACME-backed
 TLS policies without changing applications or authentication rules.
 
-The Gateway-generated Service is `ClusterIP` and two OpenShift Routes publish
-the API-key and JWT hostnames. This avoids assuming that a bare-metal cluster has
-a controller capable of assigning addresses to arbitrary LoadBalancer Services.
+The Gateway-generated Service adapts to the cluster. It remains `LoadBalancer`
+when MetalLB, a cloud integration, or another provider assigns an external
+address. If a live assignment probe times out, a narrowly privileged GitOps hook
+adds `networking.istio.io/service-type: ClusterIP` to the Gateway. Two OpenShift
+Routes publish the API-key and JWT hostnames in either mode. This avoids assuming
+that a bare-metal cluster has a Service LoadBalancer provider while using one
+when it is available.
 
 OpenShift application builds require the integrated image registry. GitOps
 preserves an existing Managed registry. On a fresh cluster where the registry is

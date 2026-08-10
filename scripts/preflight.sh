@@ -122,7 +122,7 @@ metallb_instances=$(oc get metallbs.metallb.io -A \
   2>/dev/null || true)
 
 if [[ -n $assigned_load_balancers ]]; then
-  pass "external Service LoadBalancer assignment detected: $(paste -sd, <<<"$assigned_load_balancers")"
+  pass "external Service LoadBalancer assignment detected: $(paste -sd, <<<"$assigned_load_balancers"); the Gateway can retain its LoadBalancer Service"
 elif [[ -n $metallb_instances ]]; then
   metallb_ready=false
   while IFS=/ read -r metallb_namespace metallb_name; do
@@ -138,17 +138,17 @@ elif [[ -n $metallb_instances ]]; then
       -o name 2>/dev/null || true)
     if [[ $controller_available == "True" && $speaker_desired =~ ^[1-9][0-9]*$ && \
       $speaker_desired == "$speaker_ready" && -n $address_pools ]]; then
-      pass "MetalLB $metallb_namespace/$metallb_name is ready with an IP address pool"
+      pass "MetalLB $metallb_namespace/$metallb_name is ready with an IP address pool; the Gateway can retain its LoadBalancer Service"
       metallb_ready=true
     fi
   done <<<"$metallb_instances"
   if [[ $metallb_ready != "true" ]]; then
-    warn "MetalLB is installed but NOT READY to assign external Service IPs; check its controller, speakers, and IPAddressPool"
+    warn "MetalLB is installed but NOT READY to assign external Service IPs; the adaptive Gateway will fall back to ClusterIP plus OpenShift Routes unless MetalLB becomes ready during its probe"
   fi
 else
   platform_type=$(oc get infrastructure cluster \
     -o jsonpath='{.status.platformStatus.type}' 2>/dev/null || true)
-  warn "no external Service LoadBalancer provider detected on platform ${platform_type:-unknown}: MetalLB is not installed and no LoadBalancer Service has an assigned ingress; this demo uses ClusterIP plus OpenShift Routes and does not require one"
+  warn "no external Service LoadBalancer provider detected on platform ${platform_type:-unknown}: MetalLB is not installed and no LoadBalancer Service has an assigned ingress; the adaptive Gateway will use ClusterIP plus OpenShift Routes if its live probe also receives no address"
 fi
 
 if oc get ingresscontroller/default -n openshift-ingress-operator >/dev/null 2>&1; then

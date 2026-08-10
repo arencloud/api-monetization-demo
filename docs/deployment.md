@@ -24,8 +24,8 @@ operator packages are incompatible. A missing RHCL package generally means the
 cluster pull secret/account does not include the required product entitlement.
 It also reports non-blocking warnings when the integrated registry is not yet
 ready or when no MetalLB, cloud, or other external Service LoadBalancer
-assignment is detected. The portable demo does not require a LoadBalancer
-provider because OpenShift Routes expose its `ClusterIP` Gateway.
+assignment is detected. The result is advisory because the Gateway performs a
+live assignment probe during its GitOps sync.
 
 ## Bootstrap
 
@@ -76,13 +76,15 @@ Available. Images in this storage are lost when the registry pod restarts; use
 supported persistent or object storage for any non-demo environment.
 
 The demo gateway intentionally uses HTTP and the synthetic hostnames
-`api-monetization.demo` and `jwt.api-monetization.demo`. Its generated Service is
-`ClusterIP`, so a bare-metal cluster does not need a separate LoadBalancer
-implementation. OpenShift Routes expose both hosts through the default ingress
-controller, and the demo script uses curl address remapping to preserve the
-synthetic Host header without public DNS. Environment overlays can add
-`TLSPolicy` and `DNSPolicy` once a real domain and provider credentials are
-selected.
+`api-monetization.demo` and `jwt.api-monetization.demo`. The Gateway initially
+uses the controller's normal `LoadBalancer` Service. A GitOps sync hook waits for
+an external IP or hostname from MetalLB, a cloud integration, or another
+provider. When an address is assigned, the Service remains `LoadBalancer`. When
+none is assigned, the hook adds `networking.istio.io/service-type: ClusterIP` to
+the Gateway. OpenShift Routes expose both hosts in either mode, and the demo
+script uses curl address remapping to preserve the synthetic Host header without
+public DNS. Environment overlays can add `TLSPolicy` and `DNSPolicy` once a real
+domain and provider credentials are selected.
 
 ## Upgrade policy
 

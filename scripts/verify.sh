@@ -44,6 +44,30 @@ oc wait --for=condition=Ready limitadors.limitador.kuadrant.io/limitador \
   -n kuadrant-system --timeout=10m
 oc wait --for=condition=Programmed gateways.gateway.networking.k8s.io/api-monetization \
   -n api-monetization-gateway --timeout=10m
+gateway_service=$(oc get services -n api-monetization-gateway \
+  -l gateway.networking.k8s.io/gateway-name=api-monetization \
+  -o jsonpath='{.items[0].metadata.name}')
+gateway_service_type=$(oc get service "$gateway_service" -n api-monetization-gateway \
+  -o jsonpath='{.spec.type}')
+case "$gateway_service_type" in
+  LoadBalancer)
+    gateway_external_address=$(oc get service "$gateway_service" \
+      -n api-monetization-gateway \
+      -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
+    if [[ -z $gateway_external_address ]]; then
+      echo "error: Gateway Service is LoadBalancer but has no external address" >&2
+      exit 1
+    fi
+    echo "Gateway Service mode: LoadBalancer ($gateway_external_address)"
+    ;;
+  ClusterIP)
+    echo "Gateway Service mode: ClusterIP through OpenShift Routes"
+    ;;
+  *)
+    echo "error: unsupported Gateway Service type: $gateway_service_type" >&2
+    exit 1
+    ;;
+esac
 oc wait route/api-monetization -n api-monetization-gateway \
   --for=jsonpath='{.status.ingress[0].conditions[0].status}'=True --timeout=5m
 oc wait route/api-monetization-jwt -n api-monetization-gateway \
