@@ -1,0 +1,27 @@
+# Environment files and local overrides
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Go build outputs and test artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.out
+coverage.html
+/bin/
+/dist/
+
+# IDE and editor settings
+.idea/
+*.iml
+.vscode/
+
+# OS-generated files
+.DS_Store
+Thumbs.db
