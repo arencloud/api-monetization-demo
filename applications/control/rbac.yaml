@@ -21,16 +21,6 @@ rules:
     resourceNames:
       - demo-inventory-key
     verbs:
-      - get
-      - patch
-  - apiGroups:
-      - ""
-    resources:
-      - secrets
-    resourceNames:
-      - demo-inventory-api-key
-    verbs:
-      - get
       - patch
 ---
 apiVersion: rbac.authorization.k8s.io/v1

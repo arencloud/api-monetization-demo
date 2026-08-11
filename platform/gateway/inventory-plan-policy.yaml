@@ -15,11 +15,11 @@ spec:
   plans:
     - tier: enterprise
       predicate: >-
-        has(auth.identity) && auth.identity.metadata.annotations["secret.kuadrant.io/plan-id"] == "enterprise"
+        has(auth.metadata.subscription) && auth.metadata.subscription.plan == "enterprise"
       limits: {}
     - tier: business
       predicate: >-
-        has(auth.identity) && auth.identity.metadata.annotations["secret.kuadrant.io/plan-id"] == "business"
+        has(auth.metadata.subscription) && auth.metadata.subscription.plan == "business"
       limits:
         monthly: 5000000
         custom:
@@ -27,7 +27,7 @@ spec:
             window: 1m
     - tier: developer
       predicate: >-
-        has(auth.identity) && auth.identity.metadata.annotations["secret.kuadrant.io/plan-id"] == "developer"
+        has(auth.metadata.subscription) && auth.metadata.subscription.plan == "developer"
       limits:
         monthly: 100000
         custom:
@@ -35,7 +35,7 @@ spec:
             window: 1m
     - tier: free
       predicate: >-
-        has(auth.identity) && auth.identity.metadata.annotations["secret.kuadrant.io/plan-id"] == "free"
+        has(auth.metadata.subscription) && auth.metadata.subscription.plan == "free"
       limits:
         monthly: 1000
         custom:

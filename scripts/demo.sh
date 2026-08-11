@@ -69,6 +69,22 @@ if [[ $plan_tier != "free" ]]; then
   exit 1
 fi
 
+echo "starting the monetization control plane tunnel"
+oc port-forward -n "$data_namespace" service/monetization-control \
+  "$control_port:8080" >/tmp/api-monetization-control-port-forward.log 2>&1 &
+port_forward_pids+=("$!")
+for _ in $(seq 1 30); do
+  curl --silent --fail "http://127.0.0.1:$control_port/readyz" >/dev/null && break
+  sleep 1
+done
+subscription_plan=$(curl --silent --show-error --fail \
+  "http://127.0.0.1:$control_port/api/subscriptions" \
+  | jq -r '.[] | select(.customerId == "demo-company" and .product == "inventory") | .plan')
+if [[ $subscription_plan != "free" ]]; then
+  echo "error: demo-company Inventory subscription is on the ${subscription_plan:-unknown} plan; run 'make reset-demo', wait 60 seconds, and retry" >&2
+  exit 1
+fi
+
 request_api_key() {
   curl --silent --output /dev/null --write-out '%{http_code}' \
     --cacert "$route_ca_file" \
@@ -112,15 +128,6 @@ if ((successful_requests == 0 || limited_requests == 0)); then
   echo "error: Free-plan burst did not demonstrate both accepted and rate-limited requests; run 'make reset-demo', wait 60 seconds, and retry" >&2
   exit 1
 fi
-
-echo "starting the monetization control plane tunnel"
-oc port-forward -n "$data_namespace" service/monetization-control \
-  "$control_port:8080" >/tmp/api-monetization-control-port-forward.log 2>&1 &
-port_forward_pids+=("$!")
-for _ in $(seq 1 30); do
-  curl --silent --fail "http://127.0.0.1:$control_port/readyz" >/dev/null && break
-  sleep 1
-done
 
 echo "upgrading demo-company from Free to Developer"
 curl --silent --fail-with-body \

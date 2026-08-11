@@ -51,8 +51,9 @@ assigned external address; the request-time policy path is unchanged.
 5. The gateway routes the accepted request to a mesh-protected backend.
 6. Metrics, structured access logs, and traces share request, customer, and API
    identifiers without exposing credential material.
-7. Usage is aggregated asynchronously into billable records. Billing never
-   participates in the synchronous request path.
+7. Usage is aggregated asynchronously into billable records. A narrow,
+   read-only entitlement lookup participates in authentication; usage rating,
+   invoicing, and other billing work never participate in the synchronous path.
 
 ## Live plan upgrade
 
@@ -62,12 +63,14 @@ the authoritative metadata or policy is reconciled; subsequent traffic receives
 the larger limit without a gateway or application restart. Dashboards and logs
 must show both the limit event and the new plan attribution.
 
-For API keys, the RHCL developer-portal controller creates an enforcement Secret
-whose plan annotation is consumed by `PlanPolicy`. The monetization control plane
-updates that annotation and the APIKey tier, then commits the corresponding
-subscription change and audit record to PostgreSQL. Argo CD intentionally ignores
-only the demo APIKey's mutable `spec.planTier`; every other field remains
-self-healing.
+For API keys, the RHCL developer-portal controller creates the enforcement
+credential. After authentication, Authorino retrieves the current subscription
+from the monetization control plane as external metadata. `PlanPolicy` selects
+the matching limits from that authoritative plan. A live upgrade updates the
+APIKey tier for portal visibility and commits the subscription and audit record
+to PostgreSQL; the next metadata lookup observes it without recreating the
+gateway or application. Argo CD intentionally ignores only the demo APIKey's
+mutable `spec.planTier`; every other field remains self-healing.
 
 ## Security boundaries
 

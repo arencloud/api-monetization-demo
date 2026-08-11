@@ -3,6 +3,8 @@ kind: ImageStream
 metadata:
   name: monetization-control
   namespace: api-monetization-data
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
   labels:
     app.kubernetes.io/part-of: api-monetization
 ---
@@ -11,6 +13,8 @@ kind: BuildConfig
 metadata:
   name: monetization-control
   namespace: api-monetization-data
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
   labels:
     app.kubernetes.io/name: monetization-control
     app.kubernetes.io/part-of: api-monetization
@@ -29,8 +33,6 @@ spec:
     to:
       kind: ImageStreamTag
       name: monetization-control:demo
-  triggers:
-    - type: ConfigChange
   successfulBuildsHistoryLimit: 3
   failedBuildsHistoryLimit: 3
   resources:

@@ -76,6 +76,7 @@ func main() {
 	mux.HandleFunc("GET /readyz", application.ready)
 	mux.HandleFunc("GET /api/plans", application.plans)
 	mux.HandleFunc("GET /api/subscriptions", application.subscriptions)
+	mux.HandleFunc("GET /internal/entitlements/{customer}/{product}", application.entitlement)
 	mux.HandleFunc("GET /api/usage", application.usage)
 	mux.HandleFunc("POST /api/subscriptions/{customer}/plan", application.changePlan)
 	mux.HandleFunc("POST /internal/usage", application.recordUsage)
@@ -149,12 +150,31 @@ func (a *app) plans(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) subscriptions(w http.ResponseWriter, r *http.Request) {
-	result, err := a.loadSubscriptions(r.Context(), "")
+	result, err := a.loadSubscriptions(r.Context(), "", "")
 	if err != nil {
 		serverError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+func (a *app) entitlement(w http.ResponseWriter, r *http.Request) {
+	customer := r.PathValue("customer")
+	product := r.PathValue("product")
+	if !validIdentifier(customer) || !validIdentifier(product) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid entitlement identifier"})
+		return
+	}
+	result, err := a.loadSubscriptions(r.Context(), customer, product)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	if len(result) != 1 {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "active subscription not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, result[0])
 }
 
 type usageSummary struct {
@@ -260,7 +280,7 @@ func (a *app) businessMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (a *app) loadSubscriptions(ctx context.Context, customer string) ([]subscription, error) {
+func (a *app) loadSubscriptions(ctx context.Context, customer, product string) ([]subscription, error) {
 	query := `
 		SELECT s.id::text, c.external_id, c.display_name, p.id, s.plan_id,
 		       pl.display_name, pl.monthly_price_cents, pl.included_requests,
@@ -272,8 +292,12 @@ func (a *app) loadSubscriptions(ctx context.Context, customer string) ([]subscri
 		WHERE s.status = 'active'`
 	args := []any{}
 	if customer != "" {
-		query += " AND c.external_id = $1"
+		query += fmt.Sprintf(" AND c.external_id = $%d", len(args)+1)
 		args = append(args, customer)
+	}
+	if product != "" {
+		query += fmt.Sprintf(" AND p.id = $%d", len(args)+1)
+		args = append(args, product)
 	}
 	query += " ORDER BY c.display_name, p.id"
 	rows, err := a.db.Query(ctx, query, args...)
@@ -306,13 +330,18 @@ func (a *app) changePlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	customer := r.PathValue("customer")
-	current, err := a.loadSubscriptions(r.Context(), customer)
+	current, err := a.loadSubscriptions(r.Context(), customer, "inventory")
 	if err != nil || len(current) != 1 {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "active customer subscription not found"})
 		return
 	}
 	oldPlan := current[0].Plan
 	if oldPlan == input.Plan {
+		if err = a.kube.changeAPIKeyPlan(r.Context(), a.apiKeyNS, a.apiKeyName, input.Plan); err != nil {
+			slog.Error("failed to reconcile RHCL API key plan", "error", err)
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "RHCL API key plan update failed"})
+			return
+		}
 		writeJSON(w, http.StatusOK, current[0])
 		return
 	}
@@ -321,7 +350,7 @@ func (a *app) changePlan(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown or inactive plan"})
 		return
 	}
-	secretName, err := a.kube.changeAPIKeyPlan(r.Context(), a.apiKeyNS, a.apiKeyName, input.Plan)
+	err = a.kube.changeAPIKeyPlan(r.Context(), a.apiKeyNS, a.apiKeyName, input.Plan)
 	if err != nil {
 		slog.Error("failed to update enforcement plan", "error", err)
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "RHCL API key plan update failed"})
@@ -346,18 +375,18 @@ func (a *app) changePlan(w http.ResponseWriter, r *http.Request) {
 		_ = tx.Rollback(r.Context())
 	}
 	if err != nil {
-		_, rollbackErr := a.kube.changeAPIKeyPlan(r.Context(), a.apiKeyNS, a.apiKeyName, oldPlan)
+		rollbackErr := a.kube.changeAPIKeyPlan(r.Context(), a.apiKeyNS, a.apiKeyName, oldPlan)
 		slog.Error("database update failed after enforcement update", "error", err, "enforcement_rollback_error", rollbackErr)
 		serverError(w, err)
 		return
 	}
 	a.upgradeCounter.Add(1)
-	updated, err := a.loadSubscriptions(r.Context(), customer)
+	updated, err := a.loadSubscriptions(r.Context(), customer, "inventory")
 	if err != nil {
 		serverError(w, err)
 		return
 	}
-	slog.Info("subscription plan changed", "customer", customer, "old_plan", oldPlan, "new_plan", input.Plan, "secret", secretName)
+	slog.Info("subscription plan changed", "customer", customer, "old_plan", oldPlan, "new_plan", input.Plan)
 	writeJSON(w, http.StatusOK, updated[0])
 }
 
@@ -392,33 +421,9 @@ func newKubeClient() (*kubeClient, error) {
 	}, nil
 }
 
-func (k *kubeClient) changeAPIKeyPlan(ctx context.Context, namespace, name, plan string) (string, error) {
+func (k *kubeClient) changeAPIKeyPlan(ctx context.Context, namespace, name, plan string) error {
 	apiKeyPath := fmt.Sprintf("/apis/devportal.kuadrant.io/v1alpha1/namespaces/%s/apikeys/%s", namespace, name)
-	var current struct {
-		Spec struct {
-			SecretRef *struct {
-				Name string `json:"name"`
-			} `json:"secretRef"`
-			PlanTier string `json:"planTier"`
-		} `json:"spec"`
-	}
-	if err := k.request(ctx, http.MethodGet, apiKeyPath, nil, &current); err != nil {
-		return "", err
-	}
-	if current.Spec.SecretRef == nil || current.Spec.SecretRef.Name == "" {
-		return "", errors.New("APIKey has no Secret reference")
-	}
-	secretPath := fmt.Sprintf("/api/v1/namespaces/%s/secrets/%s", namespace, current.Spec.SecretRef.Name)
-	patch := map[string]any{"metadata": map[string]any{"annotations": map[string]string{"secret.kuadrant.io/plan-id": plan}}}
-	if err := k.request(ctx, http.MethodPatch, secretPath, patch, nil); err != nil {
-		return "", err
-	}
-	if err := k.request(ctx, http.MethodPatch, apiKeyPath, map[string]any{"spec": map[string]string{"planTier": plan}}, nil); err != nil {
-		rollback := map[string]any{"metadata": map[string]any{"annotations": map[string]string{"secret.kuadrant.io/plan-id": current.Spec.PlanTier}}}
-		_ = k.request(ctx, http.MethodPatch, secretPath, rollback, nil)
-		return "", err
-	}
-	return current.Spec.SecretRef.Name, nil
+	return k.request(ctx, http.MethodPatch, apiKeyPath, map[string]any{"spec": map[string]string{"planTier": plan}}, nil)
 }
 
 func (k *kubeClient) request(ctx context.Context, method, path string, body any, output any) error {
