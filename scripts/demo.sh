@@ -13,6 +13,8 @@ gateway_namespace=api-monetization-gateway
 gateway_name=api-monetization
 application_namespace=api-monetization-apps
 data_namespace=api-monetization-data
+gitops_namespace=openshift-gitops
+gitops_application=api-monetization-gateway
 control_port=${CONTROL_LOCAL_PORT:-18080}
 keycloak_port=${KEYCLOAK_LOCAL_PORT:-18081}
 keycloak_admin_port=${KEYCLOAK_ADMIN_LOCAL_PORT:-18082}
@@ -29,6 +31,50 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+
+wait_for_jwt_policy_revision() {
+  local app_sync
+  local auth_policy
+  local rate_limit_policy
+
+  echo "waiting for GitOps to apply and enforce the current JWT monetization policy"
+  for _ in $(seq 1 120); do
+    app_sync=$(oc get application "$gitops_application" -n "$gitops_namespace" \
+      -o jsonpath='{.status.sync.status}' 2>/dev/null || true)
+    auth_policy=$(oc get authpolicy inventory-jwt -n "$application_namespace" \
+      -o json 2>/dev/null || true)
+    rate_limit_policy=$(oc get ratelimitpolicy inventory-jwt-plans \
+      -n "$application_namespace" -o json 2>/dev/null || true)
+
+    if [[ $app_sync == "Synced" ]] && \
+      jq -e '
+        .spec.rules.response.success.filters.kuadrant.json.properties.customer.selector == "auth.identity.azp" and
+        .spec.rules.response.success.filters.kuadrant.json.properties.plan.selector == "auth.identity.plan" and
+        .status.observedGeneration == .metadata.generation and
+        any(.status.conditions[]?; .type == "Enforced" and .status == "True")
+      ' <<<"$auth_policy" >/dev/null 2>&1 && \
+      jq -e '
+        .spec.limits.free.counters[0].expression == "auth.kuadrant.customer" and
+        .spec.limits.free.when[0].predicate == "auth.kuadrant.plan == \"free\"" and
+        .spec.limits.developer.counters[0].expression == "auth.kuadrant.customer" and
+        .spec.limits.developer.when[0].predicate == "auth.kuadrant.plan == \"developer\"" and
+        .spec.limits.business.counters[0].expression == "auth.kuadrant.customer" and
+        .spec.limits.business.when[0].predicate == "auth.kuadrant.plan == \"business\"" and
+        .status.observedGeneration == .metadata.generation and
+        any(.status.conditions[]?; .type == "Enforced" and .status == "True")
+      ' <<<"$rate_limit_policy" >/dev/null 2>&1; then
+      echo "current JWT monetization policy is synced and enforced"
+      return 0
+    fi
+    sleep 5
+  done
+
+  echo "error: current JWT monetization policy was not synced and enforced within 10 minutes" >&2
+  echo "check Argo CD application $gitops_application before retrying" >&2
+  return 1
+}
+
+wait_for_jwt_policy_revision
 
 echo "waiting for gateway and generated demo API key"
 oc wait --for=condition=Programmed "gateway.gateway.networking.k8s.io/$gateway_name" \

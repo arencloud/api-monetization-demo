@@ -78,18 +78,20 @@ make demo
 
 The script demonstrates, in order:
 
-1. A request without credentials returns HTTP 401.
-2. Valid Free-plan API-key traffic returns HTTP 200.
-3. A burst exceeds ten requests/minute and returns HTTP 429.
-4. The control plane changes Demo Company to Developer.
-5. Twelve additional API-key requests all return HTTP 200 without a rollout,
+1. The gateway Argo CD Application is Synced and the exact JWT authentication
+   and rate-limit policy generations are Enforced.
+2. A request without credentials returns HTTP 401.
+3. Valid Free-plan API-key traffic returns HTTP 200.
+4. A burst exceeds ten requests/minute and returns HTTP 429.
+5. The control plane changes Demo Company to Developer.
+6. Twelve additional API-key requests all return HTTP 200 without a rollout,
    proving that the user can continue immediately under the Developer limit.
-6. A Free JWT from `demo-free-client` reaches its ten-request limit and returns
+7. A Free JWT from `demo-free-client` reaches its ten-request limit and returns
    HTTP 429 through a separate `AuthPolicy` and `RateLimitPolicy`.
-7. The Keycloak plan mapper changes from Free to Developer without a rollout.
-8. The existing JWT remains rate-limited because signed token claims are
+8. The Keycloak plan mapper changes from Free to Developer without a rollout.
+9. The existing JWT remains rate-limited because signed token claims are
    immutable; a refreshed JWT contains `plan=developer`.
-9. Twelve continued requests with the refreshed JWT all return HTTP 200.
+10. Twelve continued requests with the refreshed JWT all return HTTP 200.
 
 Keep this rollout watch visible during the upgrade if desired; no revision or
 pod restart should appear:
