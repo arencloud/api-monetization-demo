@@ -118,6 +118,11 @@ Enterprise plan policies, an Inventory API, a PostgreSQL-backed subscription
 control plane, live plan changes, Prometheus metrics, a Grafana dashboard,
 structured logs, and an OpenTelemetry-to-Tempo trace pipeline.
 
+The deterministic scenario performs live Free-to-Developer upgrades for both
+the generated API key and the same Keycloak machine client. The JWT path also
+demonstrates that an existing signed token retains its old plan until the client
+refreshes it.
+
 After deployment and verification, run the deterministic scenario:
 
 ```bash

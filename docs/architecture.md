@@ -72,6 +72,12 @@ to PostgreSQL; the next metadata lookup observes it without recreating the
 gateway or application. Argo CD intentionally ignores only the demo APIKey's
 mutable `spec.planTier`; every other field remains self-healing.
 
+For the JWT demonstration, the administrator changes the hardcoded `plan`
+claim mapper on the existing Keycloak machine client. Previously issued JWTs
+remain immutable and keep their old limit until expiry; the client obtains a
+new token to receive the upgraded claim and limit. No Keycloak, gateway, or API
+workload rollout participates in this change.
+
 ## Security boundaries
 
 - Git contains secret references and schemas, never secret values.

@@ -6,8 +6,10 @@ Demo Company starts on the Free Inventory API plan. Connectivity Link accepts a
 generated API key, attributes requests to the customer and plan, and enforces ten
 requests per minute. A burst reaches HTTP 429. The administrator upgrades the
 subscription to Developer; a continued burst succeeds under the new
-1,000/minute limit without restarting the gateway or application. A Keycloak
-client-credentials token then proves the parallel JWT path.
+1,000/minute limit without restarting the gateway or application. The same
+Free-to-Developer transition is then applied to a Keycloak machine client. Its
+existing JWT remains Free, while a refreshed token carries the Developer claim
+and immediately receives the larger limit.
 
 ## Before the presentation
 
@@ -82,8 +84,12 @@ The script demonstrates, in order:
 4. The control plane changes Demo Company to Developer.
 5. Twelve additional API-key requests all return HTTP 200 without a rollout,
    proving that the user can continue immediately under the Developer limit.
-6. A Keycloak-issued JWT with the required audience returns HTTP 200 through a
-   separate `AuthPolicy` and `RateLimitPolicy`.
+6. A Free JWT from `demo-free-client` reaches its ten-request limit and returns
+   HTTP 429 through a separate `AuthPolicy` and `RateLimitPolicy`.
+7. The Keycloak plan mapper changes from Free to Developer without a rollout.
+8. The existing JWT remains rate-limited because signed token claims are
+   immutable; a refreshed JWT contains `plan=developer`.
+9. Twelve continued requests with the refreshed JWT all return HTTP 200.
 
 Keep this rollout watch visible during the upgrade if desired; no revision or
 pod restart should appear:
@@ -157,5 +163,6 @@ OIDC simultaneously.
 make reset-demo
 ```
 
-The reset changes the plan back to Free. Limitador counters are intentionally
-not deleted; wait for the one-minute demo window before repeating the burst.
+The reset changes both the API-key subscription and the Keycloak machine client
+back to Free. Limitador counters are intentionally not deleted; wait for the
+one-minute demo window before repeating the burst.

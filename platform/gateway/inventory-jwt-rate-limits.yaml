@@ -18,22 +18,22 @@ spec:
         - limit: 10
           window: 1m
       counters:
-        - expression: auth.identity.azp
+        - expression: auth.kuadrant.customer
       when:
-        - predicate: auth.identity.plan == "free"
+        - predicate: auth.kuadrant.plan == "free"
     developer:
       rates:
         - limit: 1000
           window: 1m
       counters:
-        - expression: auth.identity.azp
+        - expression: auth.kuadrant.customer
       when:
-        - predicate: auth.identity.plan == "developer"
+        - predicate: auth.kuadrant.plan == "developer"
     business:
       rates:
         - limit: 10000
           window: 1m
       counters:
-        - expression: auth.identity.azp
+        - expression: auth.kuadrant.customer
       when:
-        - predicate: auth.identity.plan == "business"
+        - predicate: auth.kuadrant.plan == "business"

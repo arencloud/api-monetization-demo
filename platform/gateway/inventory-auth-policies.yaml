@@ -75,6 +75,14 @@ spec:
               value: api-monetization
     response:
       success:
+        filters:
+          kuadrant:
+            json:
+              properties:
+                customer:
+                  selector: auth.identity.azp
+                plan:
+                  selector: auth.identity.plan
         headers:
           x-monetization-customer:
             plain:

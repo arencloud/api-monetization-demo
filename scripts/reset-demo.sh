@@ -3,6 +3,7 @@
 set -Eeuo pipefail
 
 control_port=${CONTROL_LOCAL_PORT:-18080}
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
 cleanup() {
   kill "$port_forward_pid" 2>/dev/null || true
@@ -23,4 +24,6 @@ curl --silent --fail-with-body \
   --data '{"plan":"free"}' \
   "http://127.0.0.1:$control_port/api/subscriptions/demo-company/plan"
 echo
-echo "demo subscription reset to Free; rate-limit counters expire with their configured windows"
+KEYCLOAK_ADMIN_LOCAL_PORT=${KEYCLOAK_ADMIN_LOCAL_PORT:-18082} \
+  "$script_dir/keycloak-plan.sh" set free >/dev/null
+echo "API-key subscription and Keycloak JWT client reset to Free; rate-limit counters expire with their configured windows"
