@@ -123,6 +123,13 @@ Red Hat build of Keycloak Authorization Code flow with PKCE. Its subscription,
 usage, and upgrade APIs require the `monetization-admin` realm role; internal
 entitlement and usage ingestion use a separate, non-routed service port.
 
+Developers authenticate with the separate `monetization-developer` role. They
+can browse the API catalog, choose a plan, create their own PostgreSQL customer
+and subscription, and request an API key. The control plane creates an External
+Secrets Password generator and ExternalSecret before submitting the RHCL
+`APIKey`; the raw credential is displayed once and only its digest is retained
+in the commercial datastore.
+
 The deterministic scenario issues an API key and a Keycloak JWT for the same
 customer subscription, drives both through the Free limit, and performs one
 live Free-to-Developer upgrade. Both credentials immediately receive the new

@@ -17,6 +17,7 @@ configMapGenerator:
       - main.go
       - main_test.go
       - migrations.go
+      - selfservice.go
       - web/index.html
     options:
       annotations:

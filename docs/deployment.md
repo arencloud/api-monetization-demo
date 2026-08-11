@@ -72,16 +72,17 @@ make verify
 make demo
 ```
 
-Print the admitted portal URL and generated demonstration administrator login:
+Print the admitted portal URL and generated developer and administrator logins:
 
 ```bash
 make portal
 ```
 
 The portal redirects the browser to the externally admitted Keycloak Route and
-uses Authorization Code with PKCE. The generated `demo-admin` identity has the
-`monetization-admin` realm role. A separate confidential client is generated
-for CLI automation; neither credential is stored in Git. A GitOps hook reads the
+uses Authorization Code with PKCE. The generated `demo-developer` identity has
+the `monetization-developer` role and `demo-admin` has the
+`monetization-admin` role. Separate confidential clients are generated for CLI
+verification; no credential is stored in Git. A GitOps hook reads the
 OpenShift ingress domain and configures the browser client with the exact HTTPS
 portal origin and callback rather than a permissive wildcard.
 

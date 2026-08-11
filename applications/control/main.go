@@ -84,6 +84,14 @@ func main() {
 	})
 	mux.HandleFunc("GET /readyz", application.ready)
 	mux.HandleFunc("GET /api/config", application.portalConfig)
+	mux.Handle("GET /api/me", auth.requireAuthenticated(http.HandlerFunc(application.me)))
+	mux.Handle("GET /api/catalog", auth.requireAuthenticated(http.HandlerFunc(application.catalog)))
+	mux.Handle("GET /api/me/subscriptions", auth.requireDeveloper(http.HandlerFunc(application.mySubscriptions)))
+	mux.Handle("GET /api/me/usage", auth.requireDeveloper(http.HandlerFunc(application.myUsage)))
+	mux.Handle("POST /api/me/subscriptions", auth.requireDeveloper(http.HandlerFunc(application.subscribe)))
+	mux.Handle("POST /api/me/subscriptions/{product}/plan", auth.requireDeveloper(http.HandlerFunc(application.changeMyPlan)))
+	mux.Handle("GET /api/me/credentials/{product}/status", auth.requireDeveloper(http.HandlerFunc(application.credentialStatus)))
+	mux.Handle("POST /api/me/credentials/{product}/reveal", auth.requireDeveloper(http.HandlerFunc(application.revealCredential)))
 	mux.Handle("GET /api/plans", auth.requireAdmin(http.HandlerFunc(application.plans)))
 	mux.Handle("GET /api/subscriptions", auth.requireAdmin(http.HandlerFunc(application.subscriptions)))
 	mux.Handle("GET /api/usage", auth.requireAdmin(http.HandlerFunc(application.usage)))
@@ -100,7 +108,7 @@ func main() {
 		Handler:           recorder.Middleware(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      20 * time.Second,
+		WriteTimeout:      45 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
 	internalMux := http.NewServeMux()
@@ -377,7 +385,7 @@ func (a *app) loadSubscriptions(ctx context.Context, customer, product string) (
 }
 
 func (a *app) loadSubscriptionsByIdentity(ctx context.Context, provider, subject, product string) ([]subscription, error) {
-	rows, err := a.db.Query(ctx, `
+	query := `
 		SELECT s.id::text, c.external_id, c.display_name, p.id, s.plan_id,
 		       pl.display_name, pl.monthly_price_cents, pl.included_requests,
 		       pl.rate_limit_requests, pl.rate_limit_window_seconds, s.version
@@ -387,8 +395,14 @@ func (a *app) loadSubscriptionsByIdentity(ctx context.Context, provider, subject
 		JOIN monetization.api_products p ON p.id = s.api_product_id
 		JOIN monetization.plans pl ON pl.id = s.plan_id
 		WHERE i.provider = $1 AND i.subject = $2 AND i.status = 'active'
-		  AND s.api_product_id = $3 AND s.status = 'active'
-		ORDER BY c.display_name, p.id`, provider, subject, product)
+		  AND s.status = 'active'`
+	args := []any{provider, subject}
+	if product != "" {
+		query += " AND s.api_product_id = $3"
+		args = append(args, product)
+	}
+	query += " ORDER BY c.display_name, p.id"
+	rows, err := a.db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -557,6 +571,8 @@ func (k *kubeClient) request(ctx context.Context, method, path string, body any,
 	req.Header.Set("Accept", "application/json")
 	if method == http.MethodPatch {
 		req.Header.Set("Content-Type", "application/merge-patch+json")
+	} else if body != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
 	resp, err := k.client.Do(req)
 	if err != nil {
@@ -565,12 +581,23 @@ func (k *kubeClient) request(ctx context.Context, method, path string, body any,
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		message, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("Kubernetes API %s %s returned %s: %s", method, path, resp.Status, strings.TrimSpace(string(message)))
+		return &kubeAPIError{StatusCode: resp.StatusCode, Method: method, Path: path, Message: strings.TrimSpace(string(message))}
 	}
 	if output != nil {
 		return json.NewDecoder(resp.Body).Decode(output)
 	}
 	return nil
+}
+
+type kubeAPIError struct {
+	StatusCode int
+	Method     string
+	Path       string
+	Message    string
+}
+
+func (e *kubeAPIError) Error() string {
+	return fmt.Sprintf("Kubernetes API %s %s returned HTTP %d: %s", e.Method, e.Path, e.StatusCode, e.Message)
 }
 
 func waitForDatabase(ctx context.Context, pool *pgxpool.Pool, timeout time.Duration) error {
@@ -589,11 +616,11 @@ func waitForDatabase(ctx context.Context, pool *pgxpool.Pool, timeout time.Durat
 }
 
 func validIdentifier(value string) bool {
-	if value == "" || len(value) > 32 {
+	if value == "" || len(value) > 63 || value[0] == '-' || value[len(value)-1] == '-' {
 		return false
 	}
 	for _, char := range value {
-		if (char < 'a' || char > 'z') && char != '-' {
+		if (char < 'a' || char > 'z') && (char < '0' || char > '9') && char != '-' {
 			return false
 		}
 	}

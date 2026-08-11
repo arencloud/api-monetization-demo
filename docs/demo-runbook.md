@@ -99,18 +99,25 @@ oc get pods -n api-monetization-apps --watch
 
 ### 3. Prove policy and commercial state
 
-Print the portal address and generated administrator login, then open it in a
-browser:
+Print the portal address and generated developer/administrator logins, then open
+it in a browser:
 
 ```bash
 make portal
 ```
 
-Sign in through Red Hat build of Keycloak. The portal shows the subscription,
-current rate limit, stored usage, projected revenue, and plan selector. Apply a
-plan change from the browser and explain that the protected API writes
-commercial state and reconciles the RHCL APIKey tier without restarting a
-workload.
+Run `make portal` to print both generated identities. Sign in as
+`demo-developer`, choose the Inventory API and a plan, and select **Subscribe and
+generate key**. External Secrets creates the key material and RHCL approves the
+APIKey. Select **Reveal API key once**, copy it, and call the displayed endpoint.
+The key is not displayed on a later login. Change the plan from **My
+subscription** and show that the new limit applies immediately.
+
+Sign in as `demo-admin` to show the commercial dashboard. It displays the
+subscription, current rate limit, stored usage, projected revenue, and plan
+selector. Apply an administrative plan change and explain that the protected
+API writes commercial state and reconciles the RHCL APIKey tier without
+restarting a workload.
 
 The same state can be inspected from the command line with the scoped
 automation identity:

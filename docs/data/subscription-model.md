@@ -11,7 +11,7 @@ the first vertical slice.
 | `customers` | Stable customer identity independent of login identity |
 | `subscriptions` | Customer/product/plan relationship with optimistic version field |
 | `subscription_identities` | External provider identity mapped to one commercial customer |
-| `api_credentials` | Prefix and one-way key digest; never the raw API key |
+| `api_credentials` | Operator resource names, prefix, one-way key digest, and reveal state; never the raw API key |
 | `plan_changes` | Auditable subscription upgrade and downgrade history |
 | `usage_events` | Idempotent request usage records keyed by request ID |
 | `invoices` | Rated billing periods and invoice state |
@@ -26,8 +26,9 @@ Company.
 - Authentication identities belong in Keycloak; customer commercial identity
   belongs in this schema. JWTs carry identity and audience, never an
   authoritative commercial plan.
-- Raw API keys are returned once to the caller and are never stored. The service
-  stores an Argon2id digest plus a short lookup prefix.
+- Raw API keys are generated into an immutable Kubernetes Secret by External
+  Secrets and displayed by the portal once. PostgreSQL stores a SHA-256 digest
+  of the high-entropy key plus a short lookup prefix, never the raw value.
 - Gateway telemetry is an input to `usage_events`, not an invoice by itself.
 - The active subscription query is the request-time entitlement read model;
   rating, usage aggregation, and invoicing remain asynchronous.

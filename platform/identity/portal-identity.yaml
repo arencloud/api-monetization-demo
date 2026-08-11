@@ -203,6 +203,16 @@ spec:
                 secretKeyRef:
                   name: monetization-portal-credentials
                   key: portal-admin-password
+            - name: PORTAL_DEVELOPER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: monetization-developer-credentials
+                  key: portal-developer-password
+            - name: DEVELOPER_AUTOMATION_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: monetization-developer-credentials
+                  key: developer-automation-client-secret
             - name: PORTAL_ORIGIN
               valueFrom:
                 configMapKeyRef:
@@ -222,7 +232,8 @@ spec:
               kcadm=/opt/keycloak/bin/kcadm.sh
               server=http://api-monetization-service:8080
               realm=api-monetization
-              portal_role=monetization-admin
+              admin_role=monetization-admin
+              developer_role=monetization-developer
 
               for attempt in $(seq 1 60); do
                 if "$kcadm" config credentials --config /tmp/kcadm.config \
@@ -252,11 +263,17 @@ spec:
                 sed -n 's/.*"id" *: *"\([^"]*\)".*/\1/p' | head -n 1
               }
 
-              if ! "$kcadm" get "roles/$portal_role" -r "$realm" \
+              if ! "$kcadm" get "roles/$admin_role" -r "$realm" \
                 --config /tmp/kcadm.config >/dev/null 2>&1; then
                 "$kcadm" create roles -r "$realm" --config /tmp/kcadm.config \
-                  -s name="$portal_role" \
+                  -s name="$admin_role" \
                   -s description='Administrator of API subscriptions and plans'
+              fi
+              if ! "$kcadm" get "roles/$developer_role" -r "$realm" \
+                --config /tmp/kcadm.config >/dev/null 2>&1; then
+                "$kcadm" create roles -r "$realm" --config /tmp/kcadm.config \
+                  -s name="$developer_role" \
+                  -s description='Developer who can subscribe to API products and manage credentials'
               fi
 
               cat >/tmp/portal-client.json <<JSON
@@ -315,6 +332,32 @@ spec:
               }
               JSON
 
+              cat >/tmp/developer-automation-client.json <<JSON
+              {
+                "clientId": "monetization-developer-automation",
+                "name": "API Monetization Developer Automation",
+                "description": "Service client used to verify developer self-service APIs",
+                "enabled": true,
+                "protocol": "openid-connect",
+                "publicClient": false,
+                "clientAuthenticatorType": "client-secret",
+                "secret": "$DEVELOPER_AUTOMATION_CLIENT_SECRET",
+                "serviceAccountsEnabled": true,
+                "standardFlowEnabled": false,
+                "directAccessGrantsEnabled": false,
+                "fullScopeAllowed": true,
+                "protocolMappers": [{
+                  "name": "control-plane-audience",
+                  "protocol": "openid-connect",
+                  "protocolMapper": "oidc-audience-mapper",
+                  "config": {
+                    "included.custom.audience": "monetization-control",
+                    "access.token.claim": "true"
+                  }
+                }]
+              }
+              JSON
+
               upsert_client() {
                 local client_id=$1
                 local definition=$2
@@ -334,7 +377,8 @@ spec:
 
               portal_client_uuid=$(upsert_client monetization-portal /tmp/portal-client.json)
               automation_client_uuid=$(upsert_client monetization-automation /tmp/automation-client.json)
-              if [[ -z $portal_client_uuid || -z $automation_client_uuid ]]; then
+              developer_automation_client_uuid=$(upsert_client monetization-developer-automation /tmp/developer-automation-client.json)
+              if [[ -z $portal_client_uuid || -z $automation_client_uuid || -z $developer_automation_client_uuid ]]; then
                 echo "Portal OIDC clients were not created" >&2
                 exit 1
               fi
@@ -355,7 +399,25 @@ spec:
               "$kcadm" set-password -r "$realm" --config /tmp/kcadm.config \
                 --userid "$admin_user_id" --new-password "$PORTAL_ADMIN_PASSWORD"
               "$kcadm" add-roles -r "$realm" --config /tmp/kcadm.config \
-                --uid "$admin_user_id" --rolename "$portal_role"
+                --uid "$admin_user_id" --rolename "$admin_role"
+
+              developer_user_id=$("$kcadm" get users -r "$realm" --config /tmp/kcadm.config \
+                -q username=demo-developer --fields id | json_id)
+              if [[ -z $developer_user_id ]]; then
+                developer_user_id=$("$kcadm" create users -r "$realm" --config /tmp/kcadm.config \
+                  -s username=demo-developer -s enabled=true \
+                  -s email=demo-developer@example.invalid -s emailVerified=true \
+                  -s firstName=Demo -s lastName=Developer -i)
+              else
+                "$kcadm" update "users/$developer_user_id" -r "$realm" \
+                  --config /tmp/kcadm.config -s enabled=true \
+                  -s email=demo-developer@example.invalid -s emailVerified=true \
+                  -s firstName=Demo -s lastName=Developer
+              fi
+              "$kcadm" set-password -r "$realm" --config /tmp/kcadm.config \
+                --userid "$developer_user_id" --new-password "$PORTAL_DEVELOPER_PASSWORD"
+              "$kcadm" add-roles -r "$realm" --config /tmp/kcadm.config \
+                --uid "$developer_user_id" --rolename "$developer_role"
 
               service_user_id=$("$kcadm" get "clients/$automation_client_uuid/service-account-user" \
                 -r "$realm" --config /tmp/kcadm.config --fields id | json_id)
@@ -364,8 +426,16 @@ spec:
                 exit 1
               fi
               "$kcadm" add-roles -r "$realm" --config /tmp/kcadm.config \
-                --uid "$service_user_id" --rolename "$portal_role"
-              echo "Keycloak portal clients and administrator identity are configured"
+                --uid "$service_user_id" --rolename "$admin_role"
+              developer_service_user_id=$("$kcadm" get "clients/$developer_automation_client_uuid/service-account-user" \
+                -r "$realm" --config /tmp/kcadm.config --fields id | json_id)
+              if [[ -z $developer_service_user_id ]]; then
+                echo "Developer automation service account was not created" >&2
+                exit 1
+              fi
+              "$kcadm" add-roles -r "$realm" --config /tmp/kcadm.config \
+                --uid "$developer_service_user_id" --rolename "$developer_role"
+              echo "Keycloak portal clients, administrator, and developer identities are configured"
           resources:
             requests:
               cpu: 50m

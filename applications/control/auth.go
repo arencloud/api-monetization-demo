@@ -16,6 +16,7 @@ const (
 	portalAudience        = "monetization-control"
 	portalClientID        = "monetization-portal"
 	portalAdminRole       = "monetization-admin"
+	portalDeveloperRole   = "monetization-developer"
 	keycloakNamespace     = "api-monetization-identity"
 	keycloakRouteName     = "api-monetization-keycloak"
 	keycloakInternalURL   = "http://api-monetization-service.api-monetization-identity.svc.cluster.local:8080"
@@ -29,6 +30,7 @@ type portalAuthenticator struct {
 }
 
 type portalClaims struct {
+	Subject           string `json:"sub"`
 	AuthorizedParty   string `json:"azp"`
 	Email             string `json:"email"`
 	PreferredUsername string `json:"preferred_username"`
@@ -36,6 +38,8 @@ type portalClaims struct {
 		Roles []string `json:"roles"`
 	} `json:"realm_access"`
 }
+
+type portalClaimsContextKey struct{}
 
 func newPortalAuthenticator(ctx context.Context, kube *kubeClient) (*portalAuthenticator, error) {
 	deadline := time.Now().Add(identityLookupTimeout)
@@ -68,6 +72,18 @@ func newPortalAuthenticator(ctx context.Context, kube *kubeClient) (*portalAuthe
 }
 
 func (a *portalAuthenticator) requireAdmin(next http.Handler) http.Handler {
+	return a.requireRole(portalAdminRole, "monetization administrator role required", next)
+}
+
+func (a *portalAuthenticator) requireDeveloper(next http.Handler) http.Handler {
+	return a.requireRole(portalDeveloperRole, "monetization developer role required", next)
+}
+
+func (a *portalAuthenticator) requireAuthenticated(next http.Handler) http.Handler {
+	return a.requireRole("", "", next)
+}
+
+func (a *portalAuthenticator) requireRole(role, denial string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rawToken, err := bearerToken(r.Header.Get("Authorization"))
 		if err != nil {
@@ -90,14 +106,19 @@ func (a *portalAuthenticator) requireAdmin(next http.Handler) http.Handler {
 			authError(w, http.StatusUnauthorized, "invalid or expired bearer token")
 			return
 		}
-		if !contains(claims.RealmAccess.Roles, portalAdminRole) {
+		if role != "" && !contains(claims.RealmAccess.Roles, role) {
 			slog.Warn("portal role denied", "user", claims.PreferredUsername, "azp", claims.AuthorizedParty)
-			authError(w, http.StatusForbidden, "monetization administrator role required")
+			authError(w, http.StatusForbidden, denial)
 			return
 		}
 
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), portalClaimsContextKey{}, claims)))
 	})
+}
+
+func authenticatedClaims(ctx context.Context) (portalClaims, bool) {
+	claims, ok := ctx.Value(portalClaimsContextKey{}).(portalClaims)
+	return claims, ok
 }
 
 func bearerToken(authorization string) (string, error) {

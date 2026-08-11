@@ -9,7 +9,7 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: monetization-plan-updater
+  name: monetization-credential-manager
   namespace: api-monetization-apps
   labels:
     app.kubernetes.io/part-of: api-monetization
@@ -18,22 +18,42 @@ rules:
       - devportal.kuadrant.io
     resources:
       - apikeys
-    resourceNames:
-      - demo-inventory-key
     verbs:
+      - create
+      - get
       - patch
+  - apiGroups:
+      - generators.external-secrets.io
+    resources:
+      - passwords
+    verbs:
+      - create
+      - get
+  - apiGroups:
+      - external-secrets.io
+    resources:
+      - externalsecrets
+    verbs:
+      - create
+      - get
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: monetization-control-plan-updater
+  name: monetization-control-credential-manager
   namespace: api-monetization-apps
   labels:
     app.kubernetes.io/part-of: api-monetization
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: monetization-plan-updater
+  name: monetization-credential-manager
 subjects:
   - kind: ServiceAccount
     name: monetization-control

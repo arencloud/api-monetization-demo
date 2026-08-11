@@ -43,12 +43,20 @@ assigned external address; the request-time policy path is unchanged.
 | Desired state and promotion | OpenShift GitOps |
 
 The browser portal is a public PKCE client in Keycloak. Human administrators
-receive the `monetization-admin` realm role, while deterministic automation uses
-a separate confidential service client with the same narrow role and a
-generated secret. The control-plane service verifies token signature, issuer,
-audience, expiry, and role before serving subscription, usage, or plan-change
-APIs. Entitlement lookups and usage ingestion listen on a separate internal
-port that is not exposed by the portal Route.
+receive the `monetization-admin` realm role and developers receive the separate
+`monetization-developer` role. Deterministic verification uses confidential
+service clients with the same narrow role boundaries and generated secrets.
+The control-plane service verifies token signature, issuer, audience, expiry,
+and role before serving APIs. Developers can access only their subject-mapped
+customer, subscriptions, and credentials. Entitlement lookups and usage
+ingestion listen on a separate internal port that is not exposed by the portal
+Route.
+
+Self-service credential issuance remains operator-native. The control plane
+creates a namespaced External Secrets `Password` generator and `ExternalSecret`,
+then creates the RHCL `APIKey` referencing the generated Secret. RHCL approves
+and labels the credential for request-time authentication. The portal reveals
+the raw key once and PostgreSQL retains only its prefix and SHA-256 digest.
 
 ## Request lifecycle
 

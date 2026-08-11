@@ -11,7 +11,7 @@ help:
 	@echo "  render     Render all Kustomize packages into stdout"
 	@echo "  status     Show GitOps applications and operator subscriptions"
 	@echo "  verify     Wait for secrets, databases, Keycloak, and realm readiness"
-	@echo "  portal     Print the portal URL and generated demo administrator login"
+	@echo "  portal     Print the portal URL and generated developer/admin logins"
 	@echo "  demo       Run API-key and JWT rate-limit and live-upgrade scenarios"
 	@echo "  reset-demo Reset the demo subscription to the Free plan"
 	@echo "  uninstall  Remove the complete demo after explicit confirmation"

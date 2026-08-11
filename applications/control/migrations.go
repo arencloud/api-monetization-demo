@@ -37,6 +37,13 @@ WHERE c.external_id = 'demo-company'
 ON CONFLICT (provider, subject) DO NOTHING;
 `
 
+const selfServiceCredentialMigration = `
+ALTER TABLE monetization.api_credentials
+  ADD COLUMN IF NOT EXISTS kubernetes_name text UNIQUE,
+  ADD COLUMN IF NOT EXISTS secret_name text UNIQUE,
+  ADD COLUMN IF NOT EXISTS revealed_at timestamptz;
+`
+
 func applyDatabaseMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
@@ -50,11 +57,20 @@ func applyDatabaseMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	if _, err = tx.Exec(ctx, subscriptionIdentityMigration); err != nil {
 		return fmt.Errorf("apply subscription identity migration: %w", err)
 	}
+	if _, err = tx.Exec(ctx, selfServiceCredentialMigration); err != nil {
+		return fmt.Errorf("apply self-service credential migration: %w", err)
+	}
 	if _, err = tx.Exec(ctx, `
 		INSERT INTO monetization.schema_migrations (version, description)
 		VALUES (1, 'keycloak client to subscription identity mapping')
 		ON CONFLICT (version) DO NOTHING`); err != nil {
 		return fmt.Errorf("record subscription identity migration: %w", err)
+	}
+	if _, err = tx.Exec(ctx, `
+		INSERT INTO monetization.schema_migrations (version, description)
+		VALUES (2, 'self-service API credential resource tracking')
+		ON CONFLICT (version) DO NOTHING`); err != nil {
+		return fmt.Errorf("record self-service migration: %w", err)
 	}
 	return tx.Commit(ctx)
 }

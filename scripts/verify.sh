@@ -97,6 +97,8 @@ oc wait --for=condition=Ready externalsecret/keycloak-demo-clients \
   -n api-monetization-identity --timeout=5m
 oc wait --for=condition=Ready externalsecret/monetization-portal-credentials \
   -n api-monetization-identity --timeout=5m
+oc wait --for=condition=Ready externalsecret/monetization-developer-credentials \
+  -n api-monetization-identity --timeout=5m
 oc wait --for=condition=Ready externalsecret/subscriptions-db-credentials \
   -n api-monetization-data --timeout=5m
 oc wait --for=condition=Ready externalsecret/demo-inventory-api-key \
@@ -333,6 +335,18 @@ case "$jwt_authenticated_status" in
 esac
 
 echo "validating the Keycloak-protected monetization portal"
+for permission in \
+  'create|apikeys.devportal.kuadrant.io' \
+  'create|passwords.generators.external-secrets.io' \
+  'create|externalsecrets.external-secrets.io' \
+  'get|secrets'; do
+  IFS='|' read -r verb resource <<<"$permission"
+  if [[ $(oc auth can-i "$verb" "$resource" -n api-monetization-apps \
+      --as=system:serviceaccount:api-monetization-data:monetization-control) != "yes" ]]; then
+    echo "error: monetization control service cannot $verb $resource for self-service provisioning" >&2
+    exit 1
+  fi
+done
 portal_hostname=$(oc get route monetization-control -n api-monetization-data \
   -o jsonpath='{.status.ingress[0].host}')
 portal_router_hostname=$(oc get route monetization-control -n api-monetization-data \
@@ -369,7 +383,34 @@ if [[ $portal_authorized != "200" ]]; then
   echo "error: administrator portal API returned HTTP $portal_authorized instead of 200" >&2
   exit 1
 fi
+developer_token=$(CONTROL_TOKEN_CLIENT_ID=monetization-developer-automation \
+  CONTROL_TOKEN_SECRET_NAME=monetization-developer-credentials \
+  CONTROL_TOKEN_SECRET_KEY=developer-automation-client-secret \
+  CONTROL_TOKEN_LOCAL_PORT=18085 \
+  "$(dirname "${BASH_SOURCE[0]}")/control-token.sh")
+developer_identity=$(curl --silent --show-error --fail \
+  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+  --connect-to "$portal_hostname:443:$portal_router_hostname:443" \
+  --header "Authorization: Bearer $developer_token" \
+  "https://$portal_hostname/api/me")
+if ! jq -e '.developer == true and .admin == false' <<<"$developer_identity" >/dev/null; then
+  echo "error: developer automation identity does not have the expected portal role" >&2
+  exit 1
+fi
+developer_catalog=$(curl --silent --show-error --fail \
+  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+  --connect-to "$portal_hostname:443:$portal_router_hostname:443" \
+  --header "Authorization: Bearer $developer_token" \
+  "https://$portal_hostname/api/catalog")
+if ! jq -e 'any(.products[]; .id == "inventory" and .available == true)' \
+  <<<"$developer_catalog" >/dev/null; then
+  echo "error: developer catalog does not expose the Inventory API" >&2
+  exit 1
+fi
 echo "Portal: https://$portal_hostname (OIDC discovery, 401 boundary, and administrator role verified)"
+echo "Developer self-service identity and Inventory API catalog verified"
 
 echo "waiting for operator console plugins"
 for plugin in gitops-plugin kuadrant-console-plugin; do

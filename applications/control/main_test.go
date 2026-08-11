@@ -2,11 +2,57 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
+
+func TestSelfServiceResourceNames(t *testing.T) {
+	t.Parallel()
+	customer := selfServiceCustomerID("8c6e4fd5-29b0-4b76-aef8-844675131d3f")
+	if !validIdentifier(customer) {
+		t.Fatalf("self-service customer ID %q is not a valid entitlement identifier", customer)
+	}
+	if len(customer) != 28 {
+		t.Fatalf("self-service customer ID length=%d, want 28", len(customer))
+	}
+	apiKey, secret := selfServiceResourceNames(customer, "inventory")
+	if apiKey != customer+"-inventory" || secret != customer+"-inventory-key" {
+		t.Fatalf("unexpected resource names: apiKey=%q secret=%q", apiKey, secret)
+	}
+}
+
+func TestCreateIfAbsentAcceptsConflict(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.Header.Get("Content-Type") != "application/json" {
+			t.Fatalf("unexpected request: method=%s content-type=%s", r.Method, r.Header.Get("Content-Type"))
+		}
+		w.WriteHeader(http.StatusConflict)
+	}))
+	defer server.Close()
+	client := &kubeClient{baseURL: server.URL, token: "test", client: server.Client()}
+	if err := client.createIfAbsent(context.Background(), "/resource", map[string]string{"name": "existing"}); err != nil {
+		t.Fatalf("createIfAbsent returned conflict error: %v", err)
+	}
+}
+
+func TestSecretValueDecodesAPIKey(t *testing.T) {
+	t.Parallel()
+	want := "generated-api-key"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"data":{"api_key":%q}}`, base64.StdEncoding.EncodeToString([]byte(want)))
+	}))
+	defer server.Close()
+	client := &kubeClient{baseURL: server.URL, token: "test", client: server.Client()}
+	got, err := client.secretValue(context.Background(), "namespace", "credential", "api_key")
+	if err != nil || got != want {
+		t.Fatalf("secretValue=%q, error=%v, want %q", got, err, want)
+	}
+}
 
 func TestValidIdentifier(t *testing.T) {
 	t.Parallel()
@@ -14,11 +60,14 @@ func TestValidIdentifier(t *testing.T) {
 		"free":          true,
 		"business":      true,
 		"custom-tier":   true,
+		"dev-a1820f":    true,
 		"":              false,
 		"Business":      false,
 		"enterprise_2":  false,
 		"invalid tier":  false,
 		"../../secrets": false,
+		"-invalid":      false,
+		"invalid-":      false,
 	}
 	for value, expected := range tests {
 		if actual := validIdentifier(value); actual != expected {
