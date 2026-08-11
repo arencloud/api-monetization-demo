@@ -16,11 +16,23 @@ data_namespace=api-monetization-data
 gitops_namespace=openshift-gitops
 gitops_application=api-monetization-gateway
 control_port=${CONTROL_LOCAL_PORT:-18080}
-control_internal_port=${CONTROL_INTERNAL_LOCAL_PORT:-18083}
 keycloak_port=${KEYCLOAK_LOCAL_PORT:-18081}
+control_token_port=${CONTROL_TOKEN_LOCAL_PORT:-18083}
+control_internal_port=${CONTROL_INTERNAL_LOCAL_PORT:-18084}
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 port_forward_pids=()
 route_ca_file=""
+
+if [[ $control_port == "$keycloak_port" ||
+  $control_port == "$control_token_port" ||
+  $control_port == "$control_internal_port" ||
+  $keycloak_port == "$control_token_port" ||
+  $keycloak_port == "$control_internal_port" ||
+  $control_token_port == "$control_internal_port" ]]; then
+  echo "error: demo local port settings must be unique" >&2
+  echo "CONTROL_LOCAL_PORT=$control_port KEYCLOAK_LOCAL_PORT=$keycloak_port CONTROL_TOKEN_LOCAL_PORT=$control_token_port CONTROL_INTERNAL_LOCAL_PORT=$control_internal_port" >&2
+  exit 1
+fi
 
 cleanup() {
   for pid in "${port_forward_pids[@]:-}"; do
@@ -131,7 +143,8 @@ for _ in $(seq 1 30); do
   curl --silent --fail "http://127.0.0.1:$control_port/readyz" >/dev/null && break
   sleep 1
 done
-control_token=$("$script_dir/control-token.sh")
+control_token=$(CONTROL_TOKEN_LOCAL_PORT="$control_token_port" \
+  "$script_dir/control-token.sh")
 subscription_plan=$(curl --silent --show-error --fail \
   --header "Authorization: Bearer $control_token" \
   "http://127.0.0.1:$control_port/api/subscriptions" \

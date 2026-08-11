@@ -8,3 +8,19 @@ resources:
   - service.yaml
   - route.yaml
   - monitoring.yaml
+configMapGenerator:
+  - name: monetization-control-source-trigger
+    namespace: api-monetization-data
+    files:
+      - Containerfile
+      - auth.go
+      - main.go
+      - main_test.go
+      - migrations.go
+      - web/index.html
+    options:
+      annotations:
+        argocd.argoproj.io/sync-wave: "-2"
+      labels:
+        app.kubernetes.io/name: monetization-control-source-trigger
+        app.kubernetes.io/part-of: api-monetization

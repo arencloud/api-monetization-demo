@@ -54,6 +54,13 @@ namespaces. It does not grant `cluster-admin` to users who log in to Argo CD.
 It does not directly apply any platform resource. Argo CD reconciles the child
 applications from Git.
 
+The Inventory API and monetization control application include generated
+source-trigger ConfigMaps. Their content hash changes whenever local application
+source changes, making the Argo CD application OutOfSync and executing its
+OpenShift source-build hook. The resulting ImageStream update rolls the
+Deployment. This ensures source-only commits are built even when the static
+Deployment and BuildConfig YAML did not change.
+
 ## Verify
 
 ```bash

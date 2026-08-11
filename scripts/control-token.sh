@@ -33,6 +33,11 @@ client_secret=$(oc get secret monetization-portal-credentials \
   -o go-template='{{index .data "automation-client-secret"}}' | base64 -d)
 
 for _ in $(seq 1 30); do
+  if ! kill -0 "$port_forward_pid" 2>/dev/null; then
+    echo "error: Keycloak port-forward stopped; local port $keycloak_port may already be in use" >&2
+    sed -n '1,10p' /tmp/api-monetization-control-token-port-forward.log >&2
+    exit 1
+  fi
   if token_response=$(curl --silent --show-error --fail \
       --connect-to "$keycloak_host:8080:127.0.0.1:$keycloak_port" \
       --user "monetization-automation:$client_secret" \
@@ -46,4 +51,5 @@ for _ in $(seq 1 30); do
 done
 
 echo "error: failed to obtain a monetization control-plane token" >&2
+echo "check /tmp/api-monetization-control-token-port-forward.log and the monetization-automation Keycloak client" >&2
 exit 1

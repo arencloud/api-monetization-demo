@@ -1,0 +1,118 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: inventory-api-builder
+  namespace: api-monetization-apps
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+  labels:
+    app.kubernetes.io/name: inventory-api-builder
+    app.kubernetes.io/part-of: api-monetization
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: inventory-api-builder
+  namespace: api-monetization-apps
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+  labels:
+    app.kubernetes.io/name: inventory-api-builder
+    app.kubernetes.io/part-of: api-monetization
+rules:
+  - apiGroups:
+      - build.openshift.io
+    resources:
+      - buildconfigs
+    resourceNames:
+      - inventory-api
+    verbs:
+      - get
+  - apiGroups:
+      - build.openshift.io
+    resources:
+      - buildconfigs/instantiate
+    resourceNames:
+      - inventory-api
+    verbs:
+      - create
+  - apiGroups:
+      - build.openshift.io
+    resources:
+      - builds
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: inventory-api-builder
+  namespace: api-monetization-apps
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+  labels:
+    app.kubernetes.io/name: inventory-api-builder
+    app.kubernetes.io/part-of: api-monetization
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: inventory-api-builder
+subjects:
+  - kind: ServiceAccount
+    name: inventory-api-builder
+    namespace: api-monetization-apps
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: inventory-api-source-build
+  namespace: api-monetization-apps
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "-1"
+  labels:
+    app.kubernetes.io/name: inventory-api-source-build
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  activeDeadlineSeconds: 1200
+  backoffLimit: 1
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "false"
+      labels:
+        app.kubernetes.io/name: inventory-api-source-build
+        app.kubernetes.io/part-of: api-monetization
+    spec:
+      serviceAccountName: inventory-api-builder
+      restartPolicy: Never
+      containers:
+        - name: build
+          image: registry.redhat.io/openshift4/ose-cli-rhel9:v4.22
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -Eeuo
+            - pipefail
+            - -c
+            - |
+              echo "building inventory-api from the configured Git revision"
+              oc start-build inventory-api --wait
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault

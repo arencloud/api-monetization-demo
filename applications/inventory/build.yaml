@@ -3,6 +3,8 @@ kind: ImageStream
 metadata:
   name: inventory-api
   namespace: api-monetization-apps
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
   labels:
     app.kubernetes.io/part-of: api-monetization
 ---
@@ -11,6 +13,8 @@ kind: BuildConfig
 metadata:
   name: inventory-api
   namespace: api-monetization-apps
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
   labels:
     app.kubernetes.io/name: inventory-api
     app.kubernetes.io/part-of: api-monetization
@@ -29,8 +33,6 @@ spec:
     to:
       kind: ImageStreamTag
       name: inventory-api:demo
-  triggers:
-    - type: ConfigChange
   successfulBuildsHistoryLimit: 3
   failedBuildsHistoryLimit: 3
   resources:
