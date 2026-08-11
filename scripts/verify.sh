@@ -295,13 +295,48 @@ if [[ $jwt_status != "401" ]]; then
 fi
 echo "JWT endpoint certificate is valid and unauthenticated traffic returned HTTP 401"
 
+echo "validating JWT identity-to-subscription resolution"
+keycloak_hostname=$(oc get route api-monetization-keycloak \
+  -n api-monetization-identity -o jsonpath='{.status.ingress[0].host}')
+keycloak_router_hostname=$(oc get route api-monetization-keycloak \
+  -n api-monetization-identity -o jsonpath='{.status.ingress[0].routerCanonicalHostname}')
+keycloak_client_secret=$(oc get secret keycloak-demo-clients \
+  -n api-monetization-identity \
+  -o go-template='{{index .data "free-client-secret"}}' | base64 -d)
+jwt_token=$(curl --silent --show-error --fail \
+  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+  --connect-to "$keycloak_hostname:443:$keycloak_router_hostname:443" \
+  --user "demo-free-client:$keycloak_client_secret" \
+  --data 'grant_type=client_credentials' \
+  "https://$keycloak_hostname/realms/api-monetization/protocol/openid-connect/token" \
+  | jq -er '.access_token')
+jwt_authenticated_status=$(curl --silent --show-error --output /dev/null \
+  --write-out '%{http_code}' \
+  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+  --connect-to "$jwt_hostname:443:$router_hostname:443" \
+  --header "Host: $jwt_hostname" \
+  --header "Authorization: Bearer $jwt_token" \
+  "https://$jwt_hostname/inventory")
+case "$jwt_authenticated_status" in
+  200)
+    echo "JWT identity resolved to the active PostgreSQL subscription"
+    ;;
+  429)
+    echo "JWT identity resolved correctly but its active plan window is already rate-limited"
+    ;;
+  *)
+    echo "error: authenticated JWT request returned HTTP $jwt_authenticated_status" >&2
+    exit 1
+    ;;
+esac
+
 echo "validating the Keycloak-protected monetization portal"
 portal_hostname=$(oc get route monetization-control -n api-monetization-data \
   -o jsonpath='{.status.ingress[0].host}')
 portal_router_hostname=$(oc get route monetization-control -n api-monetization-data \
   -o jsonpath='{.status.ingress[0].routerCanonicalHostname}')
-keycloak_hostname=$(oc get route api-monetization-keycloak \
-  -n api-monetization-identity -o jsonpath='{.status.ingress[0].host}')
 portal_config=$(curl --silent --show-error --fail \
   --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
     -o go-template='{{index .data "tls.crt"}}' | base64 -d) \

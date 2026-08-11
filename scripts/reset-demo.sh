@@ -26,6 +26,4 @@ curl --silent --fail-with-body \
   --data '{"plan":"free"}' \
   "http://127.0.0.1:$control_port/api/subscriptions/demo-company/plan"
 echo
-KEYCLOAK_ADMIN_LOCAL_PORT=${KEYCLOAK_ADMIN_LOCAL_PORT:-18082} \
-  "$script_dir/keycloak-plan.sh" set free >/dev/null
-echo "API-key subscription and Keycloak JWT client reset to Free; rate-limit counters expire with their configured windows"
+echo "Shared API-key and Keycloak JWT subscription reset to Free; rate-limit counters expire with their configured windows"

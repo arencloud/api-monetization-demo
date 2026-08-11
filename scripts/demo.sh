@@ -16,8 +16,8 @@ data_namespace=api-monetization-data
 gitops_namespace=openshift-gitops
 gitops_application=api-monetization-gateway
 control_port=${CONTROL_LOCAL_PORT:-18080}
+control_internal_port=${CONTROL_INTERNAL_LOCAL_PORT:-18083}
 keycloak_port=${KEYCLOAK_LOCAL_PORT:-18081}
-keycloak_admin_port=${KEYCLOAK_ADMIN_LOCAL_PORT:-18082}
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 port_forward_pids=()
 route_ca_file=""
@@ -48,8 +48,13 @@ wait_for_jwt_policy_revision() {
 
     if [[ $app_sync == "Synced" ]] && \
       jq -e '
-        .spec.rules.response.success.filters.kuadrant.json.properties.customer.selector == "auth.identity.azp" and
-        .spec.rules.response.success.filters.kuadrant.json.properties.plan.selector == "auth.identity.plan" and
+        .spec.rules.metadata.subscription.http.urlExpression
+          | contains("/internal/entitlements/identity/keycloak-client/") and
+            contains("auth.identity.azp")
+      ' <<<"$auth_policy" >/dev/null 2>&1 && \
+      jq -e '
+        .spec.rules.response.success.filters.kuadrant.json.properties.customer.selector == "auth.metadata.subscription.customerId" and
+        .spec.rules.response.success.filters.kuadrant.json.properties.plan.selector == "auth.metadata.subscription.plan" and
         .status.observedGeneration == .metadata.generation and
         any(.status.conditions[]?; .type == "Enforced" and .status == "True")
       ' <<<"$auth_policy" >/dev/null 2>&1 && \
@@ -119,7 +124,8 @@ fi
 
 echo "starting the monetization control plane tunnel"
 oc port-forward -n "$data_namespace" service/monetization-control \
-  "$control_port:8080" >/tmp/api-monetization-control-port-forward.log 2>&1 &
+  "$control_port:8080" "$control_internal_port:8081" \
+  >/tmp/api-monetization-control-port-forward.log 2>&1 &
 port_forward_pids+=("$!")
 for _ in $(seq 1 30); do
   curl --silent --fail "http://127.0.0.1:$control_port/readyz" >/dev/null && break
@@ -135,6 +141,25 @@ if [[ $subscription_plan != "free" ]]; then
   exit 1
 fi
 
+echo "waiting for the shared JWT subscription entitlement"
+identity_entitlement=""
+for _ in $(seq 1 120); do
+  if identity_entitlement=$(curl --silent --show-error --fail \
+      "http://127.0.0.1:$control_internal_port/internal/entitlements/identity/keycloak-client/demo-free-client/inventory" \
+      2>/dev/null) && \
+    jq -e '.customerId == "demo-company" and .product == "inventory" and .plan == "free"' \
+      <<<"$identity_entitlement" >/dev/null 2>&1; then
+    break
+  fi
+  identity_entitlement=""
+  sleep 5
+done
+if [[ -z $identity_entitlement ]]; then
+  echo "error: shared JWT subscription entitlement did not become ready within 10 minutes" >&2
+  echo "check Argo CD application api-monetization-control before retrying" >&2
+  exit 1
+fi
+
 request_api_key() {
   curl --silent --output /dev/null --write-out '%{http_code}' \
     --cacert "$route_ca_file" \
@@ -143,6 +168,57 @@ request_api_key() {
     --header "Authorization: APIKEY $api_key" \
     "https://$api_hostname/inventory"
 }
+
+keycloak_host=api-monetization-service.api-monetization-identity.svc.cluster.local
+oc port-forward -n api-monetization-identity service/api-monetization-service \
+  "$keycloak_port:8080" >/tmp/api-monetization-keycloak-port-forward.log 2>&1 &
+port_forward_pids+=("$!")
+client_secret=$(oc get secret keycloak-demo-clients -n api-monetization-identity \
+  -o go-template='{{index .data "free-client-secret"}}' | base64 -d)
+
+issue_jwt() {
+  local token_response
+  token_response=$(curl --silent --show-error --fail \
+    --connect-to "$keycloak_host:8080:127.0.0.1:$keycloak_port" \
+    --user "demo-free-client:$client_secret" \
+    --data 'grant_type=client_credentials' \
+    "http://$keycloak_host:8080/realms/api-monetization/protocol/openid-connect/token")
+  jq -er '.access_token' <<<"$token_response"
+}
+
+jwt_client_id() {
+  local token=$1
+  local payload=${token#*.}
+  payload=${payload%%.*}
+  case $((${#payload} % 4)) in
+    0) ;;
+    2) payload+="==" ;;
+    3) payload+="=" ;;
+    *) return 1 ;;
+  esac
+  printf '%s' "$payload" | tr '_-' '/+' | base64 -d 2>/dev/null | jq -er '.azp'
+}
+
+request_jwt() {
+  local token=$1
+  curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+    --cacert "$route_ca_file" \
+    --connect-to "$jwt_hostname:443:$router_hostname:443" \
+    --header "Host: $jwt_hostname" \
+    --header "Authorization: Bearer $token" \
+    "https://$jwt_hostname/inventory"
+}
+
+for _ in $(seq 1 30); do
+  if subscription_jwt=$(issue_jwt 2>/dev/null); then
+    break
+  fi
+  sleep 1
+done
+if [[ ${subscription_jwt:-} == "" || $(jwt_client_id "$subscription_jwt") != "demo-free-client" ]]; then
+  echo "error: Keycloak did not issue the expected demo-free-client JWT" >&2
+  exit 1
+fi
 
 echo "baseline: unauthenticated request"
 unauthenticated=$(curl --silent --output /dev/null --write-out '%{http_code}' \
@@ -179,6 +255,26 @@ if ((successful_requests == 0 || limited_requests == 0)); then
   exit 1
 fi
 
+echo "Keycloak JWT Free burst: 12 requests against the same subscription's 10/minute limit"
+jwt_successful_requests=0
+jwt_limited_requests=0
+for request_number in $(seq 1 12); do
+  jwt_status=$(request_jwt "$subscription_jwt")
+  echo "Free JWT request $request_number -> HTTP $jwt_status"
+  case "$jwt_status" in
+    200) jwt_successful_requests=$((jwt_successful_requests + 1)) ;;
+    429) jwt_limited_requests=$((jwt_limited_requests + 1)) ;;
+    *)
+      echo "error: Free JWT request returned unexpected HTTP $jwt_status" >&2
+      exit 1
+      ;;
+  esac
+done
+if ((jwt_successful_requests == 0 || jwt_limited_requests == 0)); then
+  echo "error: Free JWT burst did not demonstrate both accepted and rate-limited requests; run 'make reset-demo', wait 60 seconds, and retry" >&2
+  exit 1
+fi
+
 echo "upgrading demo-company from Free to Developer"
 upgrade_response=$(curl --silent --fail-with-body \
   --header "Authorization: Bearer $control_token" \
@@ -201,105 +297,9 @@ for request_number in $(seq 1 12); do
   fi
 done
 
-echo "demonstrating a live Keycloak JWT plan upgrade"
-keycloak_host=api-monetization-service.api-monetization-identity.svc.cluster.local
-oc port-forward -n api-monetization-identity service/api-monetization-service \
-  "$keycloak_port:8080" >/tmp/api-monetization-keycloak-port-forward.log 2>&1 &
-port_forward_pids+=("$!")
-client_secret=$(oc get secret keycloak-demo-clients -n api-monetization-identity \
-  -o go-template='{{index .data "free-client-secret"}}' | base64 -d)
-
-issue_jwt() {
-  local token_response
-  token_response=$(curl --silent --show-error --fail \
-    --connect-to "$keycloak_host:8080:127.0.0.1:$keycloak_port" \
-    --user "demo-free-client:$client_secret" \
-    --data 'grant_type=client_credentials' \
-    "http://$keycloak_host:8080/realms/api-monetization/protocol/openid-connect/token")
-  jq -er '.access_token' <<<"$token_response"
-}
-
-jwt_plan() {
-  local token=$1
-  local payload=${token#*.}
-  payload=${payload%%.*}
-  case $((${#payload} % 4)) in
-    0) ;;
-    2) payload+="==" ;;
-    3) payload+="=" ;;
-    *) return 1 ;;
-  esac
-  printf '%s' "$payload" | tr '_-' '/+' | base64 -d 2>/dev/null | jq -er '.plan'
-}
-
-request_jwt() {
-  local token=$1
-  curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
-    --cacert "$route_ca_file" \
-    --connect-to "$jwt_hostname:443:$router_hostname:443" \
-    --header "Host: $jwt_hostname" \
-    --header "Authorization: Bearer $token" \
-    "https://$jwt_hostname/inventory"
-}
-
-current_keycloak_plan=$(KEYCLOAK_ADMIN_LOCAL_PORT="$keycloak_admin_port" \
-  "$script_dir/keycloak-plan.sh" get)
-if [[ $current_keycloak_plan != "free" ]]; then
-  echo "error: demo-free-client is on the $current_keycloak_plan plan; run 'make reset-demo', wait 60 seconds, and retry" >&2
-  exit 1
-fi
-
-for _ in $(seq 1 30); do
-  if free_jwt=$(issue_jwt 2>/dev/null); then
-    break
-  fi
-  sleep 1
-done
-if [[ ${free_jwt:-} == "" || $(jwt_plan "$free_jwt") != "free" ]]; then
-  echo "error: Keycloak did not issue a Free-plan JWT" >&2
-  exit 1
-fi
-
-echo "Keycloak Free JWT burst: 12 requests against the 10/minute limit"
-jwt_successful_requests=0
-jwt_limited_requests=0
+echo "same Keycloak JWT after the shared upgrade: 12 requests against the 1,000/minute limit"
 for request_number in $(seq 1 12); do
-  jwt_status=$(request_jwt "$free_jwt")
-  echo "Free JWT request $request_number -> HTTP $jwt_status"
-  case "$jwt_status" in
-    200) jwt_successful_requests=$((jwt_successful_requests + 1)) ;;
-    429) jwt_limited_requests=$((jwt_limited_requests + 1)) ;;
-    *)
-      echo "error: Free JWT request returned unexpected HTTP $jwt_status" >&2
-      exit 1
-      ;;
-  esac
-done
-if ((jwt_successful_requests == 0 || jwt_limited_requests == 0)); then
-  echo "error: Free JWT burst did not demonstrate both accepted and rate-limited requests; run 'make reset-demo', wait 60 seconds, and retry" >&2
-  exit 1
-fi
-
-echo "upgrading demo-free-client from Free to Developer in Keycloak"
-KEYCLOAK_ADMIN_LOCAL_PORT="$keycloak_admin_port" \
-  "$script_dir/keycloak-plan.sh" set developer >/dev/null
-
-old_jwt_status=$(request_jwt "$free_jwt")
-echo "old Free JWT after upgrade -> HTTP $old_jwt_status (expected 429 until token refresh)"
-if [[ $old_jwt_status != "429" ]]; then
-  echo "error: the pre-upgrade JWT no longer demonstrated its immutable Free claim" >&2
-  exit 1
-fi
-
-developer_jwt=$(issue_jwt)
-if [[ $(jwt_plan "$developer_jwt") != "developer" ]]; then
-  echo "error: refreshed Keycloak JWT does not contain the Developer plan" >&2
-  exit 1
-fi
-
-echo "refreshed Developer JWT continuation burst: 12 requests against the 1,000/minute limit"
-for request_number in $(seq 1 12); do
-  jwt_status=$(request_jwt "$developer_jwt")
+  jwt_status=$(request_jwt "$subscription_jwt")
   echo "Developer JWT request $request_number -> HTTP $jwt_status (expected 200)"
   if [[ $jwt_status != "200" ]]; then
     echo "error: Developer JWT request $request_number did not return HTTP 200" >&2
@@ -307,4 +307,4 @@ for request_number in $(seq 1 12); do
   fi
 done
 
-echo "demo complete: API-key and Keycloak JWT Free-tier 429s, live Developer upgrades, continued traffic, and JWT refresh semantics were exercised"
+echo "demo complete: one subscription upgrade changed API-key and Keycloak JWT limits immediately without replacing the JWT"

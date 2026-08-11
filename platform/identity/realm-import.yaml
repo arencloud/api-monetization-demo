@@ -15,14 +15,6 @@ spec:
       secret:
         name: keycloak-demo-clients
         key: free-client-secret
-    DEVELOPER_CLIENT_SECRET:
-      secret:
-        name: keycloak-demo-clients
-        key: developer-client-secret
-    BUSINESS_CLIENT_SECRET:
-      secret:
-        name: keycloak-demo-clients
-        key: business-client-secret
   realm:
     id: api-monetization
     realm: api-monetization
@@ -36,18 +28,10 @@ spec:
     bruteForceProtected: true
     accessTokenLifespan: 300
     ssoSessionIdleTimeout: 1800
-    roles:
-      realm:
-        - name: plan-free
-          description: Free API plan
-        - name: plan-developer
-          description: Developer API plan
-        - name: plan-business
-          description: Business API plan
     clients:
       - clientId: demo-free-client
-        name: Demo Free Plan Client
-        description: Machine client used to demonstrate the Free plan
+        name: Demo Subscription Client
+        description: Machine identity mapped to Demo Company in the monetization control plane
         enabled: true
         protocol: openid-connect
         publicClient: false
@@ -58,71 +42,6 @@ spec:
         directAccessGrantsEnabled: false
         fullScopeAllowed: false
         protocolMappers:
-          - name: plan
-            protocol: openid-connect
-            protocolMapper: oidc-hardcoded-claim-mapper
-            config:
-              claim.name: plan
-              claim.value: free
-              jsonType.label: String
-              access.token.claim: "true"
-              id.token.claim: "true"
-          - name: api-audience
-            protocol: openid-connect
-            protocolMapper: oidc-audience-mapper
-            config:
-              included.custom.audience: api-monetization
-              access.token.claim: "true"
-      - clientId: demo-developer-client
-        name: Demo Developer Plan Client
-        description: Machine client used to demonstrate the Developer plan
-        enabled: true
-        protocol: openid-connect
-        publicClient: false
-        clientAuthenticatorType: client-secret
-        secret: ${DEVELOPER_CLIENT_SECRET}
-        serviceAccountsEnabled: true
-        standardFlowEnabled: false
-        directAccessGrantsEnabled: false
-        fullScopeAllowed: false
-        protocolMappers:
-          - name: plan
-            protocol: openid-connect
-            protocolMapper: oidc-hardcoded-claim-mapper
-            config:
-              claim.name: plan
-              claim.value: developer
-              jsonType.label: String
-              access.token.claim: "true"
-              id.token.claim: "true"
-          - name: api-audience
-            protocol: openid-connect
-            protocolMapper: oidc-audience-mapper
-            config:
-              included.custom.audience: api-monetization
-              access.token.claim: "true"
-      - clientId: demo-business-client
-        name: Demo Business Plan Client
-        description: Machine client used to demonstrate the Business plan
-        enabled: true
-        protocol: openid-connect
-        publicClient: false
-        clientAuthenticatorType: client-secret
-        secret: ${BUSINESS_CLIENT_SECRET}
-        serviceAccountsEnabled: true
-        standardFlowEnabled: false
-        directAccessGrantsEnabled: false
-        fullScopeAllowed: false
-        protocolMappers:
-          - name: plan
-            protocol: openid-connect
-            protocolMapper: oidc-hardcoded-claim-mapper
-            config:
-              claim.name: plan
-              claim.value: business
-              jsonType.label: String
-              access.token.claim: "true"
-              id.token.claim: "true"
           - name: api-audience
             protocol: openid-connect
             protocolMapper: oidc-audience-mapper

@@ -73,6 +73,13 @@ spec:
             - selector: auth.identity.aud
               operator: incl
               value: api-monetization
+    metadata:
+      subscription:
+        http:
+          method: GET
+          urlExpression: >-
+            'http://monetization-control.api-monetization-data.svc.cluster.local:8081/internal/entitlements/identity/keycloak-client/' +
+            auth.identity.azp + '/inventory'
     response:
       success:
         filters:
@@ -80,16 +87,16 @@ spec:
             json:
               properties:
                 customer:
-                  selector: auth.identity.azp
+                  selector: auth.metadata.subscription.customerId
                 plan:
-                  selector: auth.identity.plan
+                  selector: auth.metadata.subscription.plan
         headers:
           x-monetization-customer:
             plain:
-              selector: auth.identity.azp
+              selector: auth.metadata.subscription.customerId
           x-monetization-plan:
             plain:
-              selector: auth.identity.plan
+              selector: auth.metadata.subscription.plan
       unauthenticated:
         code: 401
         headers:

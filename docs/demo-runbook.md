@@ -5,11 +5,9 @@
 Demo Company starts on the Free Inventory API plan. Connectivity Link accepts a
 generated API key, attributes requests to the customer and plan, and enforces ten
 requests per minute. A burst reaches HTTP 429. The administrator upgrades the
-subscription to Developer; a continued burst succeeds under the new
-1,000/minute limit without restarting the gateway or application. The same
-Free-to-Developer transition is then applied to a Keycloak machine client. Its
-existing JWT remains Free, while a refreshed token carries the Developer claim
-and immediately receives the larger limit.
+subscription to Developer; continued API-key and JWT bursts succeed under the
+new 1,000/minute limit without restarting the gateway or application and
+without refreshing the already-issued JWT.
 
 ## Before the presentation
 
@@ -81,17 +79,16 @@ The script demonstrates, in order:
 1. The gateway Argo CD Application is Synced and the exact JWT authentication
    and rate-limit policy generations are Enforced.
 2. A request without credentials returns HTTP 401.
-3. Valid Free-plan API-key traffic returns HTTP 200.
-4. A burst exceeds ten requests/minute and returns HTTP 429.
-5. The control plane changes Demo Company to Developer.
-6. Twelve additional API-key requests all return HTTP 200 without a rollout,
-   proving that the user can continue immediately under the Developer limit.
-7. A Free JWT from `demo-free-client` reaches its ten-request limit and returns
+3. A Keycloak machine JWT is issued for Demo Company's mapped identity.
+4. Valid Free-plan API-key traffic returns HTTP 200, then exceeds ten
+   requests/minute and returns HTTP 429.
+5. The same Free subscription is resolved for the JWT; its burst also reaches
    HTTP 429 through a separate `AuthPolicy` and `RateLimitPolicy`.
-8. The Keycloak plan mapper changes from Free to Developer without a rollout.
-9. The existing JWT remains rate-limited because signed token claims are
-   immutable; a refreshed JWT contains `plan=developer`.
-10. Twelve continued requests with the refreshed JWT all return HTTP 200.
+6. The control plane changes Demo Company's single subscription to Developer.
+7. Twelve additional API-key requests all return HTTP 200 without a rollout,
+   proving that the user can continue immediately under the Developer limit.
+8. Twelve requests using the exact JWT issued before the upgrade all return
+   HTTP 200, proving that plan state is live and is not embedded in the token.
 
 Keep this rollout watch visible during the upgrade if desired; no revision or
 pod restart should appear:
@@ -177,6 +174,6 @@ OIDC simultaneously.
 make reset-demo
 ```
 
-The reset changes both the API-key subscription and the Keycloak machine client
+The reset changes the shared API-key and Keycloak JWT subscription
 back to Free. Limitador counters are intentionally not deleted; wait for the
 one-minute demo window before repeating the burst.

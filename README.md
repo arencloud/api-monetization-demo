@@ -123,10 +123,11 @@ Red Hat build of Keycloak Authorization Code flow with PKCE. Its subscription,
 usage, and upgrade APIs require the `monetization-admin` realm role; internal
 entitlement and usage ingestion use a separate, non-routed service port.
 
-The deterministic scenario performs live Free-to-Developer upgrades for both
-the generated API key and the same Keycloak machine client. The JWT path also
-demonstrates that an existing signed token retains its old plan until the client
-refreshes it.
+The deterministic scenario issues an API key and a Keycloak JWT for the same
+customer subscription, drives both through the Free limit, and performs one
+live Free-to-Developer upgrade. Both credentials immediately receive the new
+limit, including the already-issued JWT, because commercial state is resolved
+from PostgreSQL rather than embedded in the signed token.
 
 After deployment and verification, run the deterministic scenario:
 

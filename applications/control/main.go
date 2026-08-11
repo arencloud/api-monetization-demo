@@ -58,6 +58,9 @@ func main() {
 	if err = waitForDatabase(ctx, pool, 2*time.Minute); err != nil {
 		fatal("database did not become ready", err)
 	}
+	if err = applyDatabaseMigrations(ctx, pool); err != nil {
+		fatal("database migration failed", err)
+	}
 	kube, err := newKubeClient()
 	if err != nil {
 		fatal("Kubernetes client configuration failed", err)
@@ -102,6 +105,7 @@ func main() {
 	}
 	internalMux := http.NewServeMux()
 	internalMux.HandleFunc("GET /internal/entitlements/{customer}/{product}", application.entitlement)
+	internalMux.HandleFunc("GET /internal/entitlements/identity/{provider}/{subject}/{product}", application.entitlementByIdentity)
 	internalMux.HandleFunc("POST /internal/usage", application.recordUsage)
 	internalServer := &http.Server{
 		Addr:              env("INTERNAL_HTTP_ADDR", ":8081"),
@@ -208,6 +212,26 @@ func (a *app) entitlement(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(result) != 1 {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "active subscription not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, result[0])
+}
+
+func (a *app) entitlementByIdentity(w http.ResponseWriter, r *http.Request) {
+	provider := r.PathValue("provider")
+	subject := r.PathValue("subject")
+	product := r.PathValue("product")
+	if !validIdentifier(provider) || !validIdentifier(subject) || !validIdentifier(product) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid subscription identity"})
+		return
+	}
+	result, err := a.loadSubscriptionsByIdentity(r.Context(), provider, subject, product)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	if len(result) != 1 {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "active subscription identity not found"})
 		return
 	}
 	writeJSON(w, http.StatusOK, result[0])
@@ -337,6 +361,34 @@ func (a *app) loadSubscriptions(ctx context.Context, customer, product string) (
 	}
 	query += " ORDER BY c.display_name, p.id"
 	rows, err := a.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make([]subscription, 0)
+	for rows.Next() {
+		var item subscription
+		if err = rows.Scan(&item.ID, &item.CustomerID, &item.Customer, &item.Product, &item.Plan, &item.PlanName, &item.MonthlyCents, &item.Included, &item.RateLimit, &item.RateWindowSecs, &item.Version); err != nil {
+			return nil, err
+		}
+		result = append(result, item)
+	}
+	return result, rows.Err()
+}
+
+func (a *app) loadSubscriptionsByIdentity(ctx context.Context, provider, subject, product string) ([]subscription, error) {
+	rows, err := a.db.Query(ctx, `
+		SELECT s.id::text, c.external_id, c.display_name, p.id, s.plan_id,
+		       pl.display_name, pl.monthly_price_cents, pl.included_requests,
+		       pl.rate_limit_requests, pl.rate_limit_window_seconds, s.version
+		FROM monetization.subscription_identities i
+		JOIN monetization.customers c ON c.id = i.customer_id
+		JOIN monetization.subscriptions s ON s.customer_id = c.id
+		JOIN monetization.api_products p ON p.id = s.api_product_id
+		JOIN monetization.plans pl ON pl.id = s.plan_id
+		WHERE i.provider = $1 AND i.subject = $2 AND i.status = 'active'
+		  AND s.api_product_id = $3 AND s.status = 'active'
+		ORDER BY c.display_name, p.id`, provider, subject, product)
 	if err != nil {
 		return nil, err
 	}

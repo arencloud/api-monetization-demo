@@ -72,6 +72,22 @@ data:
       ON monetization.subscriptions (customer_id, api_product_id)
       WHERE status = 'active';
 
+    CREATE TABLE monetization.subscription_identities (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      customer_id uuid NOT NULL REFERENCES monetization.customers(id),
+      provider text NOT NULL,
+      subject text NOT NULL,
+      status text NOT NULL DEFAULT 'active',
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT subscription_identities_unique UNIQUE (provider, subject),
+      CONSTRAINT subscription_identities_status CHECK (status IN ('active', 'revoked'))
+    );
+
+    CREATE INDEX subscription_identities_lookup
+      ON monetization.subscription_identities (provider, subject)
+      WHERE status = 'active';
+
     CREATE TABLE monetization.api_credentials (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       subscription_id uuid NOT NULL REFERENCES monetization.subscriptions(id),
@@ -157,3 +173,8 @@ data:
       FROM monetization.customers
       WHERE external_id = 'demo-company';
 
+    INSERT INTO monetization.subscription_identities (customer_id, provider, subject)
+      SELECT c.id, 'keycloak-client', 'demo-free-client'
+      FROM monetization.customers c
+      WHERE c.external_id = 'demo-company'
+      ON CONFLICT (provider, subject) DO NOTHING;

@@ -32,7 +32,7 @@ assigned external address; the request-time policy path is unchanged.
 | OAuth2/OIDC identities, JWTs, clients, roles | Red Hat build of Keycloak |
 | Database lifecycle, failover, backup hooks | CloudNativePG certified Operator |
 | Secret synchronization and demo credential generation | External Secrets Operator for Red Hat OpenShift |
-| API-key lifecycle and plan/customer mapping | Subscription service and its datastore |
+| Credential-to-customer mapping and API-key lifecycle | Subscription service and its datastore |
 | JWT/API-key validation and external authorization | RHCL `AuthPolicy` / Authorino |
 | Quotas and request/token rate limiting | RHCL `RateLimitPolicy` / `TokenRateLimitPolicy` / Limitador |
 | North-south routing, TLS, DNS | Gateway API and RHCL policies |
@@ -81,11 +81,13 @@ to PostgreSQL; the next metadata lookup observes it without recreating the
 gateway or application. Argo CD intentionally ignores only the demo APIKey's
 mutable `spec.planTier`; every other field remains self-healing.
 
-For the JWT demonstration, the administrator changes the hardcoded `plan`
-claim mapper on the existing Keycloak machine client. Previously issued JWTs
-remain immutable and keep their old limit until expiry; the client obtains a
-new token to receive the upgraded claim and limit. No Keycloak, gateway, or API
-workload rollout participates in this change.
+For JWTs, Keycloak proves the machine identity and audience but does not own
+commercial plan state. Authorino maps the verified `azp` client identity to a
+customer in the control plane, then resolves that customer's current product
+subscription. Consequently, the same PostgreSQL transaction that upgrades an
+API-key customer also changes the JWT limit. An already-issued JWT receives the
+new limit on its next request; no token refresh or Keycloak, gateway, or API
+workload rollout participates in the change.
 
 ## Security boundaries
 

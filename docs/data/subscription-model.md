@@ -10,10 +10,12 @@ the first vertical slice.
 | `api_products` | APIs available for subscription and usage attribution |
 | `customers` | Stable customer identity independent of login identity |
 | `subscriptions` | Customer/product/plan relationship with optimistic version field |
+| `subscription_identities` | External provider identity mapped to one commercial customer |
 | `api_credentials` | Prefix and one-way key digest; never the raw API key |
 | `plan_changes` | Auditable subscription upgrade and downgrade history |
 | `usage_events` | Idempotent request usage records keyed by request ID |
 | `invoices` | Rated billing periods and invoice state |
+| `schema_migrations` | Idempotent control-service schema migration history |
 
 The demo seed creates Free, Developer, Business, and Enterprise plans; Inventory,
 Payment, and AI Chat products; and one Free Inventory subscription for Demo
@@ -22,7 +24,8 @@ Company.
 ## Important boundaries
 
 - Authentication identities belong in Keycloak; customer commercial identity
-  belongs in this schema.
+  belongs in this schema. JWTs carry identity and audience, never an
+  authoritative commercial plan.
 - Raw API keys are returned once to the caller and are never stored. The service
   stores an Argon2id digest plus a short lookup prefix.
 - Gateway telemetry is an input to `usage_events`, not an invoice by itself.
@@ -34,6 +37,6 @@ Company.
 - Money is stored in integer cents and overage price in integer micro-units to
   avoid floating-point billing errors.
 
-The ConfigMap bootstrap is suitable only for creating an empty demo database.
-Once the subscription service exists, Flyway-style versioned migrations will be
-the authority for subsequent schema changes.
+The ConfigMap bootstrap creates an empty demo database at cluster initialization.
+The control service also applies idempotent, version-recorded migrations during
+startup so an existing installation receives later schema additions safely.
