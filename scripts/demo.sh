@@ -125,7 +125,9 @@ for _ in $(seq 1 30); do
   curl --silent --fail "http://127.0.0.1:$control_port/readyz" >/dev/null && break
   sleep 1
 done
+control_token=$("$script_dir/control-token.sh")
 subscription_plan=$(curl --silent --show-error --fail \
+  --header "Authorization: Bearer $control_token" \
   "http://127.0.0.1:$control_port/api/subscriptions" \
   | jq -r '.[] | select(.customerId == "demo-company" and .product == "inventory") | .plan')
 if [[ $subscription_plan != "free" ]]; then
@@ -179,6 +181,7 @@ fi
 
 echo "upgrading demo-company from Free to Developer"
 upgrade_response=$(curl --silent --fail-with-body \
+  --header "Authorization: Bearer $control_token" \
   --header 'content-type: application/json' \
   --data '{"plan":"developer"}' \
   "http://127.0.0.1:$control_port/api/subscriptions/demo-company/plan")

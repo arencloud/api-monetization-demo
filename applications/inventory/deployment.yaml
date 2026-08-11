@@ -39,7 +39,7 @@ spec:
             - name: REGION
               value: primary
             - name: USAGE_SINK_URL
-              value: http://monetization-control.api-monetization-data.svc.cluster.local:8080/internal/usage
+              value: http://monetization-control.api-monetization-data.svc.cluster.local:8081/internal/usage
           readinessProbe:
             httpGet:
               path: /readyz

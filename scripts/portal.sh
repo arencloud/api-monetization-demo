@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+for command_name in oc base64; do
+  if ! command -v "$command_name" >/dev/null 2>&1; then
+    echo "error: $command_name is required" >&2
+    exit 1
+  fi
+done
+
+oc wait --for=condition=Ready externalsecret/monetization-portal-credentials \
+  -n api-monetization-identity --timeout=5m >/dev/null
+oc wait route/monetization-control -n api-monetization-data \
+  --for=jsonpath='{.status.ingress[0].conditions[0].status}'=True \
+  --timeout=5m >/dev/null
+
+portal_host=$(oc get route monetization-control -n api-monetization-data \
+  -o jsonpath='{.status.ingress[0].host}')
+admin_password=$(oc get secret monetization-portal-credentials \
+  -n api-monetization-identity \
+  -o go-template='{{index .data "portal-admin-password"}}' | base64 -d)
+
+printf 'Portal:   https://%s\n' "$portal_host"
+printf 'Username: demo-admin\n'
+printf 'Password: %s\n' "$admin_password"

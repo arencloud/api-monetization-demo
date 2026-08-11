@@ -34,6 +34,8 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+            - name: internal
+              containerPort: 8081
           env:
             - name: DATABASE_URL
               value: postgres://monetization_app@subscriptions-postgres-rw:5432/monetization?sslmode=require

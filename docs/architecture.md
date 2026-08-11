@@ -9,6 +9,7 @@ allows commercial workflows to evolve without changing API workloads.
 ```text
                               CONTROL PLANE
  RHCL Console Portal -> APIProduct/APIKey -> generated credential metadata
+ Monetization Portal -> Keycloak login -> subscription / usage / live upgrade
          |                        |                         |
          +------------------------+-------------------------+
                               |
@@ -40,6 +41,14 @@ assigned external address; the request-time policy path is unchanged.
 | Plan state, upgrades, rating, invoices | Monetization control plane and PostgreSQL |
 | Operational and business visualization | Grafana and Kiali |
 | Desired state and promotion | OpenShift GitOps |
+
+The browser portal is a public PKCE client in Keycloak. Human administrators
+receive the `monetization-admin` realm role, while deterministic automation uses
+a separate confidential service client with the same narrow role and a
+generated secret. The control-plane service verifies token signature, issuer,
+audience, expiry, and role before serving subscription, usage, or plan-change
+APIs. Entitlement lookups and usage ingestion listen on a separate internal
+port that is not exposed by the portal Route.
 
 ## Request lifecycle
 

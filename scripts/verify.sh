@@ -2,7 +2,7 @@
 
 set -Eeuo pipefail
 
-for command_name in oc curl base64; do
+for command_name in oc curl jq base64; do
   if ! command -v "$command_name" >/dev/null 2>&1; then
     echo "error: $command_name is required" >&2
     exit 1
@@ -95,6 +95,8 @@ oc wait --for=condition=Ready externalsecret/keycloak-db-credentials \
   -n api-monetization-identity --timeout=5m
 oc wait --for=condition=Ready externalsecret/keycloak-demo-clients \
   -n api-monetization-identity --timeout=5m
+oc wait --for=condition=Ready externalsecret/monetization-portal-credentials \
+  -n api-monetization-identity --timeout=5m
 oc wait --for=condition=Ready externalsecret/subscriptions-db-credentials \
   -n api-monetization-data --timeout=5m
 oc wait --for=condition=Ready externalsecret/demo-inventory-api-key \
@@ -111,6 +113,8 @@ oc wait --for=condition=Ready keycloaks.k8s.keycloak.org/api-monetization \
   -n api-monetization-identity --timeout=10m
 oc wait --for=condition=Done keycloakrealmimports.k8s.keycloak.org/api-monetization-realm \
   -n api-monetization-identity --timeout=10m
+oc wait route/api-monetization-keycloak -n api-monetization-identity \
+  --for=jsonpath='{.status.ingress[0].conditions[0].status}'=True --timeout=5m
 
 echo "waiting for application builds and workloads"
 oc wait clusteroperator/image-registry --for=condition=Available --timeout=10m
@@ -118,6 +122,8 @@ wait_for_image_stream_tag inventory-api:demo api-monetization-apps
 wait_for_image_stream_tag monetization-control:demo api-monetization-data
 oc rollout status deployment/inventory-api -n api-monetization-apps --timeout=10m
 oc rollout status deployment/monetization-control -n api-monetization-data --timeout=10m
+oc wait route/monetization-control -n api-monetization-data \
+  --for=jsonpath='{.status.ingress[0].conditions[0].status}'=True --timeout=5m
 
 echo "waiting for gateway, routes, policies, and catalog resources"
 oc wait --for=condition=Ready kuadrants.kuadrant.io/kuadrant \
@@ -288,6 +294,47 @@ if [[ $jwt_status != "401" ]]; then
   exit 1
 fi
 echo "JWT endpoint certificate is valid and unauthenticated traffic returned HTTP 401"
+
+echo "validating the Keycloak-protected monetization portal"
+portal_hostname=$(oc get route monetization-control -n api-monetization-data \
+  -o jsonpath='{.status.ingress[0].host}')
+portal_router_hostname=$(oc get route monetization-control -n api-monetization-data \
+  -o jsonpath='{.status.ingress[0].routerCanonicalHostname}')
+keycloak_hostname=$(oc get route api-monetization-keycloak \
+  -n api-monetization-identity -o jsonpath='{.status.ingress[0].host}')
+portal_config=$(curl --silent --show-error --fail \
+  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+  --connect-to "$portal_hostname:443:$portal_router_hostname:443" \
+  "https://$portal_hostname/api/config")
+if [[ $(jq -r '.clientId' <<<"$portal_config") != "monetization-portal" || \
+  $(jq -r '.issuerUrl' <<<"$portal_config") != "https://$keycloak_hostname/realms/api-monetization" ]]; then
+  echo "error: portal OIDC discovery does not match the admitted Keycloak Route" >&2
+  exit 1
+fi
+portal_unauthenticated=$(curl --silent --show-error --output /dev/null \
+  --write-out '%{http_code}' \
+  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+  --connect-to "$portal_hostname:443:$portal_router_hostname:443" \
+  "https://$portal_hostname/api/subscriptions")
+if [[ $portal_unauthenticated != "401" ]]; then
+  echo "error: unauthenticated portal API returned HTTP $portal_unauthenticated instead of 401" >&2
+  exit 1
+fi
+portal_token=$("$(dirname "${BASH_SOURCE[0]}")/control-token.sh")
+portal_authorized=$(curl --silent --show-error --output /dev/null \
+  --write-out '%{http_code}' \
+  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+  --connect-to "$portal_hostname:443:$portal_router_hostname:443" \
+  --header "Authorization: Bearer $portal_token" \
+  "https://$portal_hostname/api/subscriptions")
+if [[ $portal_authorized != "200" ]]; then
+  echo "error: administrator portal API returned HTTP $portal_authorized instead of 200" >&2
+  exit 1
+fi
+echo "Portal: https://$portal_hostname (OIDC discovery, 401 boundary, and administrator role verified)"
 
 echo "waiting for operator console plugins"
 for plugin in gitops-plugin kuadrant-console-plugin; do

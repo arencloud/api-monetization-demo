@@ -1,6 +1,6 @@
 SHELL := /usr/bin/env bash
 
-.PHONY: help validate test preflight bootstrap render status verify demo reset-demo uninstall
+.PHONY: help validate test preflight bootstrap render status verify portal demo reset-demo uninstall
 
 help:
 	@echo "Targets:"
@@ -11,7 +11,8 @@ help:
 	@echo "  render     Render all Kustomize packages into stdout"
 	@echo "  status     Show GitOps applications and operator subscriptions"
 	@echo "  verify     Wait for secrets, databases, Keycloak, and realm readiness"
-	@echo "  demo       Run the API-key rate-limit and live-upgrade scenario"
+	@echo "  portal     Print the portal URL and generated demo administrator login"
+	@echo "  demo       Run API-key and JWT rate-limit and live-upgrade scenarios"
 	@echo "  reset-demo Reset the demo subscription to the Free plan"
 	@echo "  uninstall  Remove the complete demo after explicit confirmation"
 
@@ -39,6 +40,9 @@ status:
 
 verify:
 	@./scripts/verify.sh
+
+portal:
+	@./scripts/portal.sh
 
 demo:
 	@./scripts/demo.sh

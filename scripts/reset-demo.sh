@@ -19,7 +19,9 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 
+control_token=$("$script_dir/control-token.sh")
 curl --silent --fail-with-body \
+  --header "Authorization: Bearer $control_token" \
   --header 'content-type: application/json' \
   --data '{"plan":"free"}' \
   "http://127.0.0.1:$control_port/api/subscriptions/demo-company/plan"

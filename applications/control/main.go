@@ -27,6 +27,7 @@ var web embed.FS
 type app struct {
 	db             *pgxpool.Pool
 	kube           *kubeClient
+	auth           *portalAuthenticator
 	apiKeyName     string
 	apiKeyNS       string
 	upgradeCounter atomic.Uint64
@@ -61,9 +62,14 @@ func main() {
 	if err != nil {
 		fatal("Kubernetes client configuration failed", err)
 	}
+	auth, err := newPortalAuthenticator(ctx, kube)
+	if err != nil {
+		fatal("portal identity configuration failed", err)
+	}
 	application := &app{
 		db:         pool,
 		kube:       kube,
+		auth:       auth,
 		apiKeyName: env("DEMO_APIKEY_NAME", "demo-inventory-key"),
 		apiKeyNS:   env("DEMO_APIKEY_NAMESPACE", "api-monetization-apps"),
 	}
@@ -74,12 +80,11 @@ func main() {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("GET /readyz", application.ready)
-	mux.HandleFunc("GET /api/plans", application.plans)
-	mux.HandleFunc("GET /api/subscriptions", application.subscriptions)
-	mux.HandleFunc("GET /internal/entitlements/{customer}/{product}", application.entitlement)
-	mux.HandleFunc("GET /api/usage", application.usage)
-	mux.HandleFunc("POST /api/subscriptions/{customer}/plan", application.changePlan)
-	mux.HandleFunc("POST /internal/usage", application.recordUsage)
+	mux.HandleFunc("GET /api/config", application.portalConfig)
+	mux.Handle("GET /api/plans", auth.requireAdmin(http.HandlerFunc(application.plans)))
+	mux.Handle("GET /api/subscriptions", auth.requireAdmin(http.HandlerFunc(application.subscriptions)))
+	mux.Handle("GET /api/usage", auth.requireAdmin(http.HandlerFunc(application.usage)))
+	mux.Handle("POST /api/subscriptions/{customer}/plan", auth.requireAdmin(http.HandlerFunc(application.changePlan)))
 	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request) {
 		recorder.Handler(w, r)
 		fmt.Fprintf(w, "# HELP monetization_plan_upgrades_total Successful live plan changes.\n")
@@ -95,14 +100,33 @@ func main() {
 		WriteTimeout:      20 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
-	slog.Info("monetization control plane listening", "address", server.Addr)
-	if err = server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		fatal("server stopped", err)
+	internalMux := http.NewServeMux()
+	internalMux.HandleFunc("GET /internal/entitlements/{customer}/{product}", application.entitlement)
+	internalMux.HandleFunc("POST /internal/usage", application.recordUsage)
+	internalServer := &http.Server{
+		Addr:              env("INTERNAL_HTTP_ADDR", ":8081"),
+		Handler:           recorder.Middleware(internalMux),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      20 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+	serverErrors := make(chan error, 2)
+	go func() {
+		slog.Info("monetization internal API listening", "address", internalServer.Addr)
+		serverErrors <- internalServer.ListenAndServe()
+	}()
+	go func() {
+		slog.Info("monetization portal listening", "address", server.Addr)
+		serverErrors <- server.ListenAndServe()
+	}()
+	if err = <-serverErrors; err != nil && !errors.Is(err, http.ErrServerClosed) {
+		fatal("HTTP server stopped", err)
 	}
 }
 
 func (a *app) index(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
+	if r.URL.Path != "/" && r.URL.Path != "/auth/callback" {
 		http.NotFound(w, r)
 		return
 	}
@@ -111,8 +135,20 @@ func (a *app) index(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "UI unavailable", http.StatusInternalServerError)
 		return
 	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; connect-src 'self' https:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'self' https:")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	_, _ = w.Write(content)
+}
+
+func (a *app) portalConfig(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]string{
+		"clientId":  portalClientID,
+		"issuerUrl": a.auth.externalIssuer,
+	})
 }
 
 func (a *app) ready(w http.ResponseWriter, r *http.Request) {
@@ -424,6 +460,32 @@ func newKubeClient() (*kubeClient, error) {
 func (k *kubeClient) changeAPIKeyPlan(ctx context.Context, namespace, name, plan string) error {
 	apiKeyPath := fmt.Sprintf("/apis/devportal.kuadrant.io/v1alpha1/namespaces/%s/apikeys/%s", namespace, name)
 	return k.request(ctx, http.MethodPatch, apiKeyPath, map[string]any{"spec": map[string]string{"planTier": plan}}, nil)
+}
+
+func (k *kubeClient) routeHost(ctx context.Context, namespace, name string) (string, error) {
+	var route struct {
+		Status struct {
+			Ingress []struct {
+				Host       string `json:"host"`
+				Conditions []struct {
+					Type   string `json:"type"`
+					Status string `json:"status"`
+				} `json:"conditions"`
+			} `json:"ingress"`
+		} `json:"status"`
+	}
+	path := fmt.Sprintf("/apis/route.openshift.io/v1/namespaces/%s/routes/%s", namespace, name)
+	if err := k.request(ctx, http.MethodGet, path, nil, &route); err != nil {
+		return "", err
+	}
+	for _, ingress := range route.Status.Ingress {
+		for _, condition := range ingress.Conditions {
+			if condition.Type == "Admitted" && condition.Status == "True" && ingress.Host != "" {
+				return ingress.Host, nil
+			}
+		}
+	}
+	return "", errors.New("route is not admitted")
 }
 
 func (k *kubeClient) request(ctx context.Context, method, path string, body any, output any) error {

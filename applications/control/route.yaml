@@ -1,0 +1,19 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: monetization-control
+  namespace: api-monetization-data
+  labels:
+    app.kubernetes.io/name: monetization-control
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  subdomain: monetization-control
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  to:
+    kind: Service
+    name: monetization-control
+    weight: 100
+  port:
+    targetPort: http

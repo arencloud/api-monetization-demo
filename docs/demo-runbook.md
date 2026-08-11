@@ -37,7 +37,7 @@ and immediately receives the larger limit.
    oc get route -n api-monetization-gateway
    ```
 
-   `make verify` prints the cluster-generated API-key and JWT endpoint URLs.
+   `make verify` prints the cluster-generated API-key, JWT, and portal URLs.
    Confirm that both use the current cluster's ingress domain. The APIProduct
    **Try it out** view must show the same API-key endpoint rather than the
    OpenShift console URL.
@@ -102,18 +102,30 @@ oc get pods -n api-monetization-apps --watch
 
 ### 3. Prove policy and commercial state
 
+Print the portal address and generated administrator login, then open it in a
+browser:
+
+```bash
+make portal
+```
+
+Sign in through Red Hat build of Keycloak. The portal shows the subscription,
+current rate limit, stored usage, projected revenue, and plan selector. Apply a
+plan change from the browser and explain that the protected API writes
+commercial state and reconciles the RHCL APIKey tier without restarting a
+workload.
+
+The same state can be inspected from the command line with the scoped
+automation identity:
+
 ```bash
 oc get apikey demo-inventory-key -n api-monetization-apps \
   -o jsonpath='{.spec.planTier}{"\n"}'
 
 oc port-forward -n api-monetization-data service/monetization-control 18080:8080
-```
-
-Open `http://127.0.0.1:18080` to show the commercial control-plane view. Its API
-also exposes the state directly:
-
-```bash
-curl --silent http://127.0.0.1:18080/api/subscriptions | jq .
+control_token=$(./scripts/control-token.sh)
+curl --silent --header "Authorization: Bearer $control_token" \
+  http://127.0.0.1:18080/api/subscriptions | jq .
 ```
 
 ### 4. Show observability evidence

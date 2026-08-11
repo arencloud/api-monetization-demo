@@ -3,61 +3,317 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>API Monetization Control Plane</title>
+  <title>API Monetization Portal</title>
   <style>
-    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; background: #0b0d10; color: #f4f4f4; }
-    body { margin: 0; padding: 3rem; background: radial-gradient(circle at top right, #3b1518, #0b0d10 45%); min-height: 100vh; }
-    main { max-width: 980px; margin: auto; }
-    h1 { font-size: clamp(2rem, 6vw, 4.5rem); margin: 0; letter-spacing: -.05em; }
-    .eyebrow { color: #ee0000; font-weight: 700; text-transform: uppercase; letter-spacing: .12em; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: 1rem; margin-top: 2rem; }
-    .card { background: #17191d; border: 1px solid #34373d; border-radius: 14px; padding: 1.25rem; box-shadow: 0 12px 30px #0008; }
-    .value { font-size: 2rem; font-weight: 750; margin-top: .4rem; }
-    button { background: #ee0000; color: white; border: 0; border-radius: 7px; padding: .75rem 1rem; font-weight: 700; cursor: pointer; }
-    button:hover { background: #ff3b3b; }
-    select { background: #25282d; color: white; border: 1px solid #555; border-radius: 7px; padding: .7rem; margin-right: .5rem; }
-    #status { min-height: 1.5rem; color: #b8bbbe; }
+    :root {
+      color-scheme: dark;
+      font-family: Inter, RedHatDisplay, system-ui, sans-serif;
+      background: #090b0d;
+      color: #f5f5f5;
+      --red: #ee0000;
+      --red-dark: #a60000;
+      --panel: #15181c;
+      --panel-raised: #1c2025;
+      --line: #343a40;
+      --muted: #a6abb1;
+      --green: #3e8635;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 80% 0, #4d1018 0, #171016 20rem, #090b0d 44rem); }
+    button, a { font: inherit; }
+    button:focus-visible, a:focus-visible, select:focus-visible { outline: 3px solid #73bcf7; outline-offset: 2px; }
+    header { min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0 4vw; border-bottom: 1px solid #ffffff18; background: #090b0de8; backdrop-filter: blur(14px); position: sticky; top: 0; z-index: 2; }
+    .brand { display: flex; align-items: center; gap: .8rem; font-weight: 750; }
+    .brand-mark { width: 34px; height: 23px; border-radius: 50% 50% 42% 42%; background: var(--red); transform: skew(-10deg); box-shadow: 0 8px 0 -3px #9b0000; }
+    .identity { display: flex; align-items: center; gap: .8rem; color: var(--muted); }
+    main { width: min(1180px, 92vw); margin: 0 auto; padding: 4rem 0 5rem; }
+    .eyebrow { color: #ff6b6b; font-size: .8rem; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
+    h1 { max-width: 850px; margin: .6rem 0 1rem; font-size: clamp(2.5rem, 7vw, 5.5rem); line-height: .96; letter-spacing: -.055em; }
+    h2, h3 { margin-top: 0; }
+    .intro { max-width: 730px; color: #d2d5d8; font-size: 1.12rem; line-height: 1.65; }
+    .actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.6rem; }
+    .button { border: 0; border-radius: 6px; padding: .78rem 1.05rem; cursor: pointer; text-decoration: none; font-weight: 750; display: inline-flex; align-items: center; justify-content: center; gap: .45rem; }
+    .primary { background: var(--red); color: white; }
+    .primary:hover { background: #ff2929; }
+    .secondary { color: white; border: 1px solid #6a7178; background: #202429; }
+    .secondary:hover { background: #2b3036; }
+    .quiet { color: #d8dadd; border: 1px solid #454b52; background: transparent; padding: .55rem .8rem; }
+    .button:disabled { opacity: .5; cursor: not-allowed; }
+    .notice { margin: 2rem 0; border-left: 4px solid #f0ab00; background: #2b250e; padding: 1rem 1.2rem; color: #f5e5aa; }
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1rem; margin-top: 2rem; }
+    .card { grid-column: span 4; background: linear-gradient(145deg, #1d2126, #121519); border: 1px solid var(--line); border-radius: 12px; padding: 1.35rem; box-shadow: 0 18px 45px #0005; }
+    .card-label { color: var(--muted); font-size: .84rem; text-transform: uppercase; letter-spacing: .08em; }
+    .value { font-size: clamp(1.55rem, 3vw, 2.35rem); font-weight: 780; margin-top: .45rem; overflow-wrap: anywhere; }
+    .subvalue { color: var(--muted); margin-top: .35rem; }
+    .wide { grid-column: span 7; }
+    .side { grid-column: span 5; }
+    .plan-row { display: flex; gap: .7rem; margin-top: 1rem; }
+    select { flex: 1; min-width: 0; padding: .78rem; background: #0e1013; color: white; border: 1px solid #555d65; border-radius: 6px; }
+    .status { min-height: 1.5rem; margin: 1rem 0 0; color: #c7cbd0; }
+    .status.success { color: #92d68a; }
+    .status.error { color: #ff8d8d; }
+    .links { display: grid; gap: .65rem; }
+    .platform-link { color: #f4f4f4; text-decoration: none; border: 1px solid #42484f; border-radius: 7px; padding: .85rem 1rem; background: #20242a; display: flex; justify-content: space-between; }
+    .platform-link:hover { border-color: #858b91; }
+    .badge { display: inline-flex; align-items: center; gap: .4rem; padding: .3rem .55rem; border-radius: 999px; background: #173d19; color: #a9e8a2; font-size: .78rem; font-weight: 700; }
+    .badge::before { content: ''; width: .48rem; height: .48rem; border-radius: 50%; background: #6ec664; }
+    .hidden { display: none !important; }
+    footer { color: #777e85; border-top: 1px solid #ffffff12; padding: 2rem 0 0; margin-top: 3rem; font-size: .88rem; }
+    @media (max-width: 840px) { .card, .wide, .side { grid-column: span 12; } header { padding: 0 1rem; } main { padding-top: 2.5rem; } .identity span { display: none; } }
+    @media (max-width: 520px) { .plan-row { flex-direction: column; } .card { padding: 1.1rem; } }
   </style>
 </head>
 <body>
+<header>
+  <div class="brand"><span class="brand-mark" aria-hidden="true"></span><span>API Monetization</span></div>
+  <div class="identity">
+    <span id="identity-name">Not signed in</span>
+    <button id="logout" class="button quiet hidden" type="button">Sign out</button>
+  </div>
+</header>
 <main>
-  <p class="eyebrow">Red Hat Connectivity Link demo</p>
-  <h1>API Monetization</h1>
-  <p>Commercial state in PostgreSQL. Enforcement state reconciled live through RHCL.</p>
-  <section class="grid">
-    <article class="card"><div>Customer</div><div class="value" id="customer">—</div></article>
-    <article class="card"><div>API product</div><div class="value" id="product">—</div></article>
-    <article class="card"><div>Current plan</div><div class="value" id="plan">—</div></article>
-    <article class="card"><div>Rate limit</div><div class="value" id="limit">—</div></article>
-    <article class="card"><div>Billable requests</div><div class="value" id="usage">—</div></article>
-    <article class="card"><div>Projected revenue</div><div class="value" id="revenue">—</div></article>
+  <section>
+    <div class="eyebrow">Red Hat Connectivity Link · OpenShift</div>
+    <h1>Turn API traffic into a product.</h1>
+    <p class="intro">Manage subscription tiers, observe billable requests and apply new gateway limits without restarting the gateway or application.</p>
+    <div id="signed-out-actions" class="actions">
+      <button id="login" class="button primary" type="button">Sign in with Keycloak</button>
+    </div>
+    <div id="signed-in-actions" class="actions hidden">
+      <span class="badge">Authenticated administrator</span>
+      <button id="refresh" class="button secondary" type="button">Refresh usage</button>
+    </div>
   </section>
-  <section class="card" style="margin-top:1rem">
-    <h2>Live plan change</h2>
-    <select id="plans"></select><button id="upgrade">Apply without restart</button>
-    <p id="status"></p>
+
+  <div id="notice" class="notice hidden" role="status"></div>
+
+  <section id="dashboard" class="hidden" aria-label="Monetization dashboard">
+    <div class="grid">
+      <article class="card"><div class="card-label">Customer</div><div class="value" id="customer">—</div><div class="subvalue" id="customer-id">—</div></article>
+      <article class="card"><div class="card-label">API product</div><div class="value" id="product">—</div><div class="subvalue">Inventory and availability</div></article>
+      <article class="card"><div class="card-label">Current plan</div><div class="value" id="plan">—</div><div class="subvalue" id="price">—</div></article>
+      <article class="card"><div class="card-label">Rate limit</div><div class="value" id="limit">—</div><div class="subvalue">Enforced by Connectivity Link</div></article>
+      <article class="card"><div class="card-label">Billable requests</div><div class="value" id="usage">—</div><div class="subvalue" id="included">—</div></article>
+      <article class="card"><div class="card-label">Projected revenue</div><div class="value" id="revenue">—</div><div class="subvalue" id="overage">—</div></article>
+
+      <article class="card wide">
+        <h2>Live plan change</h2>
+        <p class="subvalue">Update commercial state and RHCL enforcement together. Existing workloads stay running.</p>
+        <div class="plan-row">
+          <select id="plans" aria-label="Subscription plan"></select>
+          <button id="upgrade" class="button primary" type="button">Apply plan</button>
+        </div>
+        <p id="status" class="status" aria-live="polite"></p>
+      </article>
+
+      <aside class="card side">
+        <h2>Platform views</h2>
+        <div class="links">
+          <a id="catalog-link" class="platform-link" target="_blank" rel="noreferrer">OpenShift API Catalog <span>↗</span></a>
+          <a id="api-link" class="platform-link" target="_blank" rel="noreferrer">Inventory API endpoint <span>↗</span></a>
+          <a id="traces-link" class="platform-link" target="_blank" rel="noreferrer">Tempo traces <span>↗</span></a>
+        </div>
+      </aside>
+    </div>
   </section>
+
+  <footer>Commercial state: PostgreSQL · Identity: Red Hat build of Keycloak · Enforcement: Red Hat Connectivity Link · Delivery: OpenShift GitOps</footer>
 </main>
 <script>
-const state = { subscription: null };
-async function refresh() {
-  const [subscriptions, plans, usage] = await Promise.all([fetch('/api/subscriptions').then(r => r.json()), fetch('/api/plans').then(r => r.json()), fetch('/api/usage').then(r => r.json())]);
-  state.subscription = subscriptions[0];
-  document.querySelector('#customer').textContent = state.subscription.customer;
-  document.querySelector('#product').textContent = state.subscription.product;
-  document.querySelector('#plan').textContent = state.subscription.planName;
-  document.querySelector('#limit').textContent = state.subscription.rateLimitRequests ? `${state.subscription.rateLimitRequests} / ${state.subscription.rateLimitWindowSeconds}s` : 'Unlimited';
-  document.querySelector('#usage').textContent = usage[0].requests.toLocaleString();
-  document.querySelector('#revenue').textContent = `€${usage[0].projectedRevenueEuro.toFixed(2)}`;
-  document.querySelector('#plans').innerHTML = plans.map(p => `<option value="${p.id}" ${p.id === state.subscription.plan ? 'selected' : ''}>${p.displayName}</option>`).join('');
+const storageKey = 'api-monetization-oidc';
+const state = { config: null, tokens: null, subscription: null, plans: [] };
+const $ = selector => document.querySelector(selector);
+
+function encodeBase64URL(bytes) {
+  return btoa(String.fromCharCode(...new Uint8Array(bytes))).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
 }
-document.querySelector('#upgrade').addEventListener('click', async () => {
-  const status = document.querySelector('#status'); status.textContent = 'Reconciling commercial and enforcement state…';
-  const response = await fetch(`/api/subscriptions/${state.subscription.customerId}/plan`, {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({plan:document.querySelector('#plans').value})});
-  status.textContent = response.ok ? 'Plan is live. No workloads were restarted.' : `Upgrade failed: ${(await response.json()).error}`;
-  if (response.ok) await refresh();
-});
-refresh().catch(error => document.querySelector('#status').textContent = error);
+
+function randomValue() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return encodeBase64URL(bytes);
+}
+
+async function challenge(verifier) {
+  return encodeBase64URL(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+}
+
+function decodeClaims(token) {
+  const payload = token.split('.')[1].replaceAll('-', '+').replaceAll('_', '/');
+  return JSON.parse(atob(payload.padEnd(Math.ceil(payload.length / 4) * 4, '=')));
+}
+
+function saveTokens(tokens) {
+  const claims = decodeClaims(tokens.access_token);
+  state.tokens = { ...tokens, expiresAt: claims.exp * 1000 };
+  sessionStorage.setItem(storageKey, JSON.stringify(state.tokens));
+}
+
+function clearTokens() {
+  state.tokens = null;
+  sessionStorage.removeItem(storageKey);
+}
+
+async function exchange(params) {
+  const response = await fetch(`${state.config.issuerUrl}/protocol/openid-connect/token`, {
+    method: 'POST',
+    headers: {'content-type': 'application/x-www-form-urlencoded'},
+    body: new URLSearchParams(params)
+  });
+  if (!response.ok) throw new Error('Keycloak token exchange failed');
+  const tokens = await response.json();
+  saveTokens(tokens);
+  return tokens.access_token;
+}
+
+async function login() {
+  const verifier = randomValue();
+  const loginState = randomValue();
+  sessionStorage.setItem('oidc-verifier', verifier);
+  sessionStorage.setItem('oidc-state', loginState);
+  const parameters = new URLSearchParams({
+    client_id: state.config.clientId,
+    response_type: 'code',
+    scope: 'openid profile email',
+    redirect_uri: `${location.origin}/auth/callback`,
+    state: loginState,
+    code_challenge: await challenge(verifier),
+    code_challenge_method: 'S256'
+  });
+  location.assign(`${state.config.issuerUrl}/protocol/openid-connect/auth?${parameters}`);
+}
+
+async function completeLogin() {
+  const parameters = new URLSearchParams(location.search);
+  if (!parameters.has('code')) return;
+  const expectedState = sessionStorage.getItem('oidc-state');
+  const verifier = sessionStorage.getItem('oidc-verifier');
+  if (!expectedState || parameters.get('state') !== expectedState || !verifier) throw new Error('OIDC login state validation failed');
+  await exchange({
+    grant_type: 'authorization_code',
+    client_id: state.config.clientId,
+    code: parameters.get('code'),
+    redirect_uri: `${location.origin}/auth/callback`,
+    code_verifier: verifier
+  });
+  sessionStorage.removeItem('oidc-state');
+  sessionStorage.removeItem('oidc-verifier');
+  history.replaceState({}, '', '/');
+}
+
+async function accessToken() {
+  if (!state.tokens) throw new Error('Sign in to continue');
+  if (state.tokens.expiresAt > Date.now() + 30000) return state.tokens.access_token;
+  if (!state.tokens.refresh_token) { clearTokens(); throw new Error('Your session expired. Sign in again.'); }
+  return exchange({grant_type: 'refresh_token', client_id: state.config.clientId, refresh_token: state.tokens.refresh_token});
+}
+
+async function api(path, options = {}) {
+  const token = await accessToken();
+  const response = await fetch(path, {...options, headers: {...options.headers, Authorization: `Bearer ${token}`}});
+  if (response.status === 401) { clearTokens(); renderIdentity(); throw new Error('Your session expired. Sign in again.'); }
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({error: `HTTP ${response.status}`}));
+    throw new Error(body.error || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+function clusterLinks() {
+  const marker = location.hostname.indexOf('.apps.');
+  if (marker < 0) return;
+  const suffix = location.hostname.slice(marker);
+  $('#catalog-link').href = `https://console-openshift-console${suffix}/api-catalog`;
+  $('#api-link').href = `https://api-monetization${suffix}/inventory`;
+  $('#traces-link').href = `https://tempo-api-monetization-jaegerui-api-monetization-observability${suffix}`;
+}
+
+function money(cents) {
+  return cents == null ? 'Custom pricing' : new Intl.NumberFormat(undefined, {style: 'currency', currency: 'EUR'}).format(cents / 100) + ' / month';
+}
+
+function renderIdentity() {
+  const signedIn = Boolean(state.tokens);
+  $('#signed-out-actions').classList.toggle('hidden', signedIn);
+  $('#signed-in-actions').classList.toggle('hidden', !signedIn);
+  $('#logout').classList.toggle('hidden', !signedIn);
+  $('#dashboard').classList.toggle('hidden', !signedIn);
+  $('#identity-name').textContent = signedIn ? (decodeClaims(state.tokens.access_token).preferred_username || 'Administrator') : 'Not signed in';
+}
+
+async function refresh() {
+  const [subscriptions, plans, usage] = await Promise.all([api('/api/subscriptions'), api('/api/plans'), api('/api/usage')]);
+  if (!subscriptions.length) throw new Error('No active subscriptions were found');
+  state.subscription = subscriptions[0];
+  state.plans = plans;
+  const usageItem = usage.find(item => item.customer === state.subscription.customerId && item.product === state.subscription.product) || {requests: 0, overageRequests: 0, projectedRevenueEuro: 0};
+  $('#customer').textContent = state.subscription.customer;
+  $('#customer-id').textContent = state.subscription.customerId;
+  $('#product').textContent = state.subscription.product;
+  $('#plan').textContent = state.subscription.planName;
+  $('#price').textContent = money(state.subscription.monthlyPriceCents);
+  $('#limit').textContent = state.subscription.rateLimitRequests ? `${state.subscription.rateLimitRequests.toLocaleString()} / ${state.subscription.rateLimitWindowSeconds}s` : 'Unlimited';
+  $('#usage').textContent = usageItem.requests.toLocaleString();
+  $('#included').textContent = state.subscription.includedRequests == null ? 'Custom allowance' : `${state.subscription.includedRequests.toLocaleString()} included`;
+  $('#revenue').textContent = new Intl.NumberFormat(undefined, {style: 'currency', currency: 'EUR'}).format(usageItem.projectedRevenueEuro);
+  $('#overage').textContent = `${usageItem.overageRequests.toLocaleString()} overage requests`;
+  $('#plans').replaceChildren(...plans.map(plan => {
+    const option = document.createElement('option');
+    option.value = plan.id;
+    option.textContent = `${plan.displayName} — ${money(plan.monthlyPriceCents)}`;
+    option.selected = plan.id === state.subscription.plan;
+    return option;
+  }));
+  $('#status').textContent = `Subscription version ${state.subscription.version} · live data refreshed ${new Date().toLocaleTimeString()}`;
+  $('#status').className = 'status';
+}
+
+async function applyPlan() {
+  const status = $('#status');
+  $('#upgrade').disabled = true;
+  status.className = 'status';
+  status.textContent = 'Reconciling PostgreSQL commercial state and RHCL enforcement…';
+  try {
+    await api(`/api/subscriptions/${state.subscription.customerId}/plan`, {
+      method: 'POST',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({plan: $('#plans').value})
+    });
+    await refresh();
+    status.className = 'status success';
+    status.textContent = 'Plan is live. No gateway or application workload was restarted.';
+  } catch (error) {
+    status.className = 'status error';
+    status.textContent = error.message;
+  } finally {
+    $('#upgrade').disabled = false;
+  }
+}
+
+function logout() {
+  const idToken = state.tokens?.id_token;
+  clearTokens();
+  const parameters = new URLSearchParams({client_id: state.config.clientId, post_logout_redirect_uri: location.origin});
+  if (idToken) parameters.set('id_token_hint', idToken);
+  location.assign(`${state.config.issuerUrl}/protocol/openid-connect/logout?${parameters}`);
+}
+
+async function start() {
+  state.config = await fetch('/api/config', {cache: 'no-store'}).then(response => response.json());
+  const stored = sessionStorage.getItem(storageKey);
+  if (stored) state.tokens = JSON.parse(stored);
+  await completeLogin();
+  renderIdentity();
+  clusterLinks();
+  if (state.tokens) await refresh();
+}
+
+$('#login').addEventListener('click', () => login().catch(error => showNotice(error.message)));
+$('#logout').addEventListener('click', logout);
+$('#refresh').addEventListener('click', () => refresh().catch(error => showNotice(error.message)));
+$('#upgrade').addEventListener('click', applyPlan);
+function showNotice(message) { $('#notice').textContent = message; $('#notice').classList.remove('hidden'); }
+start().catch(error => showNotice(error.message));
 </script>
 </body>
 </html>

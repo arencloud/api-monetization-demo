@@ -1,0 +1,383 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: api-monetization-portal-identity
+  namespace: api-monetization-identity
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  labels:
+    app.kubernetes.io/name: api-monetization-portal-identity
+    app.kubernetes.io/part-of: api-monetization
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: api-monetization-portal-ingress-reader
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+rules:
+  - apiGroups:
+      - config.openshift.io
+    resources:
+      - ingresses
+    resourceNames:
+      - cluster
+    verbs:
+      - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: api-monetization-portal-ingress-reader
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: api-monetization-portal-ingress-reader
+subjects:
+  - kind: ServiceAccount
+    name: api-monetization-portal-identity
+    namespace: api-monetization-identity
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: api-monetization-portal-route-config
+  namespace: api-monetization-identity
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - create
+      - get
+      - patch
+      - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: api-monetization-portal-route-config
+  namespace: api-monetization-identity
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: api-monetization-portal-route-config
+subjects:
+  - kind: ServiceAccount
+    name: api-monetization-portal-identity
+    namespace: api-monetization-identity
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: api-monetization-portal-route-config
+  namespace: api-monetization-identity
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "10"
+  labels:
+    app.kubernetes.io/name: api-monetization-portal-route-config
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  activeDeadlineSeconds: 180
+  backoffLimit: 2
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "false"
+      labels:
+        app.kubernetes.io/name: api-monetization-portal-route-config
+        app.kubernetes.io/part-of: api-monetization
+    spec:
+      serviceAccountName: api-monetization-portal-identity
+      restartPolicy: Never
+      containers:
+        - name: discover
+          image: registry.redhat.io/openshift4/ose-cli-rhel9:v4.22
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -Eeuo
+            - pipefail
+            - -c
+            - |
+              apps_domain=""
+              for _ in $(seq 1 30); do
+                apps_domain=$(oc get ingress.config.openshift.io cluster \
+                  -o jsonpath='{.spec.domain}' 2>/dev/null || true)
+                [[ -n $apps_domain ]] && break
+                sleep 2
+              done
+              if [[ -z $apps_domain ]]; then
+                echo "OpenShift ingress apps domain was not published" >&2
+                exit 1
+              fi
+
+              portal_origin="https://monetization-control.$apps_domain"
+              oc create configmap monetization-portal-route \
+                --from-literal="portal-origin=$portal_origin" \
+                --from-literal="portal-redirect-uri=$portal_origin/*" \
+                --dry-run=client -o yaml \
+                | oc apply --server-side \
+                    --field-manager=api-monetization-portal-route -f -
+              echo "Portal OIDC redirect is $portal_origin/*"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: api-monetization-portal-identity
+  namespace: api-monetization-identity
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "20"
+  labels:
+    app.kubernetes.io/name: api-monetization-portal-identity
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  activeDeadlineSeconds: 600
+  backoffLimit: 2
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "false"
+      labels:
+        app.kubernetes.io/name: api-monetization-portal-identity
+        app.kubernetes.io/part-of: api-monetization
+    spec:
+      serviceAccountName: api-monetization-portal-identity
+      restartPolicy: Never
+      containers:
+        - name: configure
+          image: registry.redhat.io/rhbk/keycloak-rhel9:26.6
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: KEYCLOAK_ADMIN
+              valueFrom:
+                secretKeyRef:
+                  name: api-monetization-initial-admin
+                  key: username
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: api-monetization-initial-admin
+                  key: password
+            - name: AUTOMATION_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: monetization-portal-credentials
+                  key: automation-client-secret
+            - name: PORTAL_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: monetization-portal-credentials
+                  key: portal-admin-password
+            - name: PORTAL_ORIGIN
+              valueFrom:
+                configMapKeyRef:
+                  name: monetization-portal-route
+                  key: portal-origin
+            - name: PORTAL_REDIRECT_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: monetization-portal-route
+                  key: portal-redirect-uri
+          command:
+            - /bin/bash
+            - -Eeuo
+            - pipefail
+            - -c
+            - |
+              kcadm=/opt/keycloak/bin/kcadm.sh
+              server=http://api-monetization-service:8080
+              realm=api-monetization
+              portal_role=monetization-admin
+
+              for attempt in $(seq 1 60); do
+                if "$kcadm" config credentials --config /tmp/kcadm.config \
+                  --server "$server" --realm master \
+                  --user "$KEYCLOAK_ADMIN" --password "$KEYCLOAK_ADMIN_PASSWORD"; then
+                  break
+                fi
+                if (( attempt == 60 )); then
+                  echo "Keycloak admin API did not become ready" >&2
+                  exit 1
+                fi
+                sleep 5
+              done
+
+              for attempt in $(seq 1 60); do
+                if "$kcadm" get "realms/$realm" --config /tmp/kcadm.config >/dev/null 2>&1; then
+                  break
+                fi
+                if (( attempt == 60 )); then
+                  echo "Realm $realm did not become ready" >&2
+                  exit 1
+                fi
+                sleep 5
+              done
+
+              json_id() {
+                sed -n 's/.*"id" *: *"\([^"]*\)".*/\1/p' | head -n 1
+              }
+
+              if ! "$kcadm" get "roles/$portal_role" -r "$realm" \
+                --config /tmp/kcadm.config >/dev/null 2>&1; then
+                "$kcadm" create roles -r "$realm" --config /tmp/kcadm.config \
+                  -s name="$portal_role" \
+                  -s description='Administrator of API subscriptions and plans'
+              fi
+
+              cat >/tmp/portal-client.json <<JSON
+              {
+                "clientId": "monetization-portal",
+                "name": "API Monetization Portal",
+                "description": "Browser client for the API monetization administration portal",
+                "enabled": true,
+                "protocol": "openid-connect",
+                "publicClient": true,
+                "standardFlowEnabled": true,
+                "directAccessGrantsEnabled": false,
+                "serviceAccountsEnabled": false,
+                "fullScopeAllowed": true,
+                "redirectUris": ["$PORTAL_REDIRECT_URI"],
+                "webOrigins": ["$PORTAL_ORIGIN"],
+                "attributes": {
+                  "pkce.code.challenge.method": "S256",
+                  "post.logout.redirect.uris": "$PORTAL_REDIRECT_URI"
+                },
+                "protocolMappers": [{
+                  "name": "control-plane-audience",
+                  "protocol": "openid-connect",
+                  "protocolMapper": "oidc-audience-mapper",
+                  "config": {
+                    "included.custom.audience": "monetization-control",
+                    "access.token.claim": "true"
+                  }
+                }]
+              }
+              JSON
+
+              cat >/tmp/automation-client.json <<JSON
+              {
+                "clientId": "monetization-automation",
+                "name": "API Monetization Automation",
+                "description": "Service client used by deterministic demo automation",
+                "enabled": true,
+                "protocol": "openid-connect",
+                "publicClient": false,
+                "clientAuthenticatorType": "client-secret",
+                "secret": "$AUTOMATION_CLIENT_SECRET",
+                "serviceAccountsEnabled": true,
+                "standardFlowEnabled": false,
+                "directAccessGrantsEnabled": false,
+                "fullScopeAllowed": true,
+                "protocolMappers": [{
+                  "name": "control-plane-audience",
+                  "protocol": "openid-connect",
+                  "protocolMapper": "oidc-audience-mapper",
+                  "config": {
+                    "included.custom.audience": "monetization-control",
+                    "access.token.claim": "true"
+                  }
+                }]
+              }
+              JSON
+
+              upsert_client() {
+                local client_id=$1
+                local definition=$2
+                local client_uuid
+                client_uuid=$("$kcadm" get clients -r "$realm" \
+                  --config /tmp/kcadm.config -q clientId="$client_id" --fields id | json_id)
+                if [[ -z $client_uuid ]]; then
+                  "$kcadm" create clients -r "$realm" --config /tmp/kcadm.config \
+                    -f "$definition" >/dev/null
+                else
+                  "$kcadm" update "clients/$client_uuid" -r "$realm" \
+                    --config /tmp/kcadm.config -f "$definition"
+                fi
+                "$kcadm" get clients -r "$realm" --config /tmp/kcadm.config \
+                  -q clientId="$client_id" --fields id | json_id
+              }
+
+              portal_client_uuid=$(upsert_client monetization-portal /tmp/portal-client.json)
+              automation_client_uuid=$(upsert_client monetization-automation /tmp/automation-client.json)
+              if [[ -z $portal_client_uuid || -z $automation_client_uuid ]]; then
+                echo "Portal OIDC clients were not created" >&2
+                exit 1
+              fi
+
+              admin_user_id=$("$kcadm" get users -r "$realm" --config /tmp/kcadm.config \
+                -q username=demo-admin --fields id | json_id)
+              if [[ -z $admin_user_id ]]; then
+                admin_user_id=$("$kcadm" create users -r "$realm" --config /tmp/kcadm.config \
+                  -s username=demo-admin -s enabled=true \
+                  -s email=demo-admin@example.invalid -s emailVerified=true \
+                  -s firstName=Demo -s lastName=Administrator -i)
+              else
+                "$kcadm" update "users/$admin_user_id" -r "$realm" \
+                  --config /tmp/kcadm.config -s enabled=true \
+                  -s email=demo-admin@example.invalid -s emailVerified=true \
+                  -s firstName=Demo -s lastName=Administrator
+              fi
+              "$kcadm" set-password -r "$realm" --config /tmp/kcadm.config \
+                --userid "$admin_user_id" --new-password "$PORTAL_ADMIN_PASSWORD"
+              "$kcadm" add-roles -r "$realm" --config /tmp/kcadm.config \
+                --uid "$admin_user_id" --rolename "$portal_role"
+
+              service_user_id=$("$kcadm" get "clients/$automation_client_uuid/service-account-user" \
+                -r "$realm" --config /tmp/kcadm.config --fields id | json_id)
+              if [[ -z $service_user_id ]]; then
+                echo "Automation service account was not created" >&2
+                exit 1
+              fi
+              "$kcadm" add-roles -r "$realm" --config /tmp/kcadm.config \
+                --uid "$service_user_id" --rolename "$portal_role"
+              echo "Keycloak portal clients and administrator identity are configured"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault

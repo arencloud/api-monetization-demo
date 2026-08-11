@@ -65,6 +65,19 @@ make verify
 make demo
 ```
 
+Print the admitted portal URL and generated demonstration administrator login:
+
+```bash
+make portal
+```
+
+The portal redirects the browser to the externally admitted Keycloak Route and
+uses Authorization Code with PKCE. The generated `demo-admin` identity has the
+`monetization-admin` realm role. A separate confidential client is generated
+for CLI automation; neither credential is stored in Git. A GitOps hook reads the
+OpenShift ingress domain and configures the browser client with the exact HTTPS
+portal origin and callback rather than a permissive wildcard.
+
 The expected end state is that every Argo CD application is `Synced` and
 `Healthy`, every operator CSV is `Succeeded`, the `Kuadrant` resource is ready,
 the `Istio`/`IstioCNI` resources report healthy status, both PostgreSQL clusters

@@ -1,0 +1,21 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: api-monetization-keycloak
+  namespace: api-monetization-identity
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  subdomain: keycloak-api-monetization
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  to:
+    kind: Service
+    name: api-monetization-service
+    weight: 100
+  port:
+    targetPort: http

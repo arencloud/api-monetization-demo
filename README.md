@@ -118,6 +118,11 @@ Enterprise plan policies, an Inventory API, a PostgreSQL-backed subscription
 control plane, live plan changes, Prometheus metrics, a Grafana dashboard,
 structured logs, and an OpenTelemetry-to-Tempo trace pipeline.
 
+The monetization portal is exposed through a portable OpenShift Route and uses
+Red Hat build of Keycloak Authorization Code flow with PKCE. Its subscription,
+usage, and upgrade APIs require the `monetization-admin` realm role; internal
+entitlement and usage ingestion use a separate, non-routed service port.
+
 The deterministic scenario performs live Free-to-Developer upgrades for both
 the generated API key and the same Keycloak machine client. The JWT path also
 demonstrates that an existing signed token retains its old plan until the client
@@ -128,6 +133,7 @@ After deployment and verification, run the deterministic scenario:
 ```bash
 make demo
 make reset-demo
+make portal
 ```
 
 See [the live demo runbook](docs/demo-runbook.md) before presenting it.
