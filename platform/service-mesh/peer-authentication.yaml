@@ -1,0 +1,11 @@
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: api-monetization-apps
+  labels:
+    app.kubernetes.io/name: service-mesh-mtls
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  mtls:
+    mode: STRICT

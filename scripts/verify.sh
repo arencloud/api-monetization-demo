@@ -2,6 +2,13 @@
 
 set -Eeuo pipefail
 
+for command_name in oc curl base64; do
+  if ! command -v "$command_name" >/dev/null 2>&1; then
+    echo "error: $command_name is required" >&2
+    exit 1
+  fi
+done
+
 wait_for_application() {
   local application_name=$1
   local state=""
@@ -53,7 +60,7 @@ wait_for_http_route() {
       2>/dev/null || true)
     accepted=$(oc get httproute.gateway.networking.k8s.io "$route_name" \
       -n "$namespace" \
-      -o jsonpath='{range .status.parents[?(@.controllerName=="openshift.io/gateway-controller/v1")].conditions[?(@.type=="Accepted")]}{.status}{"|"}{.observedGeneration}{end}' \
+      -o jsonpath='{range .status.parents[?(@.controllerName=="istio.io/gateway-controller")].conditions[?(@.type=="Accepted")]}{.status}{"|"}{.observedGeneration}{end}' \
       2>/dev/null || true)
     if [[ -n $generation && $accepted == "True|$generation" ]]; then
       echo "HTTPRoute $namespace/$route_name is Accepted"
@@ -121,8 +128,27 @@ oc wait --for=condition=Ready limitadors.limitador.kuadrant.io/limitador \
   -n kuadrant-system --timeout=10m
 oc wait --for=condition=Programmed gateways.gateway.networking.k8s.io/api-monetization \
   -n api-monetization-gateway --timeout=10m
+gateway_class=$(oc get gateway api-monetization -n api-monetization-gateway \
+  -o jsonpath='{.spec.gatewayClassName}')
+gateway_controller=$(oc get gatewayclass "$gateway_class" \
+  -o jsonpath='{.spec.controllerName}')
+if [[ $gateway_class != "istio" || $gateway_controller != "istio.io/gateway-controller" ]]; then
+  echo "error: Gateway is not controlled by the project Service Mesh" >&2
+  exit 1
+fi
+peer_mtls=$(oc get peerauthentication.security.istio.io default \
+  -n api-monetization-apps -o jsonpath='{.spec.mtls.mode}')
+if [[ $peer_mtls != "STRICT" ]]; then
+  echo "error: application Service Mesh mTLS mode is not STRICT" >&2
+  exit 1
+fi
+if oc get destinationrule.networking.istio.io/inventory-api-cross-mesh \
+  -n api-monetization-gateway >/dev/null 2>&1; then
+  echo "error: obsolete cross-mesh plaintext exception still exists" >&2
+  exit 1
+fi
 gateway_service=$(oc get services -n api-monetization-gateway \
-  -l gateway.networking.k8s.io/gateway-name=api-monetization \
+  -l gateway.networking.k8s.io/gateway-name=api-monetization,gateway.networking.k8s.io/gateway-class-name=istio \
   -o jsonpath='{.items[0].metadata.name}')
 gateway_service_type=$(oc get service "$gateway_service" -n api-monetization-gateway \
   -o jsonpath='{.spec.type}')
@@ -145,10 +171,30 @@ case "$gateway_service_type" in
     exit 1
     ;;
 esac
+gateway_proxy=$(oc get pods -n api-monetization-gateway \
+  -l gateway.networking.k8s.io/gateway-name=api-monetization \
+  -o jsonpath='{range .items[*].spec.containers[*]}{.name}{"\n"}{end}' \
+  | grep -Fx istio-proxy | head -n 1 || true)
+inventory_proxy=$(oc get pods -n api-monetization-apps \
+  -l app.kubernetes.io/name=inventory-api \
+  -o jsonpath='{range .items[*].spec.containers[*]}{.name}{"\n"}{end}' \
+  | grep -Fx istio-proxy | head -n 1 || true)
+if [[ $gateway_proxy != "istio-proxy" || $inventory_proxy != "istio-proxy" ]]; then
+  echo "error: Gateway or Inventory workload is missing its Service Mesh proxy" >&2
+  exit 1
+fi
 oc wait route/api-monetization -n api-monetization-gateway \
   --for=jsonpath='{.status.ingress[0].conditions[0].status}'=True --timeout=5m
 oc wait route/api-monetization-jwt -n api-monetization-gateway \
   --for=jsonpath='{.status.ingress[0].conditions[0].status}'=True --timeout=5m
+for route_name in api-monetization api-monetization-jwt; do
+  route_service=$(oc get route "$route_name" -n api-monetization-gateway \
+    -o jsonpath='{.spec.to.name}')
+  if [[ $route_service != "$gateway_service" ]]; then
+    echo "error: Route $route_name targets $route_service instead of $gateway_service" >&2
+    exit 1
+  fi
+done
 wait_for_http_route inventory-api-key api-monetization-apps
 wait_for_http_route inventory-jwt api-monetization-apps
 for policy in inventory-api-key inventory-jwt; do
@@ -198,6 +244,37 @@ if [[ ${api_product_server:-} != "https://$api_hostname" ]]; then
 fi
 echo "API-key endpoint: https://$api_hostname/inventory"
 echo "JWT endpoint: https://$jwt_hostname/inventory"
+
+echo "validating authenticated traffic through the complete data path"
+router_hostname=$(oc get route api-monetization -n api-monetization-gateway \
+  -o jsonpath='{.status.ingress[0].routerCanonicalHostname}')
+ingress_certificate=$(oc get ingresscontroller.operator.openshift.io default \
+  -n openshift-ingress-operator -o jsonpath='{.spec.defaultCertificate.name}')
+if [[ -z $ingress_certificate ]]; then
+  ingress_certificate=router-certs-default
+fi
+api_key_secret=$(oc get apikey demo-inventory-key -n api-monetization-apps \
+  -o jsonpath='{.spec.secretRef.name}')
+api_key_value=$(oc get secret "$api_key_secret" -n api-monetization-apps \
+  -o go-template='{{index .data "api_key"}}' | base64 -d)
+api_status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+  --connect-to "$api_hostname:443:$router_hostname:443" \
+  --header "Authorization: APIKEY $api_key_value" \
+  "https://$api_hostname/inventory")
+case "$api_status" in
+  200)
+    echo "authenticated data-path request returned HTTP 200 through enforced same-mesh mTLS"
+    ;;
+  429)
+    echo "authenticated data-path request was rate-limited; wait for the active plan window to expire before an end-to-end retest"
+    ;;
+  *)
+    echo "error: authenticated data-path request returned HTTP $api_status" >&2
+    exit 1
+    ;;
+esac
 
 echo "waiting for operator console plugins"
 for plugin in gitops-plugin kuadrant-console-plugin; do

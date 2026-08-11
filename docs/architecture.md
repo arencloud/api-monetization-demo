@@ -78,6 +78,12 @@ self-healing.
   explicitly open an API product.
 - Service Mesh mTLS protects internal calls independently of external client
   authentication.
+- The Gateway API data plane and application sidecars are managed by the same
+  project Service Mesh control plane and trust root. Application namespaces
+  enforce `STRICT` peer authentication, so accepted gateway-to-workload traffic
+  is always mutually authenticated and encrypted.
+- The OpenShift Router only provides external edge termination when the Gateway
+  Service uses `ClusterIP`; it does not introduce another mesh control plane.
 - Portal and administration paths are isolated from public API listeners.
 
 ## Deployment ordering

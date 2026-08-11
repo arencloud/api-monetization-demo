@@ -111,6 +111,16 @@ if not str(openapi.get("openapi", "")).startswith("3.") or not openapi.get("path
     raise SystemExit("Inventory OpenAPI document is incomplete")
 if openapi.get("servers", [{}])[0].get("url") != "https://api-monetization.invalid":
     raise SystemExit("Inventory OpenAPI document is missing its portable server placeholder")
+
+with open("platform/gateway/gateway.yaml", encoding="utf-8") as stream:
+    gateway = yaml.safe_load(stream)
+if gateway.get("spec", {}).get("gatewayClassName") != "istio":
+    raise SystemExit("Gateway must use the project Service Mesh GatewayClass")
+
+with open("platform/service-mesh/peer-authentication.yaml", encoding="utf-8") as stream:
+    peer_authentication = yaml.safe_load(stream)
+if peer_authentication.get("spec", {}).get("mtls", {}).get("mode") != "STRICT":
+    raise SystemExit("Application Service Mesh peer authentication must enforce STRICT mTLS")
 PY
 
 if unformatted=$(gofmt -l applications internal); [[ -n $unformatted ]]; then

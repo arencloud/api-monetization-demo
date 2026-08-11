@@ -22,6 +22,14 @@ Routes publish the API-key and JWT hostnames in either mode. This avoids assumin
 that a bare-metal cluster has a Service LoadBalancer provider while using one
 when it is available.
 
+The Gateway uses the `istio` GatewayClass created by the demo's OpenShift Service
+Mesh control plane. Gateway proxies and application sidecars therefore share one
+trust root, and the application namespace enforces `STRICT` peer authentication.
+The OpenShift Router remains an edge exposure mechanism for `ClusterIP` mode but
+does not own or operate a second mesh control plane. A migration hook recreates a
+pre-existing demo Gateway when its immutable class differs, and the route-host
+hook discovers the generated Gateway Service instead of relying on its name.
+
 OpenShift application builds require the integrated image registry. The registry
 and its persistent storage are cluster infrastructure prerequisites, not part of
 the demo lifecycle. Preflight rejects a Removed, unavailable, unconfigured, or

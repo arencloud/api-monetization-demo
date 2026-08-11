@@ -10,7 +10,9 @@ metadata:
     app.kubernetes.io/part-of: api-monetization
     kuadrant.io/gateway: "true"
 spec:
-  gatewayClassName: openshift-default
+  # Created by the project-owned OpenShift Service Mesh control plane. Using
+  # this class keeps the Gateway and workload sidecars in one trust domain.
+  gatewayClassName: istio
   listeners:
     - name: http
       protocol: HTTP

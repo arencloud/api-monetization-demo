@@ -4,7 +4,7 @@ metadata:
   name: api-monetization-gateway-service-mode
   namespace: api-monetization-gateway
   annotations:
-    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/sync-wave: "-2"
   labels:
     app.kubernetes.io/name: api-monetization-gateway-service-mode
     app.kubernetes.io/part-of: api-monetization
@@ -15,7 +15,7 @@ metadata:
   name: api-monetization-gateway-service-mode
   namespace: api-monetization-gateway
   annotations:
-    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/sync-wave: "-2"
   labels:
     app.kubernetes.io/name: api-monetization-gateway-service-mode
     app.kubernetes.io/part-of: api-monetization
@@ -29,6 +29,7 @@ rules:
       - list
       - patch
       - watch
+      - delete
   - apiGroups:
       - ""
     resources:
@@ -37,6 +38,13 @@ rules:
       - get
       - list
       - watch
+  - apiGroups:
+      - networking.istio.io
+    resources:
+      - destinationrules
+    verbs:
+      - get
+      - delete
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -44,7 +52,7 @@ metadata:
   name: api-monetization-gateway-service-mode
   namespace: api-monetization-gateway
   annotations:
-    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/sync-wave: "-2"
   labels:
     app.kubernetes.io/name: api-monetization-gateway-service-mode
     app.kubernetes.io/part-of: api-monetization
@@ -56,6 +64,76 @@ subjects:
   - kind: ServiceAccount
     name: api-monetization-gateway-service-mode
     namespace: api-monetization-gateway
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: api-monetization-gateway-class-migration
+  namespace: api-monetization-gateway
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "-1"
+  labels:
+    app.kubernetes.io/name: api-monetization-gateway-class-migration
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 180
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "false"
+      labels:
+        app.kubernetes.io/name: api-monetization-gateway-class-migration
+        app.kubernetes.io/part-of: api-monetization
+    spec:
+      serviceAccountName: api-monetization-gateway-service-mode
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: registry.redhat.io/openshift4/ose-cli-rhel9:v4.22
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -Eeuo
+            - pipefail
+            - -c
+            - |
+              namespace=api-monetization-gateway
+              gateway=api-monetization
+              current_class=$(oc get gateway "$gateway" -n "$namespace" \
+                -o jsonpath='{.spec.gatewayClassName}' 2>/dev/null || true)
+
+              if [[ -n $current_class && $current_class != "istio" ]]; then
+                echo "recreating Gateway to migrate from $current_class to istio"
+                oc delete gateway "$gateway" -n "$namespace" \
+                  --wait=true --timeout=120s
+              else
+                echo "Gateway class migration is not required"
+              fi
+
+              if oc get destinationrule inventory-api-cross-mesh \
+                -n "$namespace" >/dev/null 2>&1; then
+                echo "removing the obsolete cross-mesh plaintext exception"
+                oc delete destinationrule inventory-api-cross-mesh \
+                  -n "$namespace" --wait=true --timeout=60s
+              fi
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
 ---
 apiVersion: batch/v1
 kind: Job
@@ -126,7 +204,7 @@ spec:
               for attempt in $(seq 1 30); do
                 service_state=""
                 if service_state=$(api get services -n "$namespace" \
-                  -l "gateway.networking.k8s.io/gateway-name=$gateway" \
+                  -l "gateway.networking.k8s.io/gateway-name=$gateway,gateway.networking.k8s.io/gateway-class-name=istio" \
                   -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{.spec.type}{"|"}{range .status.loadBalancer.ingress[*]}{.ip}{.hostname}{end}{end}' \
                   2>/dev/null); then
                   IFS='|' read -r gateway_service service_type external_address <<<"$service_state"

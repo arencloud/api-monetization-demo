@@ -17,7 +17,9 @@ spec:
     targetPort: http
   to:
     kind: Service
-    name: api-monetization-openshift-default
+    # This is the standard Istio Gateway API Service name. The route-host hook
+    # also discovers and patches the generated Service to avoid relying on it.
+    name: api-monetization-istio
     weight: 100
 ---
 apiVersion: route.openshift.io/v1
@@ -39,5 +41,5 @@ spec:
     targetPort: http
   to:
     kind: Service
-    name: api-monetization-openshift-default
+    name: api-monetization-istio
     weight: 100

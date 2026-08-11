@@ -3,4 +3,4 @@ kind: Kustomization
 resources:
   - istio-cni.yaml
   - istio.yaml
-
+  - peer-authentication.yaml

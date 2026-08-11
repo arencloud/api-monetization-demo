@@ -29,6 +29,14 @@ rules:
       - list
       - watch
       - delete
+      - patch
+  - apiGroups:
+      - ""
+    resources:
+      - services
+    verbs:
+      - get
+      - list
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -260,6 +268,28 @@ spec:
                 return 1
               }
 
+              bind_routes_to_gateway_service() {
+                local gateway_service=""
+
+                for _ in $(seq 1 60); do
+                  gateway_service=$(api get services \
+                    -l gateway.networking.k8s.io/gateway-name=api-monetization,gateway.networking.k8s.io/gateway-class-name=istio \
+                    -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+                  [[ -n $gateway_service ]] && break
+                  sleep 5
+                done
+                if [[ -z $gateway_service ]]; then
+                  echo "Gateway controller did not create a Service before the timeout" >&2
+                  return 1
+                fi
+
+                for route_name in api-monetization api-monetization-jwt; do
+                  echo "binding OpenShift Route $route_name to Service $gateway_service"
+                  retry_api patch route "$route_name" --type=merge \
+                    --patch "{\"spec\":{\"to\":{\"name\":\"$gateway_service\"}}}"
+                done
+              }
+
               align_route() {
                 local host=$1
                 local http_route=$2
@@ -339,6 +369,7 @@ spec:
                 return 1
               }
 
+              bind_routes_to_gateway_service
               api_hostname=$(route_host api-monetization)
               jwt_hostname=$(route_host api-monetization-jwt)
               align_route "$api_hostname" inventory-api-key
