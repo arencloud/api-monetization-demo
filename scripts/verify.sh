@@ -173,11 +173,11 @@ case "$gateway_service_type" in
 esac
 gateway_proxy=$(oc get pods -n api-monetization-gateway \
   -l gateway.networking.k8s.io/gateway-name=api-monetization \
-  -o jsonpath='{range .items[*].spec.containers[*]}{.name}{"\n"}{end}' \
+  -o jsonpath='{range .items[*].spec.initContainers[*]}{.name}{"\n"}{end}{range .items[*].spec.containers[*]}{.name}{"\n"}{end}' \
   | grep -Fx istio-proxy | head -n 1 || true)
 inventory_proxy=$(oc get pods -n api-monetization-apps \
   -l app.kubernetes.io/name=inventory-api \
-  -o jsonpath='{range .items[*].spec.containers[*]}{.name}{"\n"}{end}' \
+  -o jsonpath='{range .items[*].spec.initContainers[*]}{.name}{"\n"}{end}{range .items[*].spec.containers[*]}{.name}{"\n"}{end}' \
   | grep -Fx istio-proxy | head -n 1 || true)
 if [[ $gateway_proxy != "istio-proxy" || $inventory_proxy != "istio-proxy" ]]; then
   echo "error: Gateway or Inventory workload is missing its Service Mesh proxy" >&2
@@ -275,6 +275,19 @@ case "$api_status" in
     exit 1
     ;;
 esac
+
+echo "validating the JWT endpoint TLS identity"
+jwt_status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+  --connect-to "$jwt_hostname:443:$router_hostname:443" \
+  --header "Host: $jwt_hostname" \
+  "https://$jwt_hostname/inventory")
+if [[ $jwt_status != "401" ]]; then
+  echo "error: unauthenticated JWT endpoint request returned HTTP $jwt_status instead of 401" >&2
+  exit 1
+fi
+echo "JWT endpoint certificate is valid and unauthenticated traffic returned HTTP 401"
 
 echo "waiting for operator console plugins"
 for plugin in gitops-plugin kuadrant-console-plugin; do

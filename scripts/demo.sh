@@ -62,6 +62,12 @@ secret_name=$(oc get apikey.devportal.kuadrant.io/demo-inventory-key \
   -n "$application_namespace" -o jsonpath='{.spec.secretRef.name}')
 api_key=$(oc get secret "$secret_name" -n "$application_namespace" \
   -o go-template='{{index .data "api_key"}}' | base64 -d)
+plan_tier=$(oc get apikey.devportal.kuadrant.io/demo-inventory-key \
+  -n "$application_namespace" -o jsonpath='{.spec.planTier}')
+if [[ $plan_tier != "free" ]]; then
+  echo "error: demo-inventory-key is on the $plan_tier plan; run 'make reset-demo', wait 60 seconds for rate-limit counters to expire, and retry" >&2
+  exit 1
+fi
 
 request_api_key() {
   curl --silent --output /dev/null --write-out '%{http_code}' \
@@ -78,11 +84,34 @@ unauthenticated=$(curl --silent --output /dev/null --write-out '%{http_code}' \
   --connect-to "$api_hostname:443:$router_hostname:443" \
   --header "Host: $api_hostname" "https://$api_hostname/inventory")
 echo "HTTP $unauthenticated (expected 401)"
+if [[ $unauthenticated != "401" ]]; then
+  echo "error: unauthenticated request did not return HTTP 401" >&2
+  exit 1
+fi
 
 echo "free plan burst: 12 requests against the 10/minute limit"
+successful_requests=0
+limited_requests=0
 for request_number in $(seq 1 12); do
-  echo "request $request_number -> HTTP $(request_api_key)"
+  request_status=$(request_api_key)
+  echo "request $request_number -> HTTP $request_status"
+  case "$request_status" in
+    200)
+      successful_requests=$((successful_requests + 1))
+      ;;
+    429)
+      limited_requests=$((limited_requests + 1))
+      ;;
+    *)
+      echo "error: Free-plan request returned unexpected HTTP $request_status" >&2
+      exit 1
+      ;;
+  esac
 done
+if ((successful_requests == 0 || limited_requests == 0)); then
+  echo "error: Free-plan burst did not demonstrate both accepted and rate-limited requests; run 'make reset-demo', wait 60 seconds, and retry" >&2
+  exit 1
+fi
 
 echo "starting the monetization control plane tunnel"
 oc port-forward -n "$data_namespace" service/monetization-control \
@@ -99,7 +128,12 @@ curl --silent --fail-with-body \
   --data '{"plan":"developer"}' \
   "http://127.0.0.1:$control_port/api/subscriptions/demo-company/plan" | jq .
 
-echo "request after live upgrade -> HTTP $(request_api_key) (expected 200)"
+upgraded_status=$(request_api_key)
+echo "request after live upgrade -> HTTP $upgraded_status (expected 200)"
+if [[ $upgraded_status != "200" ]]; then
+  echo "error: request after the Developer-plan upgrade did not return HTTP 200" >&2
+  exit 1
+fi
 
 echo "validating the Keycloak JWT path"
 keycloak_host=api-monetization-service.api-monetization-identity.svc.cluster.local
@@ -119,12 +153,19 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 jwt=$(jq -er '.access_token' <<<"$token_response")
-jwt_status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+if ! jwt_status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
   --cacert "$route_ca_file" \
   --connect-to "$jwt_hostname:443:$router_hostname:443" \
   --header "Host: $jwt_hostname" \
   --header "Authorization: Bearer $jwt" \
-  "https://$jwt_hostname/inventory")
+  "https://$jwt_hostname/inventory"); then
+  echo "error: JWT endpoint request failed before receiving an HTTP response" >&2
+  exit 1
+fi
 echo "JWT request -> HTTP $jwt_status (expected 200)"
+if [[ $jwt_status != "200" ]]; then
+  echo "error: authenticated JWT request did not return HTTP 200" >&2
+  exit 1
+fi
 
 echo "demo complete: authentication, Free-tier 429, live upgrade, and JWT validation were exercised"

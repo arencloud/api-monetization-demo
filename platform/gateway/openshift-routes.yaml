@@ -33,7 +33,9 @@ metadata:
     app.kubernetes.io/name: api-monetization-gateway
     app.kubernetes.io/part-of: api-monetization
 spec:
-  subdomain: jwt.api-monetization
+  # Keep the generated hostname directly beneath the ingress apps domain so it
+  # is covered by the standard OpenShift wildcard ingress certificate.
+  subdomain: api-monetization-jwt
   tls:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect

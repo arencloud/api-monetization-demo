@@ -78,7 +78,7 @@ Available, non-Degraded, and backed by persistent storage.
 The demo Gateway listener uses HTTP inside the cluster. Edge-terminated
 OpenShift Routes provide HTTPS externally and generate the API-key and JWT
 hostnames beneath the cluster ingress domain from the Route subdomains
-`api-monetization` and `jwt.api-monetization`. A GitOps sync hook copies the
+`api-monetization` and `api-monetization-jwt`. A GitOps sync hook copies the
 admitted Route hosts into the corresponding Gateway API `HTTPRoute` resources,
 and the Inventory API's published OpenAPI document, so edge routing, Gateway
 routing, and the APIProduct interactive documentation agree without hard-coded
