@@ -61,7 +61,8 @@ wait_for_jwt_policy_revision() {
     if [[ $app_sync == "Synced" ]] && \
       jq -e '
         .spec.rules.metadata.subscription.http.urlExpression
-          | contains("/internal/entitlements/identity/keycloak-client/") and
+          | contains("/internal/entitlements/token/") and
+            contains("auth.identity.sub") and
             contains("auth.identity.azp")
       ' <<<"$auth_policy" >/dev/null 2>&1 && \
       jq -e '

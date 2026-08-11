@@ -89,13 +89,16 @@ to PostgreSQL; the next metadata lookup observes it without recreating the
 gateway or application. Argo CD intentionally ignores only the demo APIKey's
 mutable `spec.planTier`; every other field remains self-healing.
 
-For JWTs, Keycloak proves the machine identity and audience but does not own
-commercial plan state. Authorino maps the verified `azp` client identity to a
-customer in the control plane, then resolves that customer's current product
-subscription. Consequently, the same PostgreSQL transaction that upgrades an
-API-key customer also changes the JWT limit. An already-issued JWT receives the
-new limit on its next request; no token refresh or Keycloak, gateway, or API
-workload rollout participates in the change.
+For JWTs, Keycloak proves identity and audience but does not own commercial plan
+state. Authorino resolves interactive portal tokens by Keycloak user subject
+and client-credentials tokens by their `azp` client ID. Both map to a customer
+in the control plane and then to that customer's current product subscription.
+Consequently, the same PostgreSQL transaction that upgrades an API-key customer
+also changes the JWT limit. An already-issued JWT receives the new limit on its
+next request; no token refresh or Keycloak, gateway, or API workload rollout
+participates in the change. API-key rotation deletes the old operator resources,
+marks the stored digest revoked, and recreates the External Secrets and RHCL
+resources before a new one-time reveal.
 
 ## Security boundaries
 

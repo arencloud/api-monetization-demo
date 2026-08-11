@@ -337,9 +337,13 @@ esac
 echo "validating the Keycloak-protected monetization portal"
 for permission in \
   'create|apikeys.devportal.kuadrant.io' \
+  'delete|apikeys.devportal.kuadrant.io' \
   'create|passwords.generators.external-secrets.io' \
+  'delete|passwords.generators.external-secrets.io' \
   'create|externalsecrets.external-secrets.io' \
-  'get|secrets'; do
+  'delete|externalsecrets.external-secrets.io' \
+  'get|secrets' \
+  'delete|secrets'; do
   IFS='|' read -r verb resource <<<"$permission"
   if [[ $(oc auth can-i "$verb" "$resource" -n api-monetization-apps \
       --as=system:serviceaccount:api-monetization-data:monetization-control) != "yes" ]]; then

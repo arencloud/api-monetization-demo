@@ -92,6 +92,7 @@ func main() {
 	mux.Handle("POST /api/me/subscriptions/{product}/plan", auth.requireDeveloper(http.HandlerFunc(application.changeMyPlan)))
 	mux.Handle("GET /api/me/credentials/{product}/status", auth.requireDeveloper(http.HandlerFunc(application.credentialStatus)))
 	mux.Handle("POST /api/me/credentials/{product}/reveal", auth.requireDeveloper(http.HandlerFunc(application.revealCredential)))
+	mux.Handle("POST /api/me/credentials/{product}/rotate", auth.requireDeveloper(http.HandlerFunc(application.rotateCredential)))
 	mux.Handle("GET /api/plans", auth.requireAdmin(http.HandlerFunc(application.plans)))
 	mux.Handle("GET /api/subscriptions", auth.requireAdmin(http.HandlerFunc(application.subscriptions)))
 	mux.Handle("GET /api/usage", auth.requireAdmin(http.HandlerFunc(application.usage)))
@@ -114,6 +115,7 @@ func main() {
 	internalMux := http.NewServeMux()
 	internalMux.HandleFunc("GET /internal/entitlements/{customer}/{product}", application.entitlement)
 	internalMux.HandleFunc("GET /internal/entitlements/identity/{provider}/{subject}/{product}", application.entitlementByIdentity)
+	internalMux.HandleFunc("GET /internal/entitlements/token/{subject}/{client}/{product}", application.entitlementByToken)
 	internalMux.HandleFunc("POST /internal/usage", application.recordUsage)
 	internalServer := &http.Server{
 		Addr:              env("INTERNAL_HTTP_ADDR", ":8081"),
@@ -240,6 +242,33 @@ func (a *app) entitlementByIdentity(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(result) != 1 {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "active subscription identity not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, result[0])
+}
+
+func (a *app) entitlementByToken(w http.ResponseWriter, r *http.Request) {
+	subject := r.PathValue("subject")
+	client := r.PathValue("client")
+	product := r.PathValue("product")
+	if !validIdentifier(subject) || !validIdentifier(client) || !validIdentifier(product) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid token identity"})
+		return
+	}
+
+	// Interactive portal tokens belong to a Keycloak user; client-credentials
+	// tokens belong to a Keycloak client. Both resolve to the same commercial
+	// subscription without embedding plan state in the JWT.
+	result, err := a.loadSubscriptionsByIdentity(r.Context(), selfServiceIdentityProvider, subject, product)
+	if err == nil && len(result) == 0 {
+		result, err = a.loadSubscriptionsByIdentity(r.Context(), "keycloak-client", client, product)
+	}
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	if len(result) != 1 {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "active token subscription identity not found"})
 		return
 	}
 	writeJSON(w, http.StatusOK, result[0])

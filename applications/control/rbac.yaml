@@ -20,6 +20,7 @@ rules:
       - apikeys
     verbs:
       - create
+      - delete
       - get
       - patch
   - apiGroups:
@@ -28,6 +29,7 @@ rules:
       - passwords
     verbs:
       - create
+      - delete
       - get
   - apiGroups:
       - external-secrets.io
@@ -35,12 +37,14 @@ rules:
       - externalsecrets
     verbs:
       - create
+      - delete
       - get
   - apiGroups:
       - ""
     resources:
       - secrets
     verbs:
+      - delete
       - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1

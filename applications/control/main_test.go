@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestSelfServiceResourceNames(t *testing.T) {
@@ -36,6 +37,45 @@ func TestCreateIfAbsentAcceptsConflict(t *testing.T) {
 	client := &kubeClient{baseURL: server.URL, token: "test", client: server.Client()}
 	if err := client.createIfAbsent(context.Background(), "/resource", map[string]string{"name": "existing"}); err != nil {
 		t.Fatalf("createIfAbsent returned conflict error: %v", err)
+	}
+}
+
+func TestDeleteAndWaitAcceptsMissingResource(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Fatalf("unexpected method: %s", r.Method)
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+	client := &kubeClient{baseURL: server.URL, token: "test", client: server.Client()}
+	if err := client.deleteAndWait(context.Background(), "/resource", time.Second); err != nil {
+		t.Fatalf("deleteAndWait returned not-found error: %v", err)
+	}
+}
+
+func TestDeleteAndWaitPollsUntilGone(t *testing.T) {
+	t.Parallel()
+	deleted := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodDelete:
+			deleted = true
+			w.WriteHeader(http.StatusOK)
+		case http.MethodGet:
+			if !deleted {
+				t.Fatal("resource was checked before deletion")
+			}
+			w.WriteHeader(http.StatusNotFound)
+		default:
+			t.Fatalf("unexpected method: %s", r.Method)
+		}
+	}))
+	defer server.Close()
+	client := &kubeClient{baseURL: server.URL, token: "test", client: server.Client()}
+	if err := client.deleteAndWait(context.Background(), "/resource", time.Second); err != nil {
+		t.Fatalf("deleteAndWait returned error: %v", err)
 	}
 }
 

@@ -110,7 +110,11 @@ Run `make portal` to print both generated identities. Sign in as
 `demo-developer`, choose the Inventory API and a plan, and select **Subscribe and
 generate key**. External Secrets creates the key material and RHCL approves the
 APIKey. Select **Reveal API key once**, copy it, and call the displayed endpoint.
-The key is not displayed on a later login. Change the plan from **My
+The key is not displayed on a later login. Select **Regenerate API key** to
+revoke it and obtain a replacement through the same operator-backed flow.
+Select **Get Keycloak token** to display a short-lived JWT and call the separate
+JWT endpoint with `Authorization: Bearer`. Both credentials resolve this
+developer's subscription and current plan. Change the plan from **My
 subscription** and show that the new limit applies immediately.
 
 Sign in as `demo-admin` to show the commercial dashboard. It displays the

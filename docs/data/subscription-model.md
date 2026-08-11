@@ -29,6 +29,8 @@ Company.
 - Raw API keys are generated into an immutable Kubernetes Secret by External
   Secrets and displayed by the portal once. PostgreSQL stores a SHA-256 digest
   of the high-entropy key plus a short lookup prefix, never the raw value.
+  Rotation retains that digest as revoked history while clearing reusable
+  Kubernetes resource references for the replacement credential.
 - Gateway telemetry is an input to `usage_events`, not an invoice by itself.
 - The active subscription query is the request-time entitlement read model;
   rating, usage aggregation, and invoicing remain asynchronous.

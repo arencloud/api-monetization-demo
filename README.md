@@ -125,10 +125,13 @@ entitlement and usage ingestion use a separate, non-routed service port.
 
 Developers authenticate with the separate `monetization-developer` role. They
 can browse the API catalog, choose a plan, create their own PostgreSQL customer
-and subscription, and request an API key. The control plane creates an External
-Secrets Password generator and ExternalSecret before submitting the RHCL
-`APIKey`; the raw credential is displayed once and only its digest is retained
-in the commercial datastore.
+and subscription, and request an API key or short-lived Keycloak JWT. The
+control plane creates an External Secrets Password generator and ExternalSecret
+before submitting the RHCL `APIKey`; the raw credential is displayed once and
+only its digest is retained in the commercial datastore. Developers can rotate
+the API key from the portal, which revokes the previous key and provisions a
+new operator-managed credential. Interactive JWTs resolve the same subscription
+and current plan by the Keycloak user subject.
 
 The deterministic scenario issues an API key and a Keycloak JWT for the same
 customer subscription, drives both through the Free limit, and performs one

@@ -289,10 +289,6 @@ func (a *app) credentialStatus(w http.ResponseWriter, r *http.Request) {
 		serverError(w, err)
 		return
 	}
-	if revealed {
-		writeJSON(w, http.StatusOK, map[string]any{"status": "active", "revealed": true})
-		return
-	}
 	apiKeyName, _ := selfServiceResourceNames(customer.ExternalID, subscription.Product)
 	state, err := a.kube.apiKeyState(r.Context(), a.apiKeyNS, apiKeyName)
 	if err != nil {
@@ -308,7 +304,10 @@ func (a *app) credentialStatus(w http.ResponseWriter, r *http.Request) {
 	if state.Approved {
 		status = "ready"
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": status, "revealed": false, "endpoint": endpointFor(state.Hostname)})
+	if state.Approved && revealed {
+		status = "active"
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": status, "revealed": revealed, "endpoint": endpointFor(state.Hostname)})
 }
 
 func (a *app) revealCredential(w http.ResponseWriter, r *http.Request) {
@@ -362,6 +361,34 @@ func (a *app) revealCredential(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status": "active", "revealed": true, "apiKey": apiKey,
 		"prefix": prefix, "endpoint": endpointFor(state.Hostname),
+	})
+}
+
+func (a *app) rotateCredential(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	claims, _ := authenticatedClaims(r.Context())
+	customer, subscription, ok := a.developerSubscription(w, r, claims, r.PathValue("product"))
+	if !ok {
+		return
+	}
+	apiKeyName, secretName := selfServiceResourceNames(customer.ExternalID, subscription.Product)
+	if err := a.kube.deleteDeveloperCredential(r.Context(), a.apiKeyNS, apiKeyName, secretName); err != nil {
+		serverError(w, fmt.Errorf("remove previous API credential: %w", err))
+		return
+	}
+	if _, err := a.db.Exec(r.Context(), `
+		UPDATE monetization.api_credentials
+		SET status='revoked', revoked_at=now(), kubernetes_name=NULL, secret_name=NULL
+		WHERE subscription_id=$1::uuid AND status='active'`, subscription.ID); err != nil {
+		serverError(w, fmt.Errorf("revoke previous API credential: %w", err))
+		return
+	}
+	if err := a.provisionDeveloperCredential(r.Context(), customer, subscription); err != nil {
+		serverError(w, fmt.Errorf("provision rotated API credential: %w", err))
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{
+		"status": "provisioning", "revealed": false,
 	})
 }
 
@@ -524,6 +551,45 @@ func (k *kubeClient) createIfAbsent(ctx context.Context, path string, body any) 
 		return nil
 	}
 	return err
+}
+
+func (k *kubeClient) deleteDeveloperCredential(ctx context.Context, namespace, apiKeyName, secretName string) error {
+	generatorName := apiKeyName + "-generator"
+	paths := []string{
+		fmt.Sprintf("/apis/devportal.kuadrant.io/v1alpha1/namespaces/%s/apikeys/%s", namespace, apiKeyName),
+		fmt.Sprintf("/apis/external-secrets.io/v1/namespaces/%s/externalsecrets/%s", namespace, secretName),
+		fmt.Sprintf("/api/v1/namespaces/%s/secrets/%s", namespace, secretName),
+		fmt.Sprintf("/apis/generators.external-secrets.io/v1alpha1/namespaces/%s/passwords/%s", namespace, generatorName),
+	}
+	for _, path := range paths {
+		if err := k.deleteAndWait(ctx, path, 30*time.Second); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (k *kubeClient) deleteAndWait(ctx context.Context, path string, timeout time.Duration) error {
+	err := k.request(ctx, http.MethodDelete, path, nil, nil)
+	var apiErr *kubeAPIError
+	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		err = k.request(ctx, http.MethodGet, path, nil, nil)
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return fmt.Errorf("timed out waiting for Kubernetes resource deletion: %s", path)
 }
 
 func (k *kubeClient) apiKeyState(ctx context.Context, namespace, name string) (apiKeyState, error) {
