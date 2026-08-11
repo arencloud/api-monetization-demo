@@ -100,7 +100,7 @@ spec:
             - -c
             - |
               echo "building monetization-control from the configured Git revision"
-              oc start-build monetization-control --follow --wait
+              oc start-build monetization-control --wait
           resources:
             requests:
               cpu: 10m
