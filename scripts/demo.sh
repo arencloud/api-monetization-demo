@@ -130,17 +130,25 @@ if ((successful_requests == 0 || limited_requests == 0)); then
 fi
 
 echo "upgrading demo-company from Free to Developer"
-curl --silent --fail-with-body \
+upgrade_response=$(curl --silent --fail-with-body \
   --header 'content-type: application/json' \
   --data '{"plan":"developer"}' \
-  "http://127.0.0.1:$control_port/api/subscriptions/demo-company/plan" | jq .
-
-upgraded_status=$(request_api_key)
-echo "request after live upgrade -> HTTP $upgraded_status (expected 200)"
-if [[ $upgraded_status != "200" ]]; then
-  echo "error: request after the Developer-plan upgrade did not return HTTP 200" >&2
+  "http://127.0.0.1:$control_port/api/subscriptions/demo-company/plan")
+jq . <<<"$upgrade_response"
+if [[ $(jq -r '.plan' <<<"$upgrade_response") != "developer" ]]; then
+  echo "error: control plane did not return the Developer subscription" >&2
   exit 1
 fi
+
+echo "Developer plan continuation burst: 12 requests against the 1,000/minute limit"
+for request_number in $(seq 1 12); do
+  upgraded_status=$(request_api_key)
+  echo "Developer request $request_number -> HTTP $upgraded_status (expected 200)"
+  if [[ $upgraded_status != "200" ]]; then
+    echo "error: Developer request $request_number did not return HTTP 200" >&2
+    exit 1
+  fi
+done
 
 echo "validating the Keycloak JWT path"
 keycloak_host=api-monetization-service.api-monetization-identity.svc.cluster.local
@@ -175,4 +183,4 @@ if [[ $jwt_status != "200" ]]; then
   exit 1
 fi
 
-echo "demo complete: authentication, Free-tier 429, live upgrade, and JWT validation were exercised"
+echo "demo complete: authentication, Free-tier 429, continued Developer traffic, live upgrade, and JWT validation were exercised"

@@ -5,9 +5,9 @@
 Demo Company starts on the Free Inventory API plan. Connectivity Link accepts a
 generated API key, attributes requests to the customer and plan, and enforces ten
 requests per minute. A burst reaches HTTP 429. The administrator upgrades the
-subscription to Developer; the next request succeeds under the new 1,000/minute
-limit without restarting the gateway or application. A Keycloak client-credentials
-token then proves the parallel JWT path.
+subscription to Developer; a continued burst succeeds under the new
+1,000/minute limit without restarting the gateway or application. A Keycloak
+client-credentials token then proves the parallel JWT path.
 
 ## Before the presentation
 
@@ -80,7 +80,8 @@ The script demonstrates, in order:
 2. Valid Free-plan API-key traffic returns HTTP 200.
 3. A burst exceeds ten requests/minute and returns HTTP 429.
 4. The control plane changes Demo Company to Developer.
-5. The next API-key request returns HTTP 200 without a rollout.
+5. Twelve additional API-key requests all return HTTP 200 without a rollout,
+   proving that the user can continue immediately under the Developer limit.
 6. A Keycloak-issued JWT with the required audience returns HTTP 200 through a
    separate `AuthPolicy` and `RateLimitPolicy`.
 
