@@ -61,6 +61,11 @@ OpenShift source-build hook. The resulting ImageStream update rolls the
 Deployment. This ensures source-only commits are built even when the static
 Deployment and BuildConfig YAML did not change.
 
+The identity application uses the same content-hash pattern for its Keycloak
+configuration Job. Argo CD excludes hook manifests from normal drift
+comparison, so the generated trigger ConfigMap ensures changes to users, roles,
+or OIDC clients initiate a sync and rerun the idempotent identity hook.
+
 ## Verify
 
 ```bash

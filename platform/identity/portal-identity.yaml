@@ -166,7 +166,7 @@ metadata:
     app.kubernetes.io/name: api-monetization-portal-identity
     app.kubernetes.io/part-of: api-monetization
 spec:
-  activeDeadlineSeconds: 600
+  activeDeadlineSeconds: 1200
   backoffLimit: 2
   template:
     metadata:
@@ -383,36 +383,53 @@ spec:
                 exit 1
               fi
 
+              echo "Configuring portal administrator"
               admin_user_id=$("$kcadm" get users -r "$realm" --config /tmp/kcadm.config \
-                -q username=demo-admin --fields id | json_id)
+                -q username=demo-admin -q exact=true --fields id | json_id)
               if [[ -z $admin_user_id ]]; then
-                admin_user_id=$("$kcadm" create users -r "$realm" --config /tmp/kcadm.config \
+                "$kcadm" create users -r "$realm" --config /tmp/kcadm.config \
                   -s username=demo-admin -s enabled=true \
                   -s email=demo-admin@example.invalid -s emailVerified=true \
-                  -s firstName=Demo -s lastName=Administrator -i)
+                  -s firstName=Demo -s lastName=Administrator >/dev/null
               else
                 "$kcadm" update "users/$admin_user_id" -r "$realm" \
                   --config /tmp/kcadm.config -s enabled=true \
                   -s email=demo-admin@example.invalid -s emailVerified=true \
                   -s firstName=Demo -s lastName=Administrator
               fi
+              admin_user_id=$("$kcadm" get users -r "$realm" --config /tmp/kcadm.config \
+                -q username=demo-admin -q exact=true --fields id | json_id)
+              if [[ -z $admin_user_id ]]; then
+                echo "Portal administrator was not created" >&2
+                exit 1
+              fi
               "$kcadm" set-password -r "$realm" --config /tmp/kcadm.config \
                 --userid "$admin_user_id" --new-password "$PORTAL_ADMIN_PASSWORD"
               "$kcadm" add-roles -r "$realm" --config /tmp/kcadm.config \
                 --uid "$admin_user_id" --rolename "$admin_role"
 
+              echo "Configuring portal developer"
+              # Keycloak username searches are partial by default. The exact
+              # filter prevents demo-developer from matching the existing
+              # service-account-demo-developer-client identity.
               developer_user_id=$("$kcadm" get users -r "$realm" --config /tmp/kcadm.config \
-                -q username=demo-developer --fields id | json_id)
+                -q username=demo-developer -q exact=true --fields id | json_id)
               if [[ -z $developer_user_id ]]; then
-                developer_user_id=$("$kcadm" create users -r "$realm" --config /tmp/kcadm.config \
+                "$kcadm" create users -r "$realm" --config /tmp/kcadm.config \
                   -s username=demo-developer -s enabled=true \
-                  -s email=demo-developer@example.invalid -s emailVerified=true \
-                  -s firstName=Demo -s lastName=Developer -i)
+                  -s email=portal-demo-developer@example.invalid -s emailVerified=true \
+                  -s firstName=Demo -s lastName=Developer >/dev/null
               else
                 "$kcadm" update "users/$developer_user_id" -r "$realm" \
                   --config /tmp/kcadm.config -s enabled=true \
-                  -s email=demo-developer@example.invalid -s emailVerified=true \
+                  -s email=portal-demo-developer@example.invalid -s emailVerified=true \
                   -s firstName=Demo -s lastName=Developer
+              fi
+              developer_user_id=$("$kcadm" get users -r "$realm" --config /tmp/kcadm.config \
+                -q username=demo-developer -q exact=true --fields id | json_id)
+              if [[ -z $developer_user_id ]]; then
+                echo "Portal developer was not created" >&2
+                exit 1
               fi
               "$kcadm" set-password -r "$realm" --config /tmp/kcadm.config \
                 --userid "$developer_user_id" --new-password "$PORTAL_DEVELOPER_PASSWORD"

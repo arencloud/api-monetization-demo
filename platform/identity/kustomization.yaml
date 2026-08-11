@@ -5,3 +5,14 @@ resources:
   - route.yaml
   - realm-import.yaml
   - portal-identity.yaml
+configMapGenerator:
+  - name: api-monetization-identity-hook-trigger
+    namespace: api-monetization-identity
+    files:
+      - portal-identity.yaml
+    options:
+      annotations:
+        argocd.argoproj.io/sync-wave: "5"
+      labels:
+        app.kubernetes.io/name: api-monetization-identity-hook-trigger
+        app.kubernetes.io/part-of: api-monetization
