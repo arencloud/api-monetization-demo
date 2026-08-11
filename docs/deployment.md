@@ -92,7 +92,9 @@ remains `LoadBalancer`. When none is assigned, the hook adds
 expose both APIs in either mode. `make verify` prints the admitted URLs, and
 `make demo` discovers them dynamically. Environment overlays can add
 `TLSPolicy` and `DNSPolicy` once a real domain and provider credentials are
-selected.
+selected. A healthy ClusterIP selection is preserved on subsequent syncs to
+avoid repeated Gateway rollouts; remove the service-type annotation explicitly
+when a newly installed LoadBalancer provider must be probed.
 
 After the relevant Operators create their `ConsolePlugin` resources, GitOps
 enables the OpenShift GitOps and Connectivity Link plugins while preserving the

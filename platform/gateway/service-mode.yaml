@@ -194,6 +194,26 @@ spec:
                 return 1
               }
 
+              current_mode=$(api get gateway "$gateway" -n "$namespace" \
+                -o jsonpath='{.metadata.annotations.networking\.istio\.io/service-type}' \
+                2>/dev/null || true)
+              if [[ $current_mode == "ClusterIP" ]]; then
+                existing_state=$(api get services -n "$namespace" \
+                  -l "gateway.networking.k8s.io/gateway-name=$gateway,gateway.networking.k8s.io/gateway-class-name=istio" \
+                  -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{.spec.type}{end}' \
+                  2>/dev/null || true)
+                IFS='|' read -r existing_service existing_type <<<"$existing_state"
+                existing_programmed=$(api get gateway "$gateway" -n "$namespace" \
+                  -o jsonpath='{range .status.conditions[?(@.type=="Programmed")]}{.status}{end}' \
+                  2>/dev/null || true)
+                if [[ -n $existing_service && $existing_type == "ClusterIP" && \
+                  $existing_programmed == "True" ]]; then
+                  echo "preserving previously selected ClusterIP mode: service=$existing_service"
+                  exit 0
+                fi
+                echo "previously selected ClusterIP mode is not ready; probing providers again"
+              fi
+
               echo "probing for a Service LoadBalancer provider"
               retry_api patch gateway "$gateway" -n "$namespace" --type=merge --patch \
                 '{"metadata":{"annotations":{"networking.istio.io/service-type":null}}}'
