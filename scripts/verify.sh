@@ -92,6 +92,8 @@ for application_name in \
 done
 
 echo "waiting for generated credentials"
+oc wait --for=condition=Ready secretstore/api-monetization-identity \
+  -n api-monetization-observability --timeout=5m
 oc wait --for=condition=Ready externalsecret/keycloak-db-credentials \
   -n api-monetization-identity --timeout=5m
 oc wait --for=condition=Ready externalsecret/keycloak-demo-clients \
@@ -99,6 +101,8 @@ oc wait --for=condition=Ready externalsecret/keycloak-demo-clients \
 oc wait --for=condition=Ready externalsecret/monetization-portal-credentials \
   -n api-monetization-identity --timeout=5m
 oc wait --for=condition=Ready externalsecret/monetization-developer-credentials \
+  -n api-monetization-identity --timeout=5m
+oc wait --for=condition=Ready externalsecret/grafana-keycloak-client \
   -n api-monetization-identity --timeout=5m
 oc wait --for=condition=Ready externalsecret/subscriptions-db-credentials \
   -n api-monetization-data --timeout=5m
@@ -448,6 +452,8 @@ oc rollout status deployment/api-monetization-collector \
 echo "waiting for the operator-managed Grafana dashboard"
 oc wait --for=condition=Ready externalsecret/api-monetization-grafana-admin \
   -n api-monetization-observability --timeout=5m
+oc wait --for=condition=Ready externalsecret/api-monetization-grafana-oauth \
+  -n api-monetization-observability --timeout=5m
 oc wait --for=condition=GrafanaReady \
   grafanas.grafana.integreatly.org/api-monetization-grafana \
   -n api-monetization-observability --timeout=10m
@@ -467,6 +473,80 @@ grafana_hostname=$(oc get route api-monetization-grafana-route \
 grafana_router_hostname=$(oc get route api-monetization-grafana-route \
   -n api-monetization-observability \
   -o jsonpath='{.status.ingress[0].routerCanonicalHostname}')
+grafana_root_url=$(oc get configmap api-monetization-grafana-oauth-config \
+  -n api-monetization-observability -o jsonpath='{.data.grafana-root-url}')
+grafana_keycloak_origin=$(oc get configmap api-monetization-grafana-oauth-config \
+  -n api-monetization-observability -o jsonpath='{.data.keycloak-origin}')
+if [[ $grafana_root_url != "https://$grafana_hostname" || \
+  $grafana_keycloak_origin != "https://$keycloak_hostname" ]]; then
+  echo "error: Grafana OAuth origin discovery does not match the admitted Routes" >&2
+  exit 1
+fi
+source_oauth_secret=$(oc get secret grafana-keycloak-client \
+  -n api-monetization-identity -o jsonpath='{.data.client-secret}')
+mirrored_oauth_secret=$(oc get secret api-monetization-grafana-oauth \
+  -n api-monetization-observability -o jsonpath='{.data.client-secret}')
+if [[ -z $source_oauth_secret || $source_oauth_secret != "$mirrored_oauth_secret" ]]; then
+  echo "error: Grafana OAuth client secret was not replicated from the identity namespace" >&2
+  exit 1
+fi
+
+keycloak_admin=$(oc get secret api-monetization-initial-admin \
+  -n api-monetization-identity \
+  -o go-template='{{index .data "username"}}' | base64 -d)
+keycloak_admin_password=$(oc get secret api-monetization-initial-admin \
+  -n api-monetization-identity \
+  -o go-template='{{index .data "password"}}' | base64 -d)
+keycloak_admin_token=$(curl --silent --show-error --fail \
+  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+  --connect-to "$keycloak_hostname:443:$keycloak_router_hostname:443" \
+  --data-urlencode "username=$keycloak_admin" \
+  --data-urlencode "password=$keycloak_admin_password" \
+  --data 'client_id=admin-cli' \
+  --data 'grant_type=password' \
+  "https://$keycloak_hostname/realms/master/protocol/openid-connect/token" \
+  | jq -er '.access_token')
+grafana_client=$(curl --silent --show-error --fail \
+  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+  --connect-to "$keycloak_hostname:443:$keycloak_router_hostname:443" \
+  --header "Authorization: Bearer $keycloak_admin_token" \
+  "https://$keycloak_hostname/admin/realms/api-monetization/clients?clientId=api-monetization-grafana")
+grafana_callback="https://$grafana_hostname/login/generic_oauth"
+if ! jq -e --arg callback "$grafana_callback" '
+  length == 1 and
+  .[0].publicClient == false and
+  .[0].standardFlowEnabled == true and
+  .[0].directAccessGrantsEnabled == false and
+  (.[0].redirectUris | index($callback) != null) and
+  any(.[0].protocolMappers[];
+    .protocolMapper == "oidc-usermodel-realm-role-mapper" and
+    .config["claim.name"] == "roles" and
+    .config["access.token.claim"] == "true" and
+    .config["id.token.claim"] == "true" and
+    .config["userinfo.token.claim"] == "true")
+' <<<"$grafana_client" >/dev/null; then
+  echo "error: Keycloak Grafana client or realm-role mapper is incomplete" >&2
+  exit 1
+fi
+
+grafana_oauth_headers=$(curl --silent --show-error \
+  --output /dev/null --dump-header - \
+  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+  --connect-to "$grafana_hostname:443:$grafana_router_hostname:443" \
+  "https://$grafana_hostname/login/generic_oauth")
+grafana_oauth_status=$(awk 'NR == 1 {print $2}' <<<"$grafana_oauth_headers")
+grafana_oauth_location=$(awk 'tolower($1) == "location:" {$1=""; sub(/^ /, ""); print}' \
+  <<<"$grafana_oauth_headers" | tr -d '\r' | tail -n 1)
+if [[ $grafana_oauth_status != "302" || \
+  $grafana_oauth_location != *"$keycloak_hostname/realms/api-monetization/protocol/openid-connect/auth"* || \
+  $grafana_oauth_location != *"client_id=api-monetization-grafana"* ]]; then
+  echo "error: Grafana generic OAuth login did not redirect to the expected Keycloak client" >&2
+  exit 1
+fi
+
 grafana_password=$(oc get secret api-monetization-grafana-admin \
   -n api-monetization-observability \
   -o go-template='{{index .data "GF_SECURITY_ADMIN_PASSWORD"}}' | base64 -d)
@@ -492,6 +572,6 @@ if [[ $grafana_datasource_status != "ok" && $grafana_datasource_status != "succe
   jq . <<<"$grafana_datasource_health" >&2
   exit 1
 fi
-echo "Grafana: https://$grafana_hostname/d/api-monetization (dashboard and Thanos datasource synchronized)"
+echo "Grafana: https://$grafana_hostname/d/api-monetization (Keycloak SSO, role mapping, dashboard, and Thanos datasource verified)"
 
 echo "API monetization platform verification passed"

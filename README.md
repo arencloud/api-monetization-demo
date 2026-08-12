@@ -181,10 +181,12 @@ before the Inventory API and are therefore never counted or billed. Run
 commercial and policy evidence directly from Thanos. It
 shows PostgreSQL-backed accepted usage, overage and revenue; Limitador decisions
 split between API-key and JWT; and Istio gateway responses by HTTP status. The
-operator-managed Grafana instance presents the same separation visually. Run
-`make grafana` to print its admitted HTTPS URL and generated administrator
-login. In particular, HTTP 429 traffic remains observable while never being
-included in billing.
+operator-managed Grafana instance presents the same separation visually. It
+uses the same Keycloak identities as the portal: `demo-admin` receives the
+Grafana Admin role and `demo-developer` receives Viewer. Run `make grafana` to
+print its admitted HTTPS URL, SSO credentials, and the generated local
+break-glass login. In particular, HTTP 429 traffic remains observable while
+never being included in billing.
 
 The portable demo profile intentionally requires neither a LoadBalancer
 provider nor production infrastructure. It uses `ClusterIP` plus admitted

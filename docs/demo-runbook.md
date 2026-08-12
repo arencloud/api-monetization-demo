@@ -185,9 +185,12 @@ The output separates current-month accepted billable usage and revenue from
 last-hour Connectivity Link decisions and gateway HTTP status. API-key and JWT
 decisions are attributed using their distinct Limitador namespaces. This is the
 fastest terminal presentation path. `make grafana` prints the automatically
-provisioned Grafana URL and generated administrator credential.
+provisioned Grafana URL and both SSO test identities. Sign in as `demo-admin`
+for Grafana Admin access or `demo-developer` for read-only Viewer access.
 Administrators can also open it from the monetization portal's **Platform
-views → Business dashboard** link.
+views → Business dashboard** link; an existing Keycloak session provides SSO.
+The command also prints a generated local administrator and explicit
+`disableAutoLogin` URL for break-glass recovery.
 
 Accepted traffic and plan attribution:
 

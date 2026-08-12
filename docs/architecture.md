@@ -136,6 +136,17 @@ is intentionally ephemeral because dashboards and datasources are fully
 reconstructed by their custom resources, so the demo requires no additional
 PVC or RWX storage.
 
+Grafana delegates browser authentication to a confidential Keycloak client
+using Authorization Code flow with PKCE. The `monetization-admin` realm role
+maps strictly to Grafana Admin and `monetization-developer` maps to Viewer;
+users with neither role are denied. The generated client secret is owned in the
+identity namespace and mirrored into observability through a namespace-scoped
+External Secrets Kubernetes provider with read access to only that Secret. A
+GitOps hook discovers the admitted Keycloak and Grafana origins and injects the
+OpenShift router CA, so OAuth callback and back-channel TLS verification remain
+portable across clusters. The generated local administrator remains enabled
+only as a break-glass path.
+
 Suspension changes the commercial subscription state while retaining issued
 credentials. Because every accepted request performs an active-entitlement
 lookup, API keys and already-issued JWTs are denied immediately and resume

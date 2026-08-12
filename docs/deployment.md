@@ -106,6 +106,18 @@ verification; no credential is stored in Git. A GitOps hook reads the
 OpenShift ingress domain and configures the browser client with the exact HTTPS
 portal origin and callback rather than a permissive wildcard.
 
+Print the Grafana URL and SSO roles:
+
+```bash
+make grafana
+```
+
+Grafana uses the same generated Keycloak users: `demo-admin` maps to Grafana
+Admin and `demo-developer` maps to Viewer. OAuth auto-login is enabled and all
+back-channel requests verify the OpenShift router CA. The command also prints a
+generated local administrator and `/login?disableAutoLogin=true` URL for
+break-glass access; that credential is not stored in Git.
+
 The expected end state is that every Argo CD application is `Synced` and
 `Healthy`, every operator CSV is `Succeeded`, the `Kuadrant` resource is ready,
 the `Istio`/`IstioCNI` resources report healthy status, both PostgreSQL clusters

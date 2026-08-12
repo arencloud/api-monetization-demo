@@ -130,9 +130,12 @@ spec:
               fi
 
               portal_origin="https://monetization-control.$apps_domain"
+              grafana_origin="https://api-monetization-grafana-route-api-monetization-observability.$apps_domain"
               oc create configmap monetization-portal-route \
                 --from-literal="portal-origin=$portal_origin" \
                 --from-literal="portal-redirect-uri=$portal_origin/*" \
+                --from-literal="grafana-origin=$grafana_origin" \
+                --from-literal="grafana-redirect-uri=$grafana_origin/login/generic_oauth" \
                 --dry-run=client -o yaml \
                 | oc apply --server-side \
                     --field-manager=api-monetization-portal-route -f -
@@ -213,6 +216,11 @@ spec:
                 secretKeyRef:
                   name: monetization-developer-credentials
                   key: developer-automation-client-secret
+            - name: GRAFANA_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-keycloak-client
+                  key: client-secret
             - name: PORTAL_ORIGIN
               valueFrom:
                 configMapKeyRef:
@@ -223,6 +231,16 @@ spec:
                 configMapKeyRef:
                   name: monetization-portal-route
                   key: portal-redirect-uri
+            - name: GRAFANA_ORIGIN
+              valueFrom:
+                configMapKeyRef:
+                  name: monetization-portal-route
+                  key: grafana-origin
+            - name: GRAFANA_REDIRECT_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: monetization-portal-route
+                  key: grafana-redirect-uri
           command:
             - /bin/bash
             - -Eeuo
@@ -380,6 +398,42 @@ spec:
               }
               JSON
 
+              cat >/tmp/grafana-client.json <<JSON
+              {
+                "clientId": "api-monetization-grafana",
+                "name": "API Monetization Grafana",
+                "description": "Confidential browser client for the API monetization business dashboard",
+                "enabled": true,
+                "protocol": "openid-connect",
+                "publicClient": false,
+                "clientAuthenticatorType": "client-secret",
+                "secret": "$GRAFANA_CLIENT_SECRET",
+                "standardFlowEnabled": true,
+                "directAccessGrantsEnabled": false,
+                "serviceAccountsEnabled": false,
+                "fullScopeAllowed": true,
+                "redirectUris": ["$GRAFANA_REDIRECT_URI"],
+                "webOrigins": ["$GRAFANA_ORIGIN"],
+                "attributes": {
+                  "pkce.code.challenge.method": "S256",
+                  "post.logout.redirect.uris": "$GRAFANA_ORIGIN/*"
+                },
+                "protocolMappers": [{
+                  "name": "grafana-realm-roles",
+                  "protocol": "openid-connect",
+                  "protocolMapper": "oidc-usermodel-realm-role-mapper",
+                  "config": {
+                    "claim.name": "roles",
+                    "jsonType.label": "String",
+                    "multivalued": "true",
+                    "access.token.claim": "true",
+                    "id.token.claim": "true",
+                    "userinfo.token.claim": "true"
+                  }
+                }]
+              }
+              JSON
+
               upsert_client() {
                 local client_id=$1
                 local definition=$2
@@ -400,7 +454,9 @@ spec:
               portal_client_uuid=$(upsert_client monetization-portal /tmp/portal-client.json)
               automation_client_uuid=$(upsert_client monetization-automation /tmp/automation-client.json)
               developer_automation_client_uuid=$(upsert_client monetization-developer-automation /tmp/developer-automation-client.json)
-              if [[ -z $portal_client_uuid || -z $automation_client_uuid || -z $developer_automation_client_uuid ]]; then
+              grafana_client_uuid=$(upsert_client api-monetization-grafana /tmp/grafana-client.json)
+              if [[ -z $portal_client_uuid || -z $automation_client_uuid || \
+                -z $developer_automation_client_uuid || -z $grafana_client_uuid ]]; then
                 echo "Portal OIDC clients were not created" >&2
                 exit 1
               fi
@@ -474,7 +530,7 @@ spec:
               fi
               "$kcadm" add-roles -r "$realm" --config /tmp/kcadm.config \
                 --uid "$developer_service_user_id" --rolename "$developer_role"
-              echo "Keycloak portal clients, administrator, and developer identities are configured"
+              echo "Keycloak portal and Grafana clients, administrator, and developer identities are configured"
           resources:
             requests:
               cpu: 50m

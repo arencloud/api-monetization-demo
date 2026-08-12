@@ -26,13 +26,14 @@ so TLS verification remains enabled.
 The instance uses one replica and ephemeral storage. No user-authored dashboard
 or datasource state is authoritative in Grafana: all required content is
 reconciled from `GrafanaDashboard` and `GrafanaDatasource` resources. Production
-profiles may add persistent storage, SSO, network policies, and high availability.
+profiles may add persistent storage, network policies, and high availability.
+Authentication is extended by ADR 0005.
 
 ## Consequences
 
 - `make bootstrap` produces a working Grafana UI and dashboard without manual
   import.
-- `make grafana` reveals the generated demo administrator login on demand.
+- `make grafana` reveals the generated local break-glass login on demand.
 - The portable profile gains a dependency on `community-operators` and
   `docker.io` image access.
 - The demo needs no additional PVC or RWX storage for Grafana.

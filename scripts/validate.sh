@@ -173,6 +173,77 @@ if (
     raise SystemExit("Grafana OpenShift Thanos datasource authentication is incomplete")
 if not grafana["spec"].get("disableDefaultAdminSecret"):
     raise SystemExit("Grafana must use the externally generated administrator credential")
+grafana_config = grafana["spec"].get("config", {})
+oauth = grafana_config.get("auth.generic_oauth", {})
+if (
+    oauth.get("enabled") != "true"
+    or oauth.get("client_id") != "api-monetization-grafana"
+    or oauth.get("role_attribute_strict") != "true"
+    or oauth.get("use_pkce") != "true"
+    or oauth.get("tls_client_ca") != "/etc/grafana/oauth/router-ca.crt"
+    or oauth.get("tls_skip_verify_insecure") != "false"
+):
+    raise SystemExit("Grafana Keycloak OAuth or TLS verification is incomplete")
+role_expression = oauth.get("role_attribute_path", "")
+if not all(
+    value in role_expression
+    for value in ("monetization-admin", "monetization-developer", "Admin", "Viewer")
+):
+    raise SystemExit("Grafana OAuth role mapping does not enforce the Keycloak role boundary")
+grafana_container = grafana["spec"]["deployment"]["spec"]["template"]["spec"]["containers"][0]
+grafana_env = {item["name"]: item for item in grafana_container.get("env", [])}
+if (
+    grafana_env.get("GRAFANA_OAUTH_CLIENT_SECRET", {})
+    .get("valueFrom", {})
+    .get("secretKeyRef", {})
+    .get("name")
+    != "api-monetization-grafana-oauth"
+    or grafana_env.get("GRAFANA_ROOT_URL", {})
+    .get("valueFrom", {})
+    .get("configMapKeyRef", {})
+    .get("name")
+    != "api-monetization-grafana-oauth-config"
+    or grafana_env.get("KEYCLOAK_ORIGIN", {})
+    .get("valueFrom", {})
+    .get("configMapKeyRef", {})
+    .get("name")
+    != "api-monetization-grafana-oauth-config"
+):
+    raise SystemExit("Grafana OAuth runtime values are not sourced from managed secrets/config")
+
+with open("platform/external-secrets/kubernetes-secret-store.yaml", encoding="utf-8") as stream:
+    secret_store_resources = [resource for resource in yaml.safe_load_all(stream) if resource]
+secret_store = next(
+    resource for resource in secret_store_resources if resource["kind"] == "SecretStore"
+)
+kubernetes_provider = secret_store.get("spec", {}).get("provider", {}).get("kubernetes", {})
+if (
+    secret_store.get("metadata", {}).get("namespace") != "api-monetization-observability"
+    or
+    kubernetes_provider.get("remoteNamespace") != "api-monetization-identity"
+    or kubernetes_provider.get("auth", {}).get("serviceAccount", {}).get("name")
+    != "api-monetization-secret-reader"
+    or kubernetes_provider.get("server", {}).get("caProvider", {}).get("name")
+    != "kube-root-ca.crt"
+):
+    raise SystemExit("Grafana cross-namespace OAuth secret store is incomplete")
+
+with open("platform/observability/grafana-credentials.yaml", encoding="utf-8") as stream:
+    grafana_credential_resources = [resource for resource in yaml.safe_load_all(stream) if resource]
+grafana_oauth_secret = next(
+    resource
+    for resource in grafana_credential_resources
+    if resource.get("kind") == "ExternalSecret"
+    and resource.get("metadata", {}).get("name") == "api-monetization-grafana-oauth"
+)
+oauth_secret_spec = grafana_oauth_secret.get("spec", {})
+if (
+    oauth_secret_spec.get("secretStoreRef")
+    != {"kind": "SecretStore", "name": "api-monetization-identity"}
+    or oauth_secret_spec.get("data", [{}])[0].get("remoteRef")
+    != {"key": "grafana-keycloak-client", "property": "client-secret"}
+):
+    raise SystemExit("Grafana OAuth client secret is not mirrored from the identity namespace")
 
 with open("applications/inventory/openapi.yaml", encoding="utf-8") as stream:
     openapi = yaml.safe_load(stream)
@@ -251,6 +322,52 @@ developer_audiences = {
 }
 if not {"monetization-control", "api-monetization"}.issubset(developer_audiences):
     raise SystemExit("developer automation client is missing a lifecycle-test audience")
+grafana_client_match = re.search(
+    r"cat >/tmp/grafana-client.json <<JSON\n(.*?)\n[ \t]*JSON",
+    identity_script,
+    re.S,
+)
+if not grafana_client_match:
+    raise SystemExit("Grafana Keycloak client definition is missing")
+grafana_client = json.loads(grafana_client_match.group(1))
+if (
+    grafana_client.get("clientId") != "api-monetization-grafana"
+    or grafana_client.get("publicClient") is not False
+    or grafana_client.get("standardFlowEnabled") is not True
+    or grafana_client.get("directAccessGrantsEnabled") is not False
+    or grafana_client.get("redirectUris") != ["$GRAFANA_REDIRECT_URI"]
+    or grafana_client.get("webOrigins") != ["$GRAFANA_ORIGIN"]
+):
+    raise SystemExit("Grafana Keycloak client is not a restricted confidential browser client")
+grafana_role_mapper = next(
+    (
+        mapper
+        for mapper in grafana_client.get("protocolMappers", [])
+        if mapper.get("protocolMapper") == "oidc-usermodel-realm-role-mapper"
+    ),
+    None,
+)
+if not grafana_role_mapper or any(
+    grafana_role_mapper.get("config", {}).get(field) != "true"
+    for field in ("multivalued", "access.token.claim", "id.token.claim", "userinfo.token.claim")
+):
+    raise SystemExit("Grafana Keycloak client does not publish realm roles")
+
+route_job = next(
+    resource
+    for resource in identity_resources
+    if resource.get("kind") == "Job"
+    and resource.get("metadata", {}).get("name") == "api-monetization-portal-route-config"
+)
+route_script = route_job["spec"]["template"]["spec"]["containers"][0]["command"][-1]
+if not all(
+    value in route_script
+    for value in (
+        "grafana-origin=$grafana_origin",
+        "grafana-redirect-uri=$grafana_origin/login/generic_oauth",
+    )
+):
+    raise SystemExit("Identity route discovery does not publish the exact Grafana callback")
 
 with open("platform/service-mesh/peer-authentication.yaml", encoding="utf-8") as stream:
     peer_authentication = yaml.safe_load(stream)
