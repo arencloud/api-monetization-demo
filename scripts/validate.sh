@@ -260,6 +260,33 @@ if not str(openapi.get("openapi", "")).startswith("3.") or not openapi.get("path
 if openapi.get("servers", [{}])[0].get("url") != "https://api-monetization.invalid":
     raise SystemExit("Inventory OpenAPI document is missing its portable server placeholder")
 
+with open("applications/inventory/service.yaml", encoding="utf-8") as stream:
+    inventory_service = yaml.safe_load(stream)
+service_ports = {
+    port.get("name"): (port.get("port"), port.get("targetPort"))
+    for port in inventory_service.get("spec", {}).get("ports", [])
+}
+if service_ports.get("http-openapi") != (8082, "openapi"):
+    raise SystemExit("Inventory documentation-only Service port 8082 is missing")
+
+with open("platform/gateway/inventory-api-product.yaml", encoding="utf-8") as stream:
+    api_product = yaml.safe_load(stream)
+if (
+    api_product.get("spec", {}).get("documentation", {}).get("openAPISpecURL")
+    != "http://inventory-api.api-monetization-apps.svc.cluster.local:8082/openapi.yaml"
+):
+    raise SystemExit("APIProduct must fetch OpenAPI from the documentation-only port")
+
+with open("platform/gateway/openapi-readiness.yaml", encoding="utf-8") as stream:
+    openapi_readiness = yaml.safe_load(stream)
+readiness_annotations = openapi_readiness.get("metadata", {}).get("annotations", {})
+readiness_script = openapi_readiness["spec"]["template"]["spec"]["containers"][0]["command"][-1]
+if (
+    readiness_annotations.get("argocd.argoproj.io/hook") != "Sync"
+    or ":8082/openapi.yaml" not in readiness_script
+):
+    raise SystemExit("Gateway sync must wait for the fetchable OpenAPI document before APIProduct wave 40")
+
 with open("platform/gateway/gateway.yaml", encoding="utf-8") as stream:
     gateway = yaml.safe_load(stream)
 if gateway.get("spec", {}).get("gatewayClassName") != "istio":
@@ -378,9 +405,23 @@ if not all(
     raise SystemExit("Identity route discovery does not publish the exact Grafana callback")
 
 with open("platform/service-mesh/peer-authentication.yaml", encoding="utf-8") as stream:
-    peer_authentication = yaml.safe_load(stream)
-if peer_authentication.get("spec", {}).get("mtls", {}).get("mode") != "STRICT":
+    peer_authentications = [resource for resource in yaml.safe_load_all(stream) if resource]
+default_peer_authentication = next(
+    resource for resource in peer_authentications if resource["metadata"]["name"] == "default"
+)
+inventory_peer_authentication = next(
+    resource for resource in peer_authentications if resource["metadata"]["name"] == "inventory-api"
+)
+if default_peer_authentication.get("spec", {}).get("mtls", {}).get("mode") != "STRICT":
     raise SystemExit("Application Service Mesh peer authentication must enforce STRICT mTLS")
+inventory_peer_spec = inventory_peer_authentication.get("spec", {})
+if (
+    inventory_peer_spec.get("selector", {}).get("matchLabels")
+    != {"app.kubernetes.io/name": "inventory-api"}
+    or inventory_peer_spec.get("mtls", {}).get("mode") != "STRICT"
+    or inventory_peer_spec.get("portLevelMtls") != {"8082": {"mode": "DISABLE"}}
+):
+    raise SystemExit("Only the Inventory documentation port may bypass application mTLS")
 PY
 
 if unformatted=$(gofmt -l applications internal); [[ -n $unformatted ]]; then

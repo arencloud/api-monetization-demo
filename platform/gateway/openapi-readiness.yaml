@@ -1,0 +1,68 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: api-monetization-openapi-readiness
+  namespace: api-monetization-apps
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "39"
+  labels:
+    app.kubernetes.io/name: api-monetization-openapi-readiness
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  activeDeadlineSeconds: 900
+  backoffLimit: 1
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "false"
+      labels:
+        app.kubernetes.io/name: api-monetization-openapi-readiness
+        app.kubernetes.io/part-of: api-monetization
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      containers:
+        - name: wait
+          image: registry.redhat.io/openshift4/ose-cli-rhel9:v4.22
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -Eeuo
+            - pipefail
+            - -c
+            - |
+              url=http://inventory-api.api-monetization-apps.svc.cluster.local:8082/openapi.yaml
+              for attempt in $(seq 1 120); do
+                if document=$(curl --silent --show-error --fail \
+                    --connect-timeout 2 --max-time 5 "$url" 2>/dev/null) && \
+                  grep -Eq '^openapi: 3\.' <<<"$document" && \
+                  grep -q '^paths:' <<<"$document" && \
+                  grep -Eq '^  - url: https://' <<<"$document" && \
+                  ! grep -q '^  - url: https://api-monetization.invalid$' <<<"$document"; then
+                  echo "Inventory OpenAPI document is ready for APIProduct discovery"
+                  exit 0
+                fi
+                if (( attempt % 12 == 0 )); then
+                  echo "waiting for Inventory OpenAPI document (attempt $attempt/120)"
+                fi
+                sleep 5
+              done
+              echo "Inventory OpenAPI document did not become available at $url" >&2
+              exit 1
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault

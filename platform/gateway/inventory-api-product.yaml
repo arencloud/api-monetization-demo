@@ -26,5 +26,5 @@ spec:
     email: api-platform@example.invalid
   documentation:
     docsURL: https://github.com/arencloud/api-monetization-demo/blob/main/docs/demo-runbook.md
-    openAPISpecURL: http://inventory-api.api-monetization-apps.svc.cluster.local:8080/openapi.yaml
+    openAPISpecURL: http://inventory-api.api-monetization-apps.svc.cluster.local:8082/openapi.yaml
     gitRepository: https://github.com/arencloud/api-monetization-demo

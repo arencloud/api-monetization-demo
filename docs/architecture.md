@@ -164,6 +164,10 @@ if Kubernetes cleanup is temporarily delayed.
   explicitly open an API product.
 - Service Mesh mTLS protects internal calls independently of external client
   authentication.
+- The Inventory API remains strict-mTLS on its runtime port. A separate
+  documentation-only port serves the OpenAPI document to the RHCL Developer
+  Portal controller, and an earlier Argo sync-wave hook proves that document is
+  reachable before reconciling the `APIProduct`.
 - The Gateway API data plane and application sidecars are managed by the same
   project Service Mesh control plane and trust root. Application namespaces
   enforce `STRICT` peer authentication, so accepted gateway-to-workload traffic

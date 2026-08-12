@@ -11,5 +11,5 @@ WORKDIR /opt/app-root/src
 COPY --from=builder /tmp/inventory-api /usr/local/bin/inventory-api
 COPY applications/inventory/openapi.yaml ./openapi.yaml
 USER 1001
-EXPOSE 8080
+EXPOSE 8080 8082
 ENTRYPOINT ["/usr/local/bin/inventory-api"]

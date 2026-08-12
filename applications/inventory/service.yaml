@@ -13,3 +13,6 @@ spec:
     - name: http
       port: 8080
       targetPort: http
+    - name: http-openapi
+      port: 8082
+      targetPort: openapi

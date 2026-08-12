@@ -143,6 +143,14 @@ and the Inventory API's published OpenAPI document, so edge routing, Gateway
 routing, and the APIProduct interactive documentation agree without hard-coded
 cluster DNS names.
 
+The Developer Portal controller does not run inside the application Service
+Mesh. It fetches the OpenAPI document from the Inventory workload's dedicated
+port 8082; mTLS is disabled only for that documentation port while API traffic
+on port 8080 remains `STRICT`. An earlier Gateway-application sync-wave hook
+waits for a valid OpenAPI response before allowing the APIProduct generation to reconcile.
+`make verify` reads `OpenAPISpecReady` directly and reports `FetchFailed`
+messages immediately instead of waiting on an empty status field.
+
 The Gateway initially uses the controller's normal `LoadBalancer` Service. A
 GitOps sync hook waits for an external IP or hostname from MetalLB, a cloud
 integration, or another provider. When an address is assigned, the Service

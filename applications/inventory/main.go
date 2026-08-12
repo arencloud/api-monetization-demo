@@ -19,23 +19,44 @@ type item struct {
 
 func main() {
 	recorder := telemetry.New("inventory-api")
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", health)
-	mux.HandleFunc("GET /readyz", health)
-	mux.HandleFunc("GET /inventory", inventory)
-	mux.HandleFunc("GET /inventory/{sku}", inventoryItem)
-	mux.HandleFunc("GET /openapi.yaml", openAPI)
-	mux.HandleFunc("GET /metrics", recorder.Handler)
-	server := &http.Server{
+	apiMux := http.NewServeMux()
+	apiMux.HandleFunc("GET /healthz", health)
+	apiMux.HandleFunc("GET /readyz", health)
+	apiMux.HandleFunc("GET /inventory", inventory)
+	apiMux.HandleFunc("GET /inventory/{sku}", inventoryItem)
+	apiMux.HandleFunc("GET /openapi.yaml", openAPI)
+	apiMux.HandleFunc("GET /metrics", recorder.Handler)
+	apiServer := &http.Server{
 		Addr:              env("HTTP_ADDR", ":8080"),
-		Handler:           recorder.Middleware(mux),
+		Handler:           recorder.Middleware(apiMux),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
-	slog.Info("inventory API listening", "address", server.Addr)
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+
+	docsMux := http.NewServeMux()
+	docsMux.HandleFunc("GET /healthz", health)
+	docsMux.HandleFunc("GET /openapi.yaml", openAPI)
+	docsServer := &http.Server{
+		Addr:              env("DOCS_ADDR", ":8082"),
+		Handler:           docsMux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+	errors := make(chan error, 2)
+	startServer := func(name string, server *http.Server) {
+		go func() {
+			slog.Info(name+" listening", "address", server.Addr)
+			errors <- server.ListenAndServe()
+		}()
+	}
+	startServer("inventory API", apiServer)
+	startServer("OpenAPI documentation", docsServer)
+
+	if err := <-errors; err != nil && err != http.ErrServerClosed {
 		slog.Error("server stopped", "error", err)
 		os.Exit(1)
 	}

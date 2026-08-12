@@ -10,6 +10,7 @@ resources:
   - inventory-auth-policies.yaml
   - inventory-plan-policy.yaml
   - inventory-jwt-rate-limits.yaml
+  - openapi-readiness.yaml
   - inventory-api-product.yaml
   - demo-api-key.yaml
   - portal-rbac.yaml

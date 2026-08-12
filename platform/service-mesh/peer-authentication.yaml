@@ -9,3 +9,21 @@ metadata:
 spec:
   mtls:
     mode: STRICT
+---
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: inventory-api
+  namespace: api-monetization-apps
+  labels:
+    app.kubernetes.io/name: inventory-api
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: inventory-api
+  mtls:
+    mode: STRICT
+  portLevelMtls:
+    "8082":
+      mode: DISABLE

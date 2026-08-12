@@ -151,8 +151,10 @@ if [[ $gateway_class != "istio" || $gateway_controller != "istio.io/gateway-cont
 fi
 peer_mtls=$(oc get peerauthentication.security.istio.io default \
   -n api-monetization-apps -o jsonpath='{.spec.mtls.mode}')
-if [[ $peer_mtls != "STRICT" ]]; then
-  echo "error: application Service Mesh mTLS mode is not STRICT" >&2
+openapi_mtls=$(oc get peerauthentication.security.istio.io inventory-api \
+  -n api-monetization-apps -o jsonpath='{.spec.portLevelMtls.8082.mode}')
+if [[ $peer_mtls != "STRICT" || $openapi_mtls != "DISABLE" ]]; then
+  echo "error: application API must enforce STRICT mTLS with only OpenAPI port 8082 disabled" >&2
   exit 1
 fi
 if oc get destinationrule.networking.istio.io/inventory-api-cross-mesh \
@@ -235,26 +237,54 @@ if [[ $api_hostname != "$api_route_hostname" || $jwt_hostname != "$jwt_route_hos
 fi
 
 echo "waiting for the APIProduct to publish the admitted API URL"
+api_product_ready=false
 for _ in $(seq 1 60); do
-  api_product_state=$(oc get apiproduct inventory-api -n api-monetization-apps \
-    -o jsonpath='{.metadata.generation}{"|"}{.status.observedGeneration}' 2>/dev/null || true)
-  api_product_server=$(oc get apiproduct inventory-api -n api-monetization-apps \
-    -o jsonpath='{.status.openapi.raw}' 2>/dev/null \
-    | sed -n 's/^  - url: //p' | head -n 1) || true
-  if [[ $api_product_state == *"|"* ]]; then
-    IFS='|' read -r api_product_generation api_product_observed_generation \
-      <<<"$api_product_state"
-    if [[ $api_product_generation == "$api_product_observed_generation" && \
-      $api_product_server == "https://$api_hostname" ]]; then
-      break
+  api_product=$(oc get apiproduct inventory-api -n api-monetization-apps \
+    -o json 2>/dev/null || true)
+  if [[ -n $api_product ]]; then
+    api_product_generation=$(jq -r '.metadata.generation // 0' <<<"$api_product")
+    api_product_observed_generation=$(jq -r '.status.observedGeneration // 0' <<<"$api_product")
+    api_product_openapi_status=$(jq -r '
+      [.status.conditions[]? | select(.type == "OpenAPISpecReady")][0].status // ""
+    ' <<<"$api_product")
+    api_product_openapi_reason=$(jq -r '
+      [.status.conditions[]? | select(.type == "OpenAPISpecReady")][0].reason // ""
+    ' <<<"$api_product")
+
+    if [[ $api_product_generation == "$api_product_observed_generation" ]]; then
+      if [[ $api_product_openapi_status == "True" ]]; then
+        api_product_server=$(jq -r '.status.openapi.raw // ""' <<<"$api_product" \
+          | sed -n 's/^  - url: //p' | head -n 1)
+        if [[ $api_product_server != "https://$api_hostname" ]]; then
+          echo "error: APIProduct OpenAPI server is ${api_product_server:-empty}; expected https://$api_hostname" >&2
+          exit 1
+        fi
+        api_product_ready=true
+        break
+      fi
+
+      if [[ $api_product_openapi_status == "False" && \
+        $api_product_openapi_reason == "FetchFailed" ]]; then
+        api_product_openapi_message=$(jq -r '
+          [.status.conditions[]? | select(.type == "OpenAPISpecReady")][0].message
+        ' <<<"$api_product")
+        echo "error: APIProduct controller could not fetch the Inventory OpenAPI document" >&2
+        echo "$api_product_openapi_message" >&2
+        echo "the controller does not retry this generation; verify the OpenAPI readiness hook and documentation port" >&2
+        exit 1
+      fi
     fi
   fi
   sleep 5
 done
-if [[ ${api_product_server:-} != "https://$api_hostname" ]]; then
-  echo "error: APIProduct does not publish the admitted API URL" >&2
+if [[ $api_product_ready != "true" ]]; then
+  echo "error: APIProduct did not publish a ready OpenAPI document within 5 minutes" >&2
+  [[ -n ${api_product:-} ]] && jq -r '
+    .status.conditions[]? | "  \(.type)=\(.status) reason=\(.reason): \(.message)"
+  ' <<<"$api_product" >&2
   exit 1
 fi
+echo "APIProduct OpenAPI document is ready and publishes https://$api_hostname"
 echo "API-key endpoint: https://$api_hostname/inventory"
 echo "JWT endpoint: https://$jwt_hostname/inventory"
 
