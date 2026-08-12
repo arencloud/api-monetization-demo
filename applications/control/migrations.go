@@ -44,6 +44,52 @@ ALTER TABLE monetization.api_credentials
   ADD COLUMN IF NOT EXISTS revealed_at timestamptz;
 `
 
+const billingLifecycleMigration = `
+DROP INDEX IF EXISTS monetization.subscriptions_one_active_product;
+CREATE UNIQUE INDEX IF NOT EXISTS subscriptions_one_current_product
+  ON monetization.subscriptions (customer_id, api_product_id)
+  WHERE status IN ('active', 'suspended');
+
+ALTER TABLE monetization.invoices
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+
+CREATE UNIQUE INDEX IF NOT EXISTS invoices_customer_period
+  ON monetization.invoices (customer_id, period_start, period_end);
+
+CREATE TABLE IF NOT EXISTS monetization.invoice_items (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  invoice_id uuid NOT NULL REFERENCES monetization.invoices(id) ON DELETE CASCADE,
+  subscription_id uuid NOT NULL REFERENCES monetization.subscriptions(id),
+  api_product_id text NOT NULL REFERENCES monetization.api_products(id),
+  plan_id text NOT NULL REFERENCES monetization.plans(id),
+  description text NOT NULL,
+  billable_units bigint NOT NULL DEFAULT 0,
+  included_units bigint,
+  overage_units bigint NOT NULL DEFAULT 0,
+  base_cents bigint NOT NULL DEFAULT 0,
+  overage_cents bigint NOT NULL DEFAULT 0,
+  total_cents bigint NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT invoice_items_amounts_nonnegative CHECK (
+    billable_units >= 0 AND overage_units >= 0 AND base_cents >= 0
+    AND overage_cents >= 0 AND total_cents >= 0
+  ),
+  CONSTRAINT invoice_items_subscription_unique UNIQUE (invoice_id, subscription_id)
+);
+
+CREATE TABLE IF NOT EXISTS monetization.subscription_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  subscription_id uuid NOT NULL REFERENCES monetization.subscriptions(id),
+  event_type text NOT NULL,
+  actor text NOT NULL,
+  details jsonb NOT NULL DEFAULT '{}'::jsonb,
+  occurred_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS subscription_events_subscription_time
+  ON monetization.subscription_events (subscription_id, occurred_at DESC);
+`
+
 func applyDatabaseMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
@@ -60,6 +106,9 @@ func applyDatabaseMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	if _, err = tx.Exec(ctx, selfServiceCredentialMigration); err != nil {
 		return fmt.Errorf("apply self-service credential migration: %w", err)
 	}
+	if _, err = tx.Exec(ctx, billingLifecycleMigration); err != nil {
+		return fmt.Errorf("apply billing lifecycle migration: %w", err)
+	}
 	if _, err = tx.Exec(ctx, `
 		INSERT INTO monetization.schema_migrations (version, description)
 		VALUES (1, 'keycloak client to subscription identity mapping')
@@ -71,6 +120,12 @@ func applyDatabaseMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 		VALUES (2, 'self-service API credential resource tracking')
 		ON CONFLICT (version) DO NOTHING`); err != nil {
 		return fmt.Errorf("record self-service migration: %w", err)
+	}
+	if _, err = tx.Exec(ctx, `
+		INSERT INTO monetization.schema_migrations (version, description)
+		VALUES (3, 'invoice items and subscription lifecycle')
+		ON CONFLICT (version) DO NOTHING`); err != nil {
+		return fmt.Errorf("record billing lifecycle migration: %w", err)
 	}
 	return tx.Commit(ctx)
 }

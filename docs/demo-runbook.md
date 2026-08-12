@@ -117,6 +117,15 @@ JWT endpoint with `Authorization: Bearer`. Both credentials resolve this
 developer's subscription and current plan. Change the plan from **My
 subscription** and show that the new limit applies immediately.
 
+Generate the current draft under **Billing and invoices**. The persisted draft
+shows the plan base charge, stored billable units, allowance, overage, and total
+using integer monetary units. Show **Lifecycle history** for subscription,
+plan, and credential events. An administrator can select **Suspend access** to
+deny both credential paths without deleting them, then **Resume access** to
+restore them. Developer cancellation is terminal for that subscription and
+removes the operator-managed API-key resources; a later subscription creates a
+new credential.
+
 Sign in as `demo-admin` to show the commercial dashboard. It displays the
 subscription, current rate limit, stored usage, projected revenue, and plan
 selector. Apply an administrative plan change and explain that the protected

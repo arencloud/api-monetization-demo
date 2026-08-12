@@ -38,6 +38,8 @@
     .secondary { color: white; border: 1px solid #6a7178; background: #202429; }
     .secondary:hover { background: #2b3036; }
     .quiet { color: #d8dadd; border: 1px solid #454b52; background: transparent; padding: .55rem .8rem; }
+    .danger { color: #ffb7b7; border: 1px solid #b13838; background: #321416; }
+    .danger:hover { background: #4a171a; }
     .button:disabled { opacity: .5; cursor: not-allowed; }
     .notice { margin: 2rem 0; border-left: 4px solid #f0ab00; background: #2b250e; padding: 1rem 1.2rem; color: #f5e5aa; }
     .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1rem; margin-top: 2rem; }
@@ -61,6 +63,9 @@
     .credential-card { grid-column: span 5; }
     .credential { display: block; margin: 1rem 0; padding: 1rem; border: 1px solid #59616a; border-radius: 6px; background: #080a0c; color: #b9daf5; overflow-wrap: anywhere; user-select: all; }
     .credential-actions { display: flex; flex-wrap: wrap; gap: .65rem; }
+    .list { display: grid; gap: .65rem; margin-top: 1rem; }
+    .list-item { border: 1px solid #3c4249; border-radius: 7px; padding: .8rem; background: #101317; }
+    .list-title { display: flex; justify-content: space-between; gap: .8rem; font-weight: 700; }
     .product-description { min-height: 3.2rem; color: #d2d5d8; line-height: 1.55; }
     .hidden { display: none !important; }
     footer { color: #777e85; border-top: 1px solid #ffffff12; padding: 2rem 0 0; margin-top: 3rem; font-size: .88rem; }
@@ -104,9 +109,11 @@
       <article class="card wide">
         <h2>Live plan change</h2>
         <p class="subvalue">Update commercial state and RHCL enforcement together. Existing workloads stay running.</p>
+        <select id="admin-subscriptions" aria-label="Managed customer subscription"></select>
         <div class="plan-row">
           <select id="plans" aria-label="Subscription plan"></select>
           <button id="upgrade" class="button primary" type="button">Apply plan</button>
+          <button id="admin-subscription-status" class="button danger" type="button">Suspend access</button>
         </div>
         <p id="status" class="status" aria-live="polite"></p>
       </article>
@@ -119,6 +126,15 @@
           <a id="traces-link" class="platform-link" target="_blank" rel="noreferrer">Tempo traces <span>↗</span></a>
         </div>
       </aside>
+
+      <article class="card wide">
+        <h2>Billing</h2>
+        <p class="subvalue">Generate an auditable current-month draft from stored billable usage.</p>
+        <div class="value" id="admin-invoice-total">—</div>
+        <div class="subvalue" id="admin-invoice-period">No draft generated</div>
+        <button id="admin-generate-invoice" class="button secondary" type="button">Generate current draft</button>
+        <div id="admin-invoice-history" class="list"></div>
+      </article>
     </div>
   </section>
 
@@ -150,7 +166,7 @@
       <article id="developer-subscription" class="card wide hidden">
         <h2>My subscription</h2>
         <div class="grid">
-          <div class="card"><div class="card-label">Plan</div><div class="value" id="developer-current-plan">—</div></div>
+          <div class="card"><div class="card-label">Plan</div><div class="value" id="developer-current-plan">—</div><div class="subvalue" id="developer-subscription-status">—</div></div>
           <div class="card"><div class="card-label">Rate limit</div><div class="value" id="developer-limit">—</div></div>
           <div class="card"><div class="card-label">API-key endpoint</div><div class="subvalue" id="developer-endpoint">Provisioning</div></div>
           <div class="card"><div class="card-label">Usage</div><div class="value" id="developer-usage">0</div><div class="subvalue" id="developer-usage-detail">Billable requests</div></div>
@@ -158,6 +174,7 @@
         <div class="plan-row">
           <select id="developer-upgrade-plan" aria-label="New subscription plan"></select>
           <button id="developer-upgrade" class="button primary" type="button">Change plan</button>
+          <button id="cancel-subscription" class="button danger" type="button">Cancel subscription</button>
         </div>
       </article>
 
@@ -173,6 +190,25 @@
         </div>
       </article>
 
+      <article class="card wide">
+        <h2>Billing and invoices</h2>
+        <p class="subvalue">Current calendar-month estimate calculated from stored billable units.</p>
+        <div class="grid">
+          <div class="card"><div class="card-label">Current estimate</div><div class="value" id="billing-total">€0.00</div></div>
+          <div class="card"><div class="card-label">Base charges</div><div class="value" id="billing-base">€0.00</div></div>
+          <div class="card"><div class="card-label">Overage</div><div class="value" id="billing-overage">€0.00</div></div>
+        </div>
+        <div id="billing-period" class="subvalue"></div>
+        <div id="billing-preview-lines" class="list"></div>
+        <button id="generate-invoice" class="button secondary" type="button">Generate or refresh draft invoice</button>
+        <div id="invoice-history" class="list"></div>
+      </article>
+
+      <article class="card side">
+        <h2>Lifecycle history</h2>
+        <div id="audit-history" class="list"><div class="subvalue">No lifecycle events yet.</div></div>
+      </article>
+
       <aside class="card side">
         <h2>Coming next</h2>
         <p class="subvalue">Payment API and AI Chat API are visible in the product model and will be enabled after their Gateway routes and policies are deployed.</p>
@@ -184,7 +220,7 @@
 </main>
 <script>
 const storageKey = 'api-monetization-oidc';
-const state = { config: null, tokens: null, identity: null, subscription: null, plans: [], catalog: null, credential: null, jwtToken: null, jwtEndpoint: null };
+const state = { config: null, tokens: null, identity: null, subscription: null, adminSubscriptions: [], plans: [], catalog: null, credential: null, jwtToken: null, jwtEndpoint: null, billing: null, audit: [] };
 const $ = selector => document.querySelector(selector);
 
 function encodeBase64URL(bytes) {
@@ -310,6 +346,91 @@ function money(cents) {
   return cents == null ? 'Custom pricing' : new Intl.NumberFormat(undefined, {style: 'currency', currency: 'EUR'}).format(cents / 100) + ' / month';
 }
 
+function currency(cents, code = 'EUR') {
+  return new Intl.NumberFormat(undefined, {style: 'currency', currency: code}).format((cents || 0) / 100);
+}
+
+function renderInvoiceList(target, invoices) {
+  target.replaceChildren();
+  if (!invoices?.length) {
+    const empty = document.createElement('div');
+    empty.className = 'subvalue';
+    empty.textContent = 'No persisted invoices yet.';
+    target.append(empty);
+    return;
+  }
+  for (const invoice of invoices) {
+    const row = document.createElement('div');
+    row.className = 'list-item';
+    const title = document.createElement('div');
+    title.className = 'list-title';
+    const period = document.createElement('span');
+    period.textContent = `${invoice.periodStart} – ${invoice.periodEnd}`;
+    const total = document.createElement('span');
+    total.textContent = currency(invoice.totalCents, invoice.currency);
+    title.append(period, total);
+    const detail = document.createElement('div');
+    detail.className = 'subvalue';
+    detail.textContent = `${invoice.customer} · ${invoice.status} · ${invoice.items?.reduce((sum, item) => sum + item.billableUnits, 0).toLocaleString()} billable units`;
+    row.append(title, detail);
+    target.append(row);
+  }
+}
+
+function renderBilling(billing) {
+  state.billing = billing;
+  const preview = billing?.preview || {subtotalCents: 0, overageCents: 0, totalCents: 0, currency: 'EUR'};
+  $('#billing-total').textContent = currency(preview.totalCents, preview.currency);
+  $('#billing-base').textContent = currency(preview.subtotalCents, preview.currency);
+  $('#billing-overage').textContent = currency(preview.overageCents, preview.currency);
+  $('#billing-period').textContent = preview.periodStart ? `${preview.periodStart} through ${preview.periodEnd} · ${preview.items?.reduce((sum, item) => sum + item.billableUnits, 0).toLocaleString()} billable units` : 'Billing account starts after the first subscription.';
+  const lines = $('#billing-preview-lines');
+  lines.replaceChildren();
+  for (const item of preview.items || []) {
+    const row = document.createElement('div');
+    row.className = 'list-item';
+    const title = document.createElement('div');
+    title.className = 'list-title';
+    const description = document.createElement('span');
+    description.textContent = item.description;
+    const total = document.createElement('span');
+    total.textContent = currency(item.totalCents, preview.currency);
+    title.append(description, total);
+    const detail = document.createElement('div');
+    detail.className = 'subvalue';
+    const allowance = item.includedUnits == null ? 'custom allowance' : `${item.includedUnits.toLocaleString()} included`;
+    detail.textContent = `${item.billableUnits.toLocaleString()} units · ${allowance} · ${item.overageUnits.toLocaleString()} overage`;
+    row.append(title, detail);
+    lines.append(row);
+  }
+  renderInvoiceList($('#invoice-history'), billing?.invoices || []);
+}
+
+function renderAudit(events) {
+  state.audit = events || [];
+  const target = $('#audit-history');
+  target.replaceChildren();
+  if (!state.audit.length) {
+    const empty = document.createElement('div');
+    empty.className = 'subvalue';
+    empty.textContent = 'No lifecycle events yet.';
+    target.append(empty);
+    return;
+  }
+  for (const event of state.audit) {
+    const row = document.createElement('div');
+    row.className = 'list-item';
+    const title = document.createElement('div');
+    title.className = 'list-title';
+    title.textContent = event.description;
+    const detail = document.createElement('div');
+    detail.className = 'subvalue';
+    detail.textContent = `${event.type} · ${new Date(event.occurredAt).toLocaleString()}`;
+    row.append(title, detail);
+    target.append(row);
+  }
+}
+
 function renderIdentity() {
   const signedIn = Boolean(state.tokens);
   $('#signed-out-actions').classList.toggle('hidden', signedIn);
@@ -321,10 +442,19 @@ function renderIdentity() {
 }
 
 async function refreshAdmin() {
-  const [subscriptions, plans, usage] = await Promise.all([api('/api/subscriptions'), api('/api/plans'), api('/api/usage')]);
+  const [subscriptions, plans, usage, invoices] = await Promise.all([api('/api/subscriptions'), api('/api/plans'), api('/api/usage'), api('/api/invoices')]);
   if (!subscriptions.length) throw new Error('No active subscriptions were found');
-  state.subscription = subscriptions[0];
+  const selectedID = state.subscription?.id;
+  state.adminSubscriptions = subscriptions;
+  state.subscription = subscriptions.find(item => item.id === selectedID) || subscriptions[0];
   state.plans = plans;
+  $('#admin-subscriptions').replaceChildren(...subscriptions.map(item => {
+    const option = document.createElement('option');
+    option.value = item.id;
+    option.textContent = `${item.customer} · ${item.product} · ${item.status}`;
+    option.selected = item.id === state.subscription.id;
+    return option;
+  }));
   const usageItem = usage.find(item => item.customer === state.subscription.customerId && item.product === state.subscription.product) || {requests: 0, overageRequests: 0, projectedRevenueEuro: 0};
   $('#customer').textContent = state.subscription.customer;
   $('#customer-id').textContent = state.subscription.customerId;
@@ -343,8 +473,16 @@ async function refreshAdmin() {
     option.selected = plan.id === state.subscription.plan;
     return option;
   }));
-  $('#status').textContent = `Subscription version ${state.subscription.version} · live data refreshed ${new Date().toLocaleTimeString()}`;
+  $('#status').textContent = `${state.subscription.status} · subscription version ${state.subscription.version} · refreshed ${new Date().toLocaleTimeString()}`;
   $('#status').className = 'status';
+  $('#upgrade').disabled = state.subscription.status !== 'active';
+  $('#admin-subscription-status').textContent = state.subscription.status === 'suspended' ? 'Resume access' : 'Suspend access';
+  $('#admin-subscription-status').className = state.subscription.status === 'suspended' ? 'button secondary' : 'button danger';
+  const customerInvoices = invoices.filter(invoice => invoice.customerId === state.subscription.customerId);
+  renderInvoiceList($('#admin-invoice-history'), customerInvoices);
+  const latest = customerInvoices[0];
+  $('#admin-invoice-total').textContent = latest ? currency(latest.totalCents, latest.currency) : '—';
+  $('#admin-invoice-period').textContent = latest ? `${latest.periodStart} – ${latest.periodEnd} · ${latest.status}` : 'No draft generated';
 }
 
 function planOptions(target, plans, selected) {
@@ -358,7 +496,10 @@ function planOptions(target, plans, selected) {
 }
 
 async function refreshDeveloper() {
-  const [catalog, subscriptions, usage] = await Promise.all([api('/api/catalog'), api('/api/me/subscriptions'), api('/api/me/usage')]);
+  const [catalog, subscriptions, usage, billing, audit] = await Promise.all([
+    api('/api/catalog'), api('/api/me/subscriptions'), api('/api/me/usage'),
+    api('/api/me/billing').catch(() => null), api('/api/me/audit').catch(() => [])
+  ]);
   state.catalog = catalog;
   state.plans = catalog.plans;
   state.subscription = subscriptions.find(item => item.product === 'inventory') || null;
@@ -369,8 +510,10 @@ async function refreshDeveloper() {
   planOptions($('#developer-upgrade-plan'), state.plans, state.subscription?.plan);
   $('#subscribe-controls').classList.toggle('hidden', Boolean(state.subscription));
   $('#developer-subscription').classList.toggle('hidden', !state.subscription);
+  renderBilling(billing);
+  renderAudit(audit);
   if (!state.subscription) {
-    $('#developer-status').textContent = 'Choose a commercial plan to create your subscription.';
+    $('#developer-status').textContent = billing ? 'No active subscription. Billing history remains available below.' : 'Choose a commercial plan to create your subscription.';
     $('#credential-state').textContent = 'Subscribe to create a credential.';
     $('#reveal-credential').classList.add('hidden');
     $('#rotate-credential').classList.add('hidden');
@@ -379,11 +522,22 @@ async function refreshDeveloper() {
     return;
   }
   $('#developer-current-plan').textContent = state.subscription.planName;
+  $('#developer-subscription-status').textContent = state.subscription.status;
   $('#developer-limit').textContent = state.subscription.rateLimitRequests ? `${state.subscription.rateLimitRequests.toLocaleString()} / ${state.subscription.rateLimitWindowSeconds}s` : 'Unlimited';
-  $('#developer-status').textContent = `Subscription ${state.subscription.customerId} is active.`;
+  $('#developer-status').textContent = `Subscription ${state.subscription.customerId} is ${state.subscription.status}.`;
   const usageItem = usage.find(item => item.product === state.subscription.product) || {requests: 0, overageRequests: 0};
   $('#developer-usage').textContent = usageItem.requests.toLocaleString();
   $('#developer-usage-detail').textContent = `${usageItem.overageRequests.toLocaleString()} overage requests`;
+  if (state.subscription.status === 'suspended') {
+    $('#developer-upgrade').disabled = true;
+    $('#credential-state').textContent = 'Subscription is suspended. API-key and JWT entitlement is denied.';
+    $('#reveal-credential').classList.add('hidden');
+    $('#rotate-credential').classList.add('hidden');
+    $('#get-jwt').classList.add('hidden');
+    $('#jwt-state').textContent = 'JWT access is suspended by the subscription entitlement.';
+    return;
+  }
+  $('#developer-upgrade').disabled = false;
   const credential = await api('/api/me/credentials/inventory/status');
   state.credential = credential;
   $('#credential-state').textContent = credential.revealed ? 'API key is active and its value has already been revealed.' : credential.status === 'ready' ? 'Credential approved and ready to reveal.' : 'External Secrets and Connectivity Link are provisioning the credential.';
@@ -431,6 +585,25 @@ async function applyPlan() {
     status.textContent = error.message;
   } finally {
     $('#upgrade').disabled = false;
+  }
+}
+
+async function changeAdminSubscriptionStatus() {
+  const button = $('#admin-subscription-status');
+  const nextStatus = state.subscription.status === 'suspended' ? 'active' : 'suspended';
+  const action = nextStatus === 'suspended' ? 'Suspend this subscription? API-key and JWT access will be denied immediately.' : 'Resume this subscription? Existing credentials will regain access immediately.';
+  if (!confirm(action)) return;
+  button.disabled = true;
+  try {
+    await api(`/api/subscriptions/${state.subscription.customerId}/status`, {
+      method: 'POST', headers: {'content-type': 'application/json'},
+      body: JSON.stringify({status: nextStatus, version: state.subscription.version})
+    });
+    await refreshAdmin();
+  } catch (error) {
+    showNotice(error.message);
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -537,6 +710,59 @@ async function changeDeveloperPlan() {
   }
 }
 
+async function generateDeveloperInvoice() {
+  $('#generate-invoice').disabled = true;
+  try {
+    await api('/api/me/invoices/draft', {method: 'POST'});
+    const billing = await api('/api/me/billing');
+    renderBilling(billing);
+  } catch (error) {
+    showNotice(error.message);
+  } finally {
+    $('#generate-invoice').disabled = false;
+  }
+}
+
+async function generateAdminInvoice() {
+  $('#admin-generate-invoice').disabled = true;
+  try {
+    await api(`/api/subscriptions/${state.subscription.customerId}/invoices/draft`, {method: 'POST'});
+    await refreshAdmin();
+  } catch (error) {
+    showNotice(error.message);
+  } finally {
+    $('#admin-generate-invoice').disabled = false;
+  }
+}
+
+async function cancelSubscription() {
+  if (!confirm('Cancel this subscription? The API key and all issued JWTs will immediately lose access.')) return;
+  $('#cancel-subscription').disabled = true;
+  const status = $('#developer-status');
+  status.textContent = 'Cancelling entitlement and removing operator-managed credentials…';
+  try {
+    const result = await api('/api/me/subscriptions/inventory/cancel', {
+      method: 'POST', headers: {'content-type': 'application/json'},
+      body: JSON.stringify({version: state.subscription.version})
+    });
+    state.jwtToken = null;
+    $('#jwt-value').textContent = '';
+    $('#jwt-value').classList.add('hidden');
+    $('#copy-jwt').classList.add('hidden');
+    $('#credential-value').textContent = '';
+    $('#credential-value').classList.add('hidden');
+    $('#copy-credential').classList.add('hidden');
+    await refreshDeveloper();
+    status.className = result.cleanupPending ? 'status' : 'status success';
+    status.textContent = result.cleanupPending ? 'Subscription is cancelled and access is denied; Kubernetes cleanup will be retried before resubscription.' : 'Subscription cancelled. API-key and JWT entitlement is revoked.';
+  } catch (error) {
+    status.className = 'status error';
+    status.textContent = error.message;
+  } finally {
+    $('#cancel-subscription').disabled = false;
+  }
+}
+
 function logout() {
   const idToken = state.tokens?.id_token;
   clearTokens();
@@ -559,10 +785,18 @@ $('#login').addEventListener('click', () => login().catch(error => showNotice(er
 $('#logout').addEventListener('click', logout);
 $('#refresh').addEventListener('click', () => refreshPortal().catch(error => showNotice(error.message)));
 $('#upgrade').addEventListener('click', applyPlan);
+$('#admin-subscriptions').addEventListener('change', event => {
+  state.subscription = state.adminSubscriptions.find(item => item.id === event.target.value) || state.subscription;
+  refreshAdmin().catch(error => showNotice(error.message));
+});
+$('#admin-subscription-status').addEventListener('click', changeAdminSubscriptionStatus);
 $('#subscribe').addEventListener('click', subscribe);
 $('#reveal-credential').addEventListener('click', revealCredential);
 $('#rotate-credential').addEventListener('click', rotateCredential);
 $('#developer-upgrade').addEventListener('click', changeDeveloperPlan);
+$('#cancel-subscription').addEventListener('click', cancelSubscription);
+$('#generate-invoice').addEventListener('click', generateDeveloperInvoice);
+$('#admin-generate-invoice').addEventListener('click', generateAdminInvoice);
 $('#copy-credential').addEventListener('click', () => navigator.clipboard.writeText($('#credential-value').textContent));
 $('#get-jwt').addEventListener('click', revealJWT);
 $('#copy-jwt').addEventListener('click', () => navigator.clipboard.writeText(state.jwtToken || ''));

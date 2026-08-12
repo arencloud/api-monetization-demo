@@ -15,6 +15,8 @@ the first vertical slice.
 | `plan_changes` | Auditable subscription upgrade and downgrade history |
 | `usage_events` | Idempotent request usage records keyed by request ID |
 | `invoices` | Rated billing periods and invoice state |
+| `invoice_items` | Per-subscription draft lines with allowance, overage, and integer monetary totals |
+| `subscription_events` | Suspension, resumption, and cancellation audit events with actor metadata |
 | `schema_migrations` | Idempotent control-service schema migration history |
 
 The demo seed creates Free, Developer, Business, and Enterprise plans; Inventory,
@@ -37,6 +39,10 @@ Company.
 - Usage ingestion must be idempotent by `request_id`.
 - Plan upgrades increment `subscriptions.version` and append `plan_changes` in
   the same transaction.
+- One current subscription per customer/product may be active or suspended;
+  cancellation closes it and permits a later subscription with a new credential.
+- Current-month draft generation is idempotent by customer and billing period;
+  refreshing a draft replaces its line items but never changes an issued invoice.
 - Money is stored in integer cents and overage price in integer micro-units to
   avoid floating-point billing errors.
 

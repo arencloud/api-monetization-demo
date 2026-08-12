@@ -25,6 +25,27 @@ func TestSelfServiceResourceNames(t *testing.T) {
 	}
 }
 
+func TestCurrentBillingPeriodUsesUTCMonth(t *testing.T) {
+	t.Parallel()
+	start, end := currentBillingPeriod(time.Date(2026, time.March, 31, 23, 30, 0, 0, time.FixedZone("UTC-2", -2*60*60)))
+	if got := start.Format(time.RFC3339); got != "2026-04-01T00:00:00Z" {
+		t.Fatalf("billing period start=%s", got)
+	}
+	if got := end.Format(time.RFC3339); got != "2026-05-01T00:00:00Z" {
+		t.Fatalf("billing period end=%s", got)
+	}
+}
+
+func TestRoundMicrosToCents(t *testing.T) {
+	t.Parallel()
+	tests := map[int64]int64{0: 0, 4999: 0, 5000: 1, 14999: 1, 15000: 2}
+	for micros, want := range tests {
+		if got := roundMicrosToCents(micros); got != want {
+			t.Errorf("roundMicrosToCents(%d)=%d, want %d", micros, got, want)
+		}
+	}
+}
+
 func TestCreateIfAbsentAcceptsConflict(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -40,7 +61,7 @@ func TestCreateIfAbsentAcceptsConflict(t *testing.T) {
 	}
 }
 
-func TestDeleteAndWaitAcceptsMissingResource(t *testing.T) {
+func TestDeleteIfExistsAcceptsMissingResource(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodDelete {
@@ -50,32 +71,23 @@ func TestDeleteAndWaitAcceptsMissingResource(t *testing.T) {
 	}))
 	defer server.Close()
 	client := &kubeClient{baseURL: server.URL, token: "test", client: server.Client()}
-	if err := client.deleteAndWait(context.Background(), "/resource", time.Second); err != nil {
-		t.Fatalf("deleteAndWait returned not-found error: %v", err)
+	if err := client.deleteIfExists(context.Background(), "/resource"); err != nil {
+		t.Fatalf("deleteIfExists returned not-found error: %v", err)
 	}
 }
 
-func TestDeleteAndWaitPollsUntilGone(t *testing.T) {
+func TestDeleteIfExistsDeletesResource(t *testing.T) {
 	t.Parallel()
-	deleted := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodDelete:
-			deleted = true
-			w.WriteHeader(http.StatusOK)
-		case http.MethodGet:
-			if !deleted {
-				t.Fatal("resource was checked before deletion")
-			}
-			w.WriteHeader(http.StatusNotFound)
-		default:
+		if r.Method != http.MethodDelete {
 			t.Fatalf("unexpected method: %s", r.Method)
 		}
+		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
 	client := &kubeClient{baseURL: server.URL, token: "test", client: server.Client()}
-	if err := client.deleteAndWait(context.Background(), "/resource", time.Second); err != nil {
-		t.Fatalf("deleteAndWait returned error: %v", err)
+	if err := client.deleteIfExists(context.Background(), "/resource"); err != nil {
+		t.Fatalf("deleteIfExists returned error: %v", err)
 	}
 }
 

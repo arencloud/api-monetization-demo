@@ -387,6 +387,16 @@ if [[ $portal_authorized != "200" ]]; then
   echo "error: administrator portal API returned HTTP $portal_authorized instead of 200" >&2
   exit 1
 fi
+invoice_history=$(curl --silent --show-error --fail \
+  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+  --connect-to "$portal_hostname:443:$portal_router_hostname:443" \
+  --header "Authorization: Bearer $portal_token" \
+  "https://$portal_hostname/api/invoices")
+if ! jq -e 'type == "array"' <<<"$invoice_history" >/dev/null; then
+  echo "error: administrator invoice API did not return invoice history" >&2
+  exit 1
+fi
 developer_token=$(CONTROL_TOKEN_CLIENT_ID=monetization-developer-automation \
   CONTROL_TOKEN_SECRET_NAME=monetization-developer-credentials \
   CONTROL_TOKEN_SECRET_KEY=developer-automation-client-secret \
@@ -413,7 +423,7 @@ if ! jq -e 'any(.products[]; .id == "inventory" and .available == true)' \
   echo "error: developer catalog does not expose the Inventory API" >&2
   exit 1
 fi
-echo "Portal: https://$portal_hostname (OIDC discovery, 401 boundary, and administrator role verified)"
+echo "Portal: https://$portal_hostname (OIDC discovery, role boundary, and invoice API verified)"
 echo "Developer self-service identity and Inventory API catalog verified"
 
 echo "waiting for operator console plugins"

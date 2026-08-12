@@ -133,6 +133,13 @@ the API key from the portal, which revokes the previous key and provisions a
 new operator-managed credential. Interactive JWTs resolve the same subscription
 and current plan by the Keycloak user subject.
 
+The portal also calculates current-calendar-month billing previews from stored
+billable units and persists refreshable draft invoices with line items. A
+developer can inspect invoice and lifecycle history or cancel a subscription;
+cancellation removes its operator-managed API key and immediately denies both
+API-key and already-issued JWT entitlement. Administrators can suspend and
+resume a subscription without regenerating credentials.
+
 The deterministic scenario issues an API key and a Keycloak JWT for the same
 customer subscription, drives both through the Free limit, and performs one
 live Free-to-Developer upgrade. Both credentials immediately receive the new

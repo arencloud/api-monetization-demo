@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -110,7 +111,7 @@ func (a *app) mySubscriptions(w http.ResponseWriter, r *http.Request) {
 		authError(w, http.StatusUnauthorized, "token subject required")
 		return
 	}
-	result, err := a.loadSubscriptionsByIdentity(r.Context(), selfServiceIdentityProvider, claims.Subject, "")
+	result, err := a.loadManagedSubscriptionsByIdentity(r.Context(), selfServiceIdentityProvider, claims.Subject, "")
 	if err != nil {
 		serverError(w, err)
 		return
@@ -173,6 +174,22 @@ func (a *app) subscribe(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		serverError(w, err)
 		return
+	}
+	existing, err := a.loadManagedSubscriptions(r.Context(), customer.ExternalID, input.Product)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	if len(existing) == 1 && existing[0].Status == "suspended" {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "subscription is suspended; an administrator must resume or cancel it"})
+		return
+	}
+	if len(existing) == 0 {
+		apiKeyName, secretName := selfServiceResourceNames(customer.ExternalID, input.Product)
+		if err = a.kube.deleteDeveloperCredential(r.Context(), a.apiKeyNS, apiKeyName, secretName); err != nil {
+			serverError(w, fmt.Errorf("remove stale API credential before subscribing: %w", err))
+			return
+		}
 	}
 	_, err = a.db.Exec(r.Context(), `
 		INSERT INTO monetization.subscriptions (customer_id, api_product_id, plan_id)
@@ -276,6 +293,79 @@ func (a *app) changeMyPlan(w http.ResponseWriter, r *http.Request) {
 	}
 	a.upgradeCounter.Add(1)
 	writeJSON(w, http.StatusOK, updated[0])
+}
+
+func (a *app) cancelMySubscription(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	claims, _ := authenticatedClaims(r.Context())
+	customer, subscription, ok := a.developerManagedSubscription(w, r, claims, r.PathValue("product"))
+	if !ok {
+		return
+	}
+	var input struct {
+		Version int64 `json:"version"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&input); err != nil || input.Version < 1 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "body must contain the current subscription version"})
+		return
+	}
+	tx, err := a.db.Begin(r.Context())
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	defer func() { _ = tx.Rollback(r.Context()) }()
+	command, err := tx.Exec(r.Context(), `
+		UPDATE monetization.subscriptions
+		SET status='cancelled', ends_at=now(), version=version+1, updated_at=now()
+		WHERE id=$1::uuid AND status IN ('active', 'suspended') AND version=$2`, subscription.ID, input.Version)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	if command.RowsAffected() != 1 {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "subscription changed; refresh before cancelling"})
+		return
+	}
+	_, err = tx.Exec(r.Context(), `
+		UPDATE monetization.api_credentials
+		SET status='revoked', revoked_at=COALESCE(revoked_at, now()),
+		    kubernetes_name=NULL, secret_name=NULL
+		WHERE subscription_id=$1::uuid AND status='active'`, subscription.ID)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	_, err = tx.Exec(r.Context(), `
+		INSERT INTO monetization.subscription_events
+		(subscription_id, event_type, actor, details)
+		VALUES ($1::uuid, 'subscription-cancelled', $2,
+		        jsonb_build_object('previousStatus', $3))`,
+		subscription.ID, claims.PreferredUsername, subscription.Status)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	if err = tx.Commit(r.Context()); err != nil {
+		serverError(w, err)
+		return
+	}
+
+	apiKeyName, secretName := selfServiceResourceNames(customer.ExternalID, subscription.Product)
+	cleanupPending := false
+	if err = a.kube.deleteDeveloperCredential(r.Context(), a.apiKeyNS, apiKeyName, secretName); err != nil {
+		cleanupPending = true
+		slog.Warn("subscription cancelled but credential cleanup is pending",
+			"customer", customer.ExternalID, "product", subscription.Product, "error", err)
+	}
+	status := http.StatusOK
+	if cleanupPending {
+		status = http.StatusAccepted
+	}
+	writeJSON(w, status, map[string]any{
+		"status": "cancelled", "product": subscription.Product,
+		"cleanupPending": cleanupPending,
+	})
 }
 
 func (a *app) credentialStatus(w http.ResponseWriter, r *http.Request) {
@@ -393,6 +483,14 @@ func (a *app) rotateCredential(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) developerSubscription(w http.ResponseWriter, r *http.Request, claims portalClaims, product string) (developerCustomer, subscription, bool) {
+	return a.developerSubscriptionByState(w, r, claims, product, false)
+}
+
+func (a *app) developerManagedSubscription(w http.ResponseWriter, r *http.Request, claims portalClaims, product string) (developerCustomer, subscription, bool) {
+	return a.developerSubscriptionByState(w, r, claims, product, true)
+}
+
+func (a *app) developerSubscriptionByState(w http.ResponseWriter, r *http.Request, claims portalClaims, product string, includeSuspended bool) (developerCustomer, subscription, bool) {
 	if claims.Subject == "" || product != "inventory" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid developer subscription"})
 		return developerCustomer{}, subscription{}, false
@@ -402,7 +500,12 @@ func (a *app) developerSubscription(w http.ResponseWriter, r *http.Request, clai
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "developer subscription not found"})
 		return developerCustomer{}, subscription{}, false
 	}
-	items, err := a.loadSubscriptions(r.Context(), customer.ExternalID, product)
+	var items []subscription
+	if includeSuspended {
+		items, err = a.loadManagedSubscriptions(r.Context(), customer.ExternalID, product)
+	} else {
+		items, err = a.loadSubscriptions(r.Context(), customer.ExternalID, product)
+	}
 	if err != nil || len(items) != 1 {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "developer subscription not found"})
 		return developerCustomer{}, subscription{}, false
@@ -562,34 +665,39 @@ func (k *kubeClient) deleteDeveloperCredential(ctx context.Context, namespace, a
 		fmt.Sprintf("/apis/generators.external-secrets.io/v1alpha1/namespaces/%s/passwords/%s", namespace, generatorName),
 	}
 	for _, path := range paths {
-		if err := k.deleteAndWait(ctx, path, 30*time.Second); err != nil {
+		if err := k.deleteIfExists(ctx, path); err != nil {
 			return err
 		}
 	}
-	return nil
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		pending := false
+		for _, path := range paths {
+			err := k.request(ctx, http.MethodGet, path, nil, nil)
+			var apiErr *kubeAPIError
+			if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			pending = true
+		}
+		if !pending {
+			return nil
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return errors.New("timed out waiting for operator-managed API credential deletion")
 }
 
-func (k *kubeClient) deleteAndWait(ctx context.Context, path string, timeout time.Duration) error {
+func (k *kubeClient) deleteIfExists(ctx context.Context, path string) error {
 	err := k.request(ctx, http.MethodDelete, path, nil, nil)
 	var apiErr *kubeAPIError
 	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
 		return nil
 	}
-	if err != nil {
-		return err
-	}
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		err = k.request(ctx, http.MethodGet, path, nil, nil)
-		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-	return fmt.Errorf("timed out waiting for Kubernetes resource deletion: %s", path)
+	return err
 }
 
 func (k *kubeClient) apiKeyState(ctx context.Context, namespace, name string) (apiKeyState, error) {

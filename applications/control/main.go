@@ -34,17 +34,20 @@ type app struct {
 }
 
 type subscription struct {
-	ID             string `json:"id"`
-	CustomerID     string `json:"customerId"`
-	Customer       string `json:"customer"`
-	Product        string `json:"product"`
-	Plan           string `json:"plan"`
-	PlanName       string `json:"planName"`
-	MonthlyCents   *int64 `json:"monthlyPriceCents"`
-	Included       *int64 `json:"includedRequests"`
-	RateLimit      *int32 `json:"rateLimitRequests"`
-	RateWindowSecs *int32 `json:"rateLimitWindowSeconds"`
-	Version        int64  `json:"version"`
+	ID             string     `json:"id"`
+	CustomerID     string     `json:"customerId"`
+	Customer       string     `json:"customer"`
+	Product        string     `json:"product"`
+	Plan           string     `json:"plan"`
+	PlanName       string     `json:"planName"`
+	MonthlyCents   *int64     `json:"monthlyPriceCents"`
+	Included       *int64     `json:"includedRequests"`
+	RateLimit      *int32     `json:"rateLimitRequests"`
+	RateWindowSecs *int32     `json:"rateLimitWindowSeconds"`
+	Version        int64      `json:"version"`
+	Status         string     `json:"status"`
+	StartsAt       time.Time  `json:"startsAt"`
+	EndsAt         *time.Time `json:"endsAt,omitempty"`
 }
 
 func main() {
@@ -88,15 +91,22 @@ func main() {
 	mux.Handle("GET /api/catalog", auth.requireAuthenticated(http.HandlerFunc(application.catalog)))
 	mux.Handle("GET /api/me/subscriptions", auth.requireDeveloper(http.HandlerFunc(application.mySubscriptions)))
 	mux.Handle("GET /api/me/usage", auth.requireDeveloper(http.HandlerFunc(application.myUsage)))
+	mux.Handle("GET /api/me/billing", auth.requireDeveloper(http.HandlerFunc(application.myBilling)))
+	mux.Handle("POST /api/me/invoices/draft", auth.requireDeveloper(http.HandlerFunc(application.createMyDraftInvoice)))
+	mux.Handle("GET /api/me/audit", auth.requireDeveloper(http.HandlerFunc(application.myAudit)))
 	mux.Handle("POST /api/me/subscriptions", auth.requireDeveloper(http.HandlerFunc(application.subscribe)))
 	mux.Handle("POST /api/me/subscriptions/{product}/plan", auth.requireDeveloper(http.HandlerFunc(application.changeMyPlan)))
+	mux.Handle("POST /api/me/subscriptions/{product}/cancel", auth.requireDeveloper(http.HandlerFunc(application.cancelMySubscription)))
 	mux.Handle("GET /api/me/credentials/{product}/status", auth.requireDeveloper(http.HandlerFunc(application.credentialStatus)))
 	mux.Handle("POST /api/me/credentials/{product}/reveal", auth.requireDeveloper(http.HandlerFunc(application.revealCredential)))
 	mux.Handle("POST /api/me/credentials/{product}/rotate", auth.requireDeveloper(http.HandlerFunc(application.rotateCredential)))
 	mux.Handle("GET /api/plans", auth.requireAdmin(http.HandlerFunc(application.plans)))
 	mux.Handle("GET /api/subscriptions", auth.requireAdmin(http.HandlerFunc(application.subscriptions)))
 	mux.Handle("GET /api/usage", auth.requireAdmin(http.HandlerFunc(application.usage)))
+	mux.Handle("GET /api/invoices", auth.requireAdmin(http.HandlerFunc(application.invoices)))
+	mux.Handle("POST /api/subscriptions/{customer}/invoices/draft", auth.requireAdmin(http.HandlerFunc(application.createCustomerDraftInvoice)))
 	mux.Handle("POST /api/subscriptions/{customer}/plan", auth.requireAdmin(http.HandlerFunc(application.changePlan)))
+	mux.Handle("POST /api/subscriptions/{customer}/status", auth.requireAdmin(http.HandlerFunc(application.changeSubscriptionStatus)))
 	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request) {
 		recorder.Handler(w, r)
 		fmt.Fprintf(w, "# HELP monetization_plan_upgrades_total Successful live plan changes.\n")
@@ -200,7 +210,7 @@ func (a *app) plans(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) subscriptions(w http.ResponseWriter, r *http.Request) {
-	result, err := a.loadSubscriptions(r.Context(), "", "")
+	result, err := a.loadManagedSubscriptions(r.Context(), "", "")
 	if err != nil {
 		serverError(w, err)
 		return
@@ -378,15 +388,27 @@ func (a *app) businessMetrics(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) loadSubscriptions(ctx context.Context, customer, product string) ([]subscription, error) {
+	return a.loadSubscriptionsByState(ctx, customer, product, false)
+}
+
+func (a *app) loadManagedSubscriptions(ctx context.Context, customer, product string) ([]subscription, error) {
+	return a.loadSubscriptionsByState(ctx, customer, product, true)
+}
+
+func (a *app) loadSubscriptionsByState(ctx context.Context, customer, product string, includeSuspended bool) ([]subscription, error) {
 	query := `
 		SELECT s.id::text, c.external_id, c.display_name, p.id, s.plan_id,
 		       pl.display_name, pl.monthly_price_cents, pl.included_requests,
-		       pl.rate_limit_requests, pl.rate_limit_window_seconds, s.version
+		       pl.rate_limit_requests, pl.rate_limit_window_seconds, s.version,
+		       s.status, s.starts_at, s.ends_at
 		FROM monetization.subscriptions s
 		JOIN monetization.customers c ON c.id = s.customer_id
 		JOIN monetization.api_products p ON p.id = s.api_product_id
 		JOIN monetization.plans pl ON pl.id = s.plan_id
 		WHERE s.status = 'active'`
+	if includeSuspended {
+		query = strings.Replace(query, "WHERE s.status = 'active'", "WHERE s.status IN ('active', 'suspended')", 1)
+	}
 	args := []any{}
 	if customer != "" {
 		query += fmt.Sprintf(" AND c.external_id = $%d", len(args)+1)
@@ -405,7 +427,7 @@ func (a *app) loadSubscriptions(ctx context.Context, customer, product string) (
 	result := make([]subscription, 0)
 	for rows.Next() {
 		var item subscription
-		if err = rows.Scan(&item.ID, &item.CustomerID, &item.Customer, &item.Product, &item.Plan, &item.PlanName, &item.MonthlyCents, &item.Included, &item.RateLimit, &item.RateWindowSecs, &item.Version); err != nil {
+		if err = rows.Scan(&item.ID, &item.CustomerID, &item.Customer, &item.Product, &item.Plan, &item.PlanName, &item.MonthlyCents, &item.Included, &item.RateLimit, &item.RateWindowSecs, &item.Version, &item.Status, &item.StartsAt, &item.EndsAt); err != nil {
 			return nil, err
 		}
 		result = append(result, item)
@@ -414,10 +436,19 @@ func (a *app) loadSubscriptions(ctx context.Context, customer, product string) (
 }
 
 func (a *app) loadSubscriptionsByIdentity(ctx context.Context, provider, subject, product string) ([]subscription, error) {
+	return a.loadSubscriptionsByIdentityState(ctx, provider, subject, product, false)
+}
+
+func (a *app) loadManagedSubscriptionsByIdentity(ctx context.Context, provider, subject, product string) ([]subscription, error) {
+	return a.loadSubscriptionsByIdentityState(ctx, provider, subject, product, true)
+}
+
+func (a *app) loadSubscriptionsByIdentityState(ctx context.Context, provider, subject, product string, includeSuspended bool) ([]subscription, error) {
 	query := `
 		SELECT s.id::text, c.external_id, c.display_name, p.id, s.plan_id,
 		       pl.display_name, pl.monthly_price_cents, pl.included_requests,
-		       pl.rate_limit_requests, pl.rate_limit_window_seconds, s.version
+		       pl.rate_limit_requests, pl.rate_limit_window_seconds, s.version,
+		       s.status, s.starts_at, s.ends_at
 		FROM monetization.subscription_identities i
 		JOIN monetization.customers c ON c.id = i.customer_id
 		JOIN monetization.subscriptions s ON s.customer_id = c.id
@@ -425,6 +456,9 @@ func (a *app) loadSubscriptionsByIdentity(ctx context.Context, provider, subject
 		JOIN monetization.plans pl ON pl.id = s.plan_id
 		WHERE i.provider = $1 AND i.subject = $2 AND i.status = 'active'
 		  AND s.status = 'active'`
+	if includeSuspended {
+		query = strings.Replace(query, "AND s.status = 'active'", "AND s.status IN ('active', 'suspended')", 1)
+	}
 	args := []any{provider, subject}
 	if product != "" {
 		query += " AND s.api_product_id = $3"
@@ -439,7 +473,7 @@ func (a *app) loadSubscriptionsByIdentity(ctx context.Context, provider, subject
 	result := make([]subscription, 0)
 	for rows.Next() {
 		var item subscription
-		if err = rows.Scan(&item.ID, &item.CustomerID, &item.Customer, &item.Product, &item.Plan, &item.PlanName, &item.MonthlyCents, &item.Included, &item.RateLimit, &item.RateWindowSecs, &item.Version); err != nil {
+		if err = rows.Scan(&item.ID, &item.CustomerID, &item.Customer, &item.Product, &item.Plan, &item.PlanName, &item.MonthlyCents, &item.Included, &item.RateLimit, &item.RateWindowSecs, &item.Version, &item.Status, &item.StartsAt, &item.EndsAt); err != nil {
 			return nil, err
 		}
 		result = append(result, item)
@@ -467,8 +501,12 @@ func (a *app) changePlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	oldPlan := current[0].Plan
+	apiKeyName := a.apiKeyName
+	if customer != "demo-company" {
+		apiKeyName, _ = selfServiceResourceNames(customer, "inventory")
+	}
 	if oldPlan == input.Plan {
-		if err = a.kube.changeAPIKeyPlan(r.Context(), a.apiKeyNS, a.apiKeyName, input.Plan); err != nil {
+		if err = a.kube.changeAPIKeyPlan(r.Context(), a.apiKeyNS, apiKeyName, input.Plan); err != nil {
 			slog.Error("failed to reconcile RHCL API key plan", "error", err)
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "RHCL API key plan update failed"})
 			return
@@ -481,7 +519,7 @@ func (a *app) changePlan(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown or inactive plan"})
 		return
 	}
-	err = a.kube.changeAPIKeyPlan(r.Context(), a.apiKeyNS, a.apiKeyName, input.Plan)
+	err = a.kube.changeAPIKeyPlan(r.Context(), a.apiKeyNS, apiKeyName, input.Plan)
 	if err != nil {
 		slog.Error("failed to update enforcement plan", "error", err)
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "RHCL API key plan update failed"})
@@ -506,7 +544,7 @@ func (a *app) changePlan(w http.ResponseWriter, r *http.Request) {
 		_ = tx.Rollback(r.Context())
 	}
 	if err != nil {
-		rollbackErr := a.kube.changeAPIKeyPlan(r.Context(), a.apiKeyNS, a.apiKeyName, oldPlan)
+		rollbackErr := a.kube.changeAPIKeyPlan(r.Context(), a.apiKeyNS, apiKeyName, oldPlan)
 		slog.Error("database update failed after enforcement update", "error", err, "enforcement_rollback_error", rollbackErr)
 		serverError(w, err)
 		return
@@ -518,6 +556,77 @@ func (a *app) changePlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("subscription plan changed", "customer", customer, "old_plan", oldPlan, "new_plan", input.Plan)
+	writeJSON(w, http.StatusOK, updated[0])
+}
+
+func (a *app) changeSubscriptionStatus(w http.ResponseWriter, r *http.Request) {
+	claims, _ := authenticatedClaims(r.Context())
+	var input struct {
+		Status  string `json:"status"`
+		Version int64  `json:"version"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&input); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "body must contain status and version"})
+		return
+	}
+	input.Status = strings.ToLower(strings.TrimSpace(input.Status))
+	if (input.Status != "active" && input.Status != "suspended") || input.Version < 1 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "status must be active or suspended with the current version"})
+		return
+	}
+	customer := r.PathValue("customer")
+	current, err := a.loadManagedSubscriptions(r.Context(), customer, "inventory")
+	if err != nil || len(current) != 1 {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "managed customer subscription not found"})
+		return
+	}
+	if current[0].Status == input.Status {
+		writeJSON(w, http.StatusOK, current[0])
+		return
+	}
+	tx, err := a.db.Begin(r.Context())
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	defer func() { _ = tx.Rollback(r.Context()) }()
+	command, err := tx.Exec(r.Context(), `
+		UPDATE monetization.subscriptions
+		SET status=$1, version=version+1, updated_at=now()
+		WHERE id=$2::uuid AND status=$3 AND version=$4`,
+		input.Status, current[0].ID, current[0].Status, input.Version)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	if command.RowsAffected() != 1 {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "subscription changed; refresh before updating status"})
+		return
+	}
+	actor := claims.PreferredUsername
+	if actor == "" {
+		actor = "monetization-admin"
+	}
+	_, err = tx.Exec(r.Context(), `
+		INSERT INTO monetization.subscription_events
+		(subscription_id, event_type, actor, details)
+		VALUES ($1::uuid, $2, $3,
+		        jsonb_build_object('previousStatus', $4, 'newStatus', $5))`,
+		current[0].ID, "subscription-"+input.Status, actor,
+		current[0].Status, input.Status)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	if err = tx.Commit(r.Context()); err != nil {
+		serverError(w, err)
+		return
+	}
+	updated, err := a.loadManagedSubscriptions(r.Context(), customer, "inventory")
+	if err != nil || len(updated) != 1 {
+		serverError(w, errors.New("updated subscription status was not found"))
+		return
+	}
 	writeJSON(w, http.StatusOK, updated[0])
 }
 

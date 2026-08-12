@@ -100,6 +100,23 @@ participates in the change. API-key rotation deletes the old operator resources,
 marks the stored digest revoked, and recreates the External Secrets and RHCL
 resources before a new one-time reveal.
 
+## Billing and subscription lifecycle
+
+The control plane produces a live preview for the current UTC calendar month
+from stored `billable_units`. Draft generation persists an invoice and its
+subscription line items idempotently for that customer and period. Prices use
+integer cents and overage uses integer micro-units rounded only after the
+period total is calculated. Drafts are estimates based on the subscription's
+current plan; issuing and payment remain asynchronous business workflows.
+
+Suspension changes the commercial subscription state while retaining issued
+credentials. Because every accepted request performs an active-entitlement
+lookup, API keys and already-issued JWTs are denied immediately and resume
+without regeneration. Cancellation marks the subscription and credential
+records revoked before deleting the ExternalSecret, generated Secret, Password
+generator, and RHCL `APIKey`. This makes the database denial authoritative even
+if Kubernetes cleanup is temporarily delayed.
+
 ## Security boundaries
 
 - Git contains secret references and schemas, never secret values.
