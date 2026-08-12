@@ -231,7 +231,7 @@ func (a *app) entitlement(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(result) != 1 {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "active subscription not found"})
+		writeJSON(w, http.StatusOK, map[string]string{"status": "inactive"})
 		return
 	}
 	writeJSON(w, http.StatusOK, result[0])
@@ -251,7 +251,7 @@ func (a *app) entitlementByIdentity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(result) != 1 {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "active subscription identity not found"})
+		writeJSON(w, http.StatusOK, map[string]string{"status": "inactive"})
 		return
 	}
 	writeJSON(w, http.StatusOK, result[0])
@@ -278,7 +278,7 @@ func (a *app) entitlementByToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(result) != 1 {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "active token subscription identity not found"})
+		writeJSON(w, http.StatusOK, map[string]string{"status": "inactive"})
 		return
 	}
 	writeJSON(w, http.StatusOK, result[0])

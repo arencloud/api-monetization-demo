@@ -61,6 +61,7 @@ python3 - <<'PY'
 import subprocess
 import json
 import pathlib
+import re
 import yaml
 
 with open("bootstrap/root/application.yaml", encoding="utf-8") as stream:
@@ -116,6 +117,45 @@ with open("platform/gateway/gateway.yaml", encoding="utf-8") as stream:
     gateway = yaml.safe_load(stream)
 if gateway.get("spec", {}).get("gatewayClassName") != "istio":
     raise SystemExit("Gateway must use the project Service Mesh GatewayClass")
+
+with open("platform/gateway/inventory-auth-policies.yaml", encoding="utf-8") as stream:
+    auth_policies = list(yaml.safe_load_all(stream))
+for policy in auth_policies:
+    rules = policy.get("spec", {}).get("rules", {})
+    active = rules.get("authorization", {}).get("active-subscription", {})
+    patterns = active.get("patternMatching", {}).get("patterns", [])
+    if not any(
+        pattern.get("selector") == "auth.metadata.subscription.status"
+        and pattern.get("operator") == "eq"
+        and pattern.get("value") == "active"
+        for pattern in patterns
+    ):
+        name = policy.get("metadata", {}).get("name", "unknown")
+        raise SystemExit(f"{name}: active subscription authorization is missing")
+
+with open("platform/identity/portal-identity.yaml", encoding="utf-8") as stream:
+    identity_resources = [resource for resource in yaml.safe_load_all(stream) if resource]
+identity_job = next(
+    resource
+    for resource in identity_resources
+    if resource.get("kind") == "Job"
+    and resource.get("metadata", {}).get("name") == "api-monetization-portal-identity"
+)
+identity_script = identity_job["spec"]["template"]["spec"]["containers"][0]["command"][-1]
+developer_client_match = re.search(
+    r"cat >/tmp/developer-automation-client.json <<JSON\n(.*?)\n[ \t]*JSON",
+    identity_script,
+    re.S,
+)
+if not developer_client_match:
+    raise SystemExit("developer automation Keycloak client definition is missing")
+developer_client = json.loads(developer_client_match.group(1))
+developer_audiences = {
+    mapper.get("config", {}).get("included.custom.audience")
+    for mapper in developer_client.get("protocolMappers", [])
+}
+if not {"monetization-control", "api-monetization"}.issubset(developer_audiences):
+    raise SystemExit("developer automation client is missing a lifecycle-test audience")
 
 with open("platform/service-mesh/peer-authentication.yaml", encoding="utf-8") as stream:
     peer_authentication = yaml.safe_load(stream)

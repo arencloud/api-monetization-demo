@@ -149,9 +149,23 @@ from PostgreSQL rather than embedded in the signed token.
 After deployment and verification, run the deterministic scenario:
 
 ```bash
+make lifecycle-test
 make demo
 make reset-demo
 make portal
 ```
+
+`make lifecycle-test` uses dedicated Keycloak automation identities to prove
+active API-key and JWT access, administrative suspension and resume, developer
+cancellation, operator-resource cleanup, and clean resubscription. It leaves
+the browser `demo-developer` and the deterministic `demo-company` scenario
+unchanged and returns its own automation subscription to a cancelled state.
+
+The portable demo profile intentionally requires neither a LoadBalancer
+provider nor production infrastructure. It uses `ClusterIP` plus admitted
+OpenShift Routes when MetalLB or a cloud load balancer is unavailable. External
+DNS/TLS, object storage, PostgreSQL HA/backups, and disaster recovery belong in
+a separate environment-specific production overlay and are not baseline
+installation prerequisites.
 
 See [the live demo runbook](docs/demo-runbook.md) before presenting it.

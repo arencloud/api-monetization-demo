@@ -1,11 +1,12 @@
 SHELL := /usr/bin/env bash
 
-.PHONY: help validate test preflight bootstrap render status verify portal demo reset-demo uninstall
+.PHONY: help validate test lifecycle-test preflight bootstrap render status verify portal demo reset-demo uninstall
 
 help:
 	@echo "Targets:"
 	@echo "  validate   Render and statically validate every Kustomize package"
 	@echo "  test       Run Go unit tests"
+	@echo "  lifecycle-test Prove suspend, resume, cancel, cleanup, and resubscribe"
 	@echo "  preflight  Check cluster access, version, permissions, and catalogs"
 	@echo "  bootstrap  Install OpenShift GitOps and register the root application"
 	@echo "  render     Render all Kustomize packages into stdout"
@@ -21,6 +22,9 @@ validate:
 
 test:
 	@go test ./...
+
+lifecycle-test:
+	@./scripts/lifecycle-test.sh
 
 preflight:
 	@./scripts/preflight.sh
@@ -40,6 +44,7 @@ status:
 
 verify:
 	@./scripts/verify.sh
+	@./scripts/lifecycle-test.sh
 
 portal:
 	@./scripts/portal.sh

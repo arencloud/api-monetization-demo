@@ -30,6 +30,13 @@ spec:
           urlExpression: >-
             'http://monetization-control.api-monetization-data.svc.cluster.local:8081/internal/entitlements/' +
             auth.identity.metadata.annotations['secret.kuadrant.io/user-id'] + '/inventory'
+    authorization:
+      active-subscription:
+        patternMatching:
+          patterns:
+            - selector: auth.metadata.subscription.status
+              operator: eq
+              value: active
     response:
       success:
         headers:
@@ -46,6 +53,13 @@ spec:
             value: application/json
         body:
           value: '{"error":"valid API key required"}'
+      unauthorized:
+        code: 403
+        headers:
+          content-type:
+            value: application/json
+        body:
+          value: '{"error":"active subscription required"}'
 ---
 apiVersion: kuadrant.io/v1
 kind: AuthPolicy
@@ -73,6 +87,12 @@ spec:
             - selector: auth.identity.aud
               operator: incl
               value: api-monetization
+      active-subscription:
+        patternMatching:
+          patterns:
+            - selector: auth.metadata.subscription.status
+              operator: eq
+              value: active
     metadata:
       subscription:
         http:
@@ -110,4 +130,4 @@ spec:
           content-type:
             value: application/json
         body:
-          value: '{"error":"token audience is not authorized"}'
+          value: '{"error":"token audience and active subscription are required"}'

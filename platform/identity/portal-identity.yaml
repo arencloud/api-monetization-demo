@@ -357,15 +357,26 @@ spec:
                 "standardFlowEnabled": false,
                 "directAccessGrantsEnabled": false,
                 "fullScopeAllowed": true,
-                "protocolMappers": [{
-                  "name": "control-plane-audience",
-                  "protocol": "openid-connect",
-                  "protocolMapper": "oidc-audience-mapper",
-                  "config": {
-                    "included.custom.audience": "monetization-control",
-                    "access.token.claim": "true"
+                "protocolMappers": [
+                  {
+                    "name": "control-plane-audience",
+                    "protocol": "openid-connect",
+                    "protocolMapper": "oidc-audience-mapper",
+                    "config": {
+                      "included.custom.audience": "monetization-control",
+                      "access.token.claim": "true"
+                    }
+                  },
+                  {
+                    "name": "inventory-api-audience",
+                    "protocol": "openid-connect",
+                    "protocolMapper": "oidc-audience-mapper",
+                    "config": {
+                      "included.custom.audience": "api-monetization",
+                      "access.token.claim": "true"
+                    }
                   }
-                }]
+                ]
               }
               JSON
 

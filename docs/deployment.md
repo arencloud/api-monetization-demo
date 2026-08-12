@@ -77,6 +77,17 @@ make verify
 make demo
 ```
 
+`make verify` finishes with the lifecycle enforcement test. The test mutates
+only the dedicated `monetization-developer-automation` subscription: it creates
+and reveals a temporary API key, suspends and resumes the subscription, cancels
+it, verifies cleanup, resubscribes once, and returns it to a cancelled state.
+It does not alter the `demo-developer` browser account or `demo-company` used by
+`make demo`. Run the lifecycle part independently with:
+
+```bash
+make lifecycle-test
+```
+
 Print the admitted portal URL and generated developer and administrator logins:
 
 ```bash
@@ -121,6 +132,13 @@ expose both APIs in either mode. `make verify` prints the admitted URLs, and
 selected. A healthy ClusterIP selection is preserved on subsequent syncs to
 avoid repeated Gateway rollouts; remove the service-type annotation explicitly
 when a newly installed LoadBalancer provider must be probed.
+
+This Route/ClusterIP behavior is the supported portable demo profile. A
+production deployment can add provider-specific Kustomize overlays for external
+DNS and certificates, object-backed telemetry, PostgreSQL HA/backups, and
+disaster recovery. Those choices require environment-specific storage, DNS,
+certificate, and recovery objectives, so the baseline does not install dummy
+or insecure production resources.
 
 After the relevant Operators create their `ConsolePlugin` resources, GitOps
 enables the OpenShift GitOps and Connectivity Link plugins while preserving the

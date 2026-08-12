@@ -126,6 +126,18 @@ restore them. Developer cancellation is terminal for that subscription and
 removes the operator-managed API-key resources; a later subscription creates a
 new credential.
 
+Before presenting the browser lifecycle, the same behavior can be checked
+without touching either demo account:
+
+```bash
+make lifecycle-test
+```
+
+The automation proves that active API-key and JWT traffic returns `200`, a
+suspended subscription returns an authorization denial, resume restores the
+same credentials, cancellation revokes access and removes operator-managed
+credential resources, and resubscription generates a different API key.
+
 Sign in as `demo-admin` to show the commercial dashboard. It displays the
 subscription, current rate limit, stored usage, projected revenue, and plan
 selector. Apply an administrative plan change and explain that the protected
