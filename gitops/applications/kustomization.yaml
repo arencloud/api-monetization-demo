@@ -8,6 +8,7 @@ resources:
   - cloudnative-pg-operator.yaml
   - opentelemetry-operator.yaml
   - tempo-operator.yaml
+  - grafana-operator.yaml
   - service-mesh-operator.yaml
   - keycloak-operator.yaml
   - external-secrets.yaml

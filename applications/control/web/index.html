@@ -123,6 +123,7 @@
         <div class="links">
           <a id="catalog-link" class="platform-link" target="_blank" rel="noreferrer">OpenShift API Catalog <span>↗</span></a>
           <a id="api-link" class="platform-link" target="_blank" rel="noreferrer">Inventory API endpoint <span>↗</span></a>
+          <a id="grafana-link" class="platform-link" target="_blank" rel="noreferrer">Business dashboard <span>↗</span></a>
           <a id="traces-link" class="platform-link" target="_blank" rel="noreferrer">Tempo traces <span>↗</span></a>
         </div>
       </aside>
@@ -338,6 +339,7 @@ function clusterLinks() {
   const suffix = location.hostname.slice(marker);
   $('#catalog-link').href = `https://console-openshift-console${suffix}/api-catalog`;
   $('#api-link').href = `https://api-monetization${suffix}/inventory`;
+  $('#grafana-link').href = `https://api-monetization-grafana-route-api-monetization-observability${suffix}/d/api-monetization`;
   $('#traces-link').href = `https://tempo-api-monetization-jaegerui-api-monetization-observability${suffix}`;
   state.jwtEndpoint = `https://api-monetization-jwt${suffix}/inventory`;
 }

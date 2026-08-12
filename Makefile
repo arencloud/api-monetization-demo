@@ -1,6 +1,6 @@
 SHELL := /usr/bin/env bash
 
-.PHONY: help validate test lifecycle-test preflight bootstrap render status verify observe portal demo metered-demo reset-demo uninstall
+.PHONY: help validate test lifecycle-test preflight bootstrap render status verify observe grafana portal demo metered-demo reset-demo uninstall
 
 help:
 	@echo "Targets:"
@@ -13,6 +13,7 @@ help:
 	@echo "  status     Show GitOps applications and operator subscriptions"
 	@echo "  verify     Wait for secrets, databases, Keycloak, and realm readiness"
 	@echo "  observe    Show live accepted, limited, overage, and revenue metrics"
+	@echo "  grafana    Print the managed Grafana URL and administrator login"
 	@echo "  portal     Print the portal URL and generated developer/admin logins"
 	@echo "  demo       Run API-key and JWT rate-limit and live-upgrade scenarios"
 	@echo "  metered-demo Generate real Pay-as-you-go usage and a draft invoice"
@@ -50,6 +51,9 @@ verify:
 
 observe:
 	@./scripts/observe.sh
+
+grafana:
+	@./scripts/grafana.sh
 
 portal:
 	@./scripts/portal.sh

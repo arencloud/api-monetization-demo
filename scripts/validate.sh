@@ -136,6 +136,44 @@ for metric in (
 if 'instance=~".*:15090"' not in dashboard_queries:
     raise SystemExit("Grafana gateway query must select the Envoy metrics port to avoid duplicate scrapes")
 
+with open("operators/grafana/subscription.yaml", encoding="utf-8") as stream:
+    grafana_subscription = yaml.safe_load(stream)
+grafana_subscription_spec = grafana_subscription.get("spec", {})
+if (
+    grafana_subscription_spec.get("name") != "grafana-operator"
+    or grafana_subscription_spec.get("channel") != "v5"
+    or grafana_subscription_spec.get("source") != "community-operators"
+    or grafana_subscription_spec.get("startingCSV") != "grafana-operator.v5.24.0"
+):
+    raise SystemExit("Grafana Operator subscription is not pinned to the tested v5.24 lane")
+
+with open("platform/observability/grafana.yaml", encoding="utf-8") as stream:
+    grafana_resources = [resource for resource in yaml.safe_load_all(stream) if resource]
+grafana = next(resource for resource in grafana_resources if resource["kind"] == "Grafana")
+datasource = next(resource for resource in grafana_resources if resource["kind"] == "GrafanaDatasource")
+dashboard_resource = next(resource for resource in grafana_resources if resource["kind"] == "GrafanaDashboard")
+instance_labels = grafana["metadata"]["labels"]
+selector = datasource["spec"]["instanceSelector"]["matchLabels"]
+if not all(instance_labels.get(key) == value for key, value in selector.items()):
+    raise SystemExit("Grafana datasource selector does not match the managed instance")
+if dashboard_resource["spec"]["instanceSelector"]["matchLabels"] != selector:
+    raise SystemExit("Grafana dashboard and datasource do not select the same instance")
+if dashboard_resource["spec"].get("configMapRef") != {
+    "name": "api-monetization-grafana-dashboard",
+    "key": "api-monetization.json",
+}:
+    raise SystemExit("GrafanaDashboard does not import the generated dashboard ConfigMap")
+datasource_model = datasource["spec"]["datasource"]
+if (
+    datasource_model.get("url") != "https://thanos-querier.openshift-monitoring.svc:9091"
+    or datasource_model.get("isDefault") is not True
+    or datasource_model.get("jsonData", {}).get("httpHeaderName1") != "Authorization"
+    or datasource_model.get("secureJsonData", {}).get("httpHeaderValue1") != "Bearer ${token}"
+):
+    raise SystemExit("Grafana OpenShift Thanos datasource authentication is incomplete")
+if not grafana["spec"].get("disableDefaultAdminSecret"):
+    raise SystemExit("Grafana must use the externally generated administrator credential")
+
 with open("applications/inventory/openapi.yaml", encoding="utf-8") as stream:
     openapi = yaml.safe_load(stream)
 if not str(openapi.get("openapi", "")).startswith("3.") or not openapi.get("paths"):
@@ -229,10 +267,23 @@ fi
 go test ./...
 go vet ./...
 
-if rg -n --glob '*.yaml' --glob '*.yml' '^kind:[[:space:]]*Secret[[:space:]]*$' .; then
-  echo "error: plaintext Kubernetes Secret resources are not allowed" >&2
-  exit 1
-fi
+python3 - <<'PY'
+import pathlib
+import yaml
+
+for pattern in ("*.yaml", "*.yml"):
+    for path in pathlib.Path(".").rglob(pattern):
+        for resource in yaml.safe_load_all(path.read_text(encoding="utf-8")):
+            if not resource or resource.get("kind") != "Secret":
+                continue
+            service_account_token = (
+                resource.get("type") == "kubernetes.io/service-account-token"
+                and not resource.get("data")
+                and not resource.get("stringData")
+            )
+            if not service_account_token:
+                raise SystemExit(f"{path}: plaintext Kubernetes Secret resources are not allowed")
+PY
 
 if rg -n --glob '*.yaml' --glob '*.yml' 'image:[[:space:]]*[^[:space:]]+:latest([[:space:]]|$)' .; then
   echo "error: container images must not use the latest tag" >&2

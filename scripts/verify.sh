@@ -85,6 +85,7 @@ for application_name in \
   api-monetization-service-mesh \
   api-monetization-connectivity-link \
   api-monetization-gateway \
+  api-monetization-grafana-operator \
   api-monetization-observability \
   api-monetization-console-plugins; do
   wait_for_application "$application_name"
@@ -443,5 +444,54 @@ oc wait --for=condition=Ready tempomonolithics.tempo.grafana.com/api-monetizatio
   -n api-monetization-observability --timeout=10m
 oc rollout status deployment/api-monetization-collector \
   -n api-monetization-observability --timeout=10m
+
+echo "waiting for the operator-managed Grafana dashboard"
+oc wait --for=condition=Ready externalsecret/api-monetization-grafana-admin \
+  -n api-monetization-observability --timeout=5m
+oc wait --for=condition=GrafanaReady \
+  grafanas.grafana.integreatly.org/api-monetization-grafana \
+  -n api-monetization-observability --timeout=10m
+oc wait --for=condition=DatasourceSynchronized \
+  grafanadatasources.grafana.integreatly.org/api-monetization-thanos \
+  -n api-monetization-observability --timeout=5m
+oc wait --for=condition=DashboardSynchronized \
+  grafanadashboards.grafana.integreatly.org/api-monetization \
+  -n api-monetization-observability --timeout=5m
+oc rollout status deployment/api-monetization-grafana-deployment \
+  -n api-monetization-observability --timeout=10m
+oc wait route/api-monetization-grafana-route \
+  -n api-monetization-observability \
+  --for=jsonpath='{.status.ingress[0].conditions[0].status}'=True --timeout=5m
+grafana_hostname=$(oc get route api-monetization-grafana-route \
+  -n api-monetization-observability -o jsonpath='{.status.ingress[0].host}')
+grafana_router_hostname=$(oc get route api-monetization-grafana-route \
+  -n api-monetization-observability \
+  -o jsonpath='{.status.ingress[0].routerCanonicalHostname}')
+grafana_password=$(oc get secret api-monetization-grafana-admin \
+  -n api-monetization-observability \
+  -o go-template='{{index .data "GF_SECURITY_ADMIN_PASSWORD"}}' | base64 -d)
+grafana_dashboard=$(curl --silent --show-error --fail \
+  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+  --connect-to "$grafana_hostname:443:$grafana_router_hostname:443" \
+  --user "admin:$grafana_password" \
+  "https://$grafana_hostname/api/dashboards/uid/api-monetization")
+if [[ $(jq -r '.dashboard.uid' <<<"$grafana_dashboard") != "api-monetization" ]]; then
+  echo "error: Grafana did not return the managed API Monetization dashboard" >&2
+  exit 1
+fi
+grafana_datasource_health=$(curl --silent --show-error --fail \
+  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+  --connect-to "$grafana_hostname:443:$grafana_router_hostname:443" \
+  --user "admin:$grafana_password" \
+  "https://$grafana_hostname/api/datasources/uid/openshift-thanos/health")
+grafana_datasource_status=$(jq -r '.status | ascii_downcase' <<<"$grafana_datasource_health")
+if [[ $grafana_datasource_status != "ok" && $grafana_datasource_status != "success" ]]; then
+  echo "error: Grafana OpenShift Thanos datasource health check failed" >&2
+  jq . <<<"$grafana_datasource_health" >&2
+  exit 1
+fi
+echo "Grafana: https://$grafana_hostname/d/api-monetization (dashboard and Thanos datasource synchronized)"
 
 echo "API monetization platform verification passed"

@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: api-monetization-grafana-thanos-token
+  namespace: api-monetization-observability
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    kubernetes.io/service-account.name: api-monetization-grafana-sa
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+type: kubernetes.io/service-account-token
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-monetization-service-ca
+  namespace: api-monetization-observability
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    service.beta.openshift.io/inject-cabundle: "true"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+data: {}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: api-monetization-grafana-metrics
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-monitoring-view
+subjects:
+  - kind: ServiceAccount
+    name: api-monetization-grafana-sa
+    namespace: api-monetization-observability

@@ -5,12 +5,17 @@ resources:
   - tempo.yaml
   - collector.yaml
   - alerts.yaml
+  - grafana-credentials.yaml
+  - grafana-access.yaml
+  - grafana.yaml
 configMapGenerator:
   - name: api-monetization-grafana-dashboard
     namespace: api-monetization-observability
     files:
       - api-monetization.json
     options:
+      annotations:
+        argocd.argoproj.io/sync-wave: "4"
       labels:
         app.kubernetes.io/part-of: api-monetization
         grafana_dashboard: "1"

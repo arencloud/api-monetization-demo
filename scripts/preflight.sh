@@ -80,6 +80,12 @@ else
   fail "certified-operators catalog source is unavailable"
 fi
 
+if oc get catalogsource community-operators -n openshift-marketplace >/dev/null 2>&1; then
+  pass "community-operators catalog source is available"
+else
+  fail "community-operators catalog source is unavailable (required for the Grafana Operator)"
+fi
+
 default_storage_classes=$(oc get storageclass \
   -o jsonpath='{range .items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")]}{.metadata.name}{"\n"}{end}' \
   2>/dev/null || true)
@@ -213,6 +219,7 @@ check_package_channel openshift-external-secrets-operator stable-v1.2
 check_package_channel cloudnative-pg stable-v1
 check_package_channel opentelemetry-product stable
 check_package_channel tempo-product stable
+check_package_channel grafana-operator v5
 
 check_existing_subscription() {
   local package_name=$1
@@ -242,6 +249,7 @@ check_existing_subscription openshift-external-secrets-operator stable-v1.2
 check_existing_subscription cloudnative-pg stable-v1
 check_existing_subscription opentelemetry-product stable
 check_existing_subscription tempo-product stable
+check_existing_subscription grafana-operator v5
 
 if ((failures > 0)); then
   echo "preflight failed with $failures issue(s); no cluster changes were made" >&2

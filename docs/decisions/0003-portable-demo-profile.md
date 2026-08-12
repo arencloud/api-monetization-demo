@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted.
+Accepted; the Grafana portion is superseded by ADR 0004.
 
 ## Decision
 
@@ -40,20 +40,18 @@ and a Red Hat Operator-managed, in-memory `TempoMonolithic` instance. In-memory
 trace storage is deliberately limited to demonstrations and proof of concept.
 Production overlays must use supported persistent/object storage.
 
-A vendor-neutral Grafana dashboard is stored as code but Grafana is not installed
-by the baseline. When an organization selects Grafana, it must be installed by an
-Operator and the dashboard ConfigMap can be reconciled into that instance. Loki
-is also excluded from the portable baseline because Red Hat LokiStack requires an
+The Grafana portion of this decision is superseded by ADR 0004. Loki remains
+excluded from the portable baseline because Red Hat LokiStack requires an
 environment-specific object store; structured logs remain available through
 OpenShift during the demo.
 
 ## Consequences
 
-- A fresh cluster needs no LoadBalancer provider, DNS, ACME, S3, or Grafana
-  credentials.
+- A fresh cluster needs no LoadBalancer provider, DNS, ACME, S3, or pre-created
+  Grafana credentials.
 - Registry capacity, availability, backup, and lifecycle remain infrastructure
   responsibilities and are unaffected by demo installation or removal.
 - The complete authentication, rate limiting, upgrade, metrics, logging, and
   tracing story works before environment-specific integrations are selected.
-- Custom-domain certificates and DNS, long-lived traces, Loki, and Grafana are
-  explicit production overlays rather than hidden environment assumptions.
+- Custom-domain certificates and DNS, long-lived traces, and Loki are explicit
+  production overlays rather than hidden environment assumptions.

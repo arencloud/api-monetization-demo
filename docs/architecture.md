@@ -39,7 +39,7 @@ assigned external address; the request-time policy path is unchanged.
 | East-west identity, encryption, routing, telemetry | Red Hat OpenShift Service Mesh |
 | Request telemetry | OpenTelemetry, Prometheus, Loki, and Tempo |
 | Plan state, upgrades, rating, invoices | Monetization control plane and PostgreSQL |
-| Operational and business visualization | Grafana and Kiali |
+| Operational and business visualization | Grafana Operator, Grafana, and Kiali |
 | Desired state and promotion | OpenShift GitOps |
 
 The browser portal is a public PKCE client in Keycloak. Human administrators
@@ -126,6 +126,15 @@ Dashboards may correlate those sources, but only stored accepted usage is an
 invoice input. The Connectivity Link operator owns the gateway PodMonitor; the
 gateway queries select Envoy port 15090 explicitly so the same proxy counters
 are not counted again through the pod's status/metrics endpoint.
+
+The community Grafana Operator manages a single-replica, stateless Grafana
+instance. Its datasource authenticates to the OpenShift Thanos Querier with a
+dedicated service account granted `cluster-monitoring-view`; the service CA and
+bearer token are injected into `GrafanaDatasource` secure fields. A
+`GrafanaDashboard` imports the Git-managed dashboard ConfigMap. Grafana storage
+is intentionally ephemeral because dashboards and datasources are fully
+reconstructed by their custom resources, so the demo requires no additional
+PVC or RWX storage.
 
 Suspension changes the commercial subscription state while retaining issued
 credentials. Because every accepted request performs an active-entitlement

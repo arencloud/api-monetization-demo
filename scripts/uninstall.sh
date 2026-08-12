@@ -106,6 +106,7 @@ remove_operator openshift-opentelemetry-operator opentelemetry-product
 remove_operator openshift-operators cloudnative-pg
 remove_operator openshift-operators servicemeshoperator3
 remove_operator openshift-tempo-operator tempo-product
+remove_operator openshift-operators grafana-operator
 
 oc delete mutatingwebhookconfiguration,validatingwebhookconfiguration \
   -l app.kubernetes.io/instance=cert-manager \

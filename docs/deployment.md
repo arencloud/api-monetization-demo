@@ -7,13 +7,15 @@
 - The `oc` CLI and network access to the cluster.
 - `redhat-operators` available in `openshift-marketplace`.
 - `certified-operators` available in `openshift-marketplace`.
+- `community-operators` available in `openshift-marketplace` for Grafana.
 - Red Hat entitlements that expose the `rhcl-operator` package.
 - The repository is reachable by the in-cluster Argo CD repository server.
 - A default dynamic `StorageClass` is configured for PostgreSQL PVCs.
 - The integrated OpenShift image registry is `Managed`, Available, and uses
   persistent infrastructure-backed storage rather than `emptyDir`.
 - Cluster nodes can pull from `registry.redhat.io`, `registry.access.redhat.com`,
-  `ghcr.io`, and GitHub's `pkg-containers.githubusercontent.com` blob endpoint.
+  `ghcr.io`, `docker.io`, and GitHub's `pkg-containers.githubusercontent.com`
+  blob endpoint.
 
 The preflight check is read-only:
 
@@ -76,6 +78,7 @@ oc get istiocni -n api-monetization-istio-cni
 make verify
 make demo
 make observe
+make grafana
 ```
 
 `make verify` finishes with the lifecycle enforcement test. The test mutates

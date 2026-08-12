@@ -1,0 +1,108 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: Grafana
+metadata:
+  name: api-monetization-grafana
+  namespace: api-monetization-observability
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  labels:
+    app.kubernetes.io/name: api-monetization-grafana
+    app.kubernetes.io/part-of: api-monetization
+    dashboards: api-monetization
+spec:
+  disableDefaultAdminSecret: true
+  route:
+    spec:
+      tls:
+        termination: edge
+        insecureEdgeTerminationPolicy: Redirect
+  config:
+    log:
+      mode: console
+    auth:
+      disable_login_form: "false"
+    security:
+      cookie_secure: "true"
+      disable_gravatar: "true"
+    users:
+      allow_sign_up: "false"
+  deployment:
+    spec:
+      replicas: 1
+      template:
+        spec:
+          containers:
+            - name: grafana
+              env:
+                - name: GF_SECURITY_ADMIN_USER
+                  value: admin
+                - name: GF_SECURITY_ADMIN_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: api-monetization-grafana-admin
+                      key: GF_SECURITY_ADMIN_PASSWORD
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 256Mi
+                limits:
+                  cpu: "1"
+                  memory: 1Gi
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: api-monetization-thanos
+  namespace: api-monetization-observability
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  uid: openshift-thanos
+  instanceSelector:
+    matchLabels:
+      dashboards: api-monetization
+  valuesFrom:
+    - targetPath: secureJsonData.httpHeaderValue1
+      valueFrom:
+        secretKeyRef:
+          name: api-monetization-grafana-thanos-token
+          key: token
+    - targetPath: secureJsonData.tlsCACert
+      valueFrom:
+        configMapKeyRef:
+          name: api-monetization-service-ca
+          key: service-ca.crt
+  datasource:
+    name: OpenShift Thanos
+    type: prometheus
+    access: proxy
+    url: https://thanos-querier.openshift-monitoring.svc:9091
+    isDefault: true
+    editable: false
+    jsonData:
+      httpHeaderName1: Authorization
+      timeInterval: 15s
+      tlsAuthWithCACert: true
+    secureJsonData:
+      httpHeaderValue1: Bearer ${token}
+      tlsCACert: ${service-ca.crt}
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: api-monetization
+  namespace: api-monetization-observability
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  instanceSelector:
+    matchLabels:
+      dashboards: api-monetization
+  configMapRef:
+    name: api-monetization-grafana-dashboard
+    key: api-monetization.json
+  resyncPeriod: 1m

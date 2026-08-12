@@ -76,6 +76,7 @@ The first profile follows the RHCL 1.4 support matrix:
 | CloudNativePG certified Operator | 1.30 |
 | Red Hat build of OpenTelemetry Operator | stable, 0.152.0-2 starting CSV |
 | Tempo Operator | stable, 0.21.0-3 starting CSV |
+| Grafana Operator | v5, 5.24.0 starting CSV |
 | Application build toolchain | Red Hat UBI 9 Go Toolset 1.26.5 |
 
 The cluster must have subscriptions/entitlements for the Red Hat products. Run
@@ -83,8 +84,10 @@ The cluster must have subscriptions/entitlements for the Red Hat products. Run
 
 ## Quick start
 
-Prerequisites: `oc`, cluster-admin access, access to the Red Hat operator
-catalog, and a cluster matching the profile above.
+Prerequisites: `oc`, cluster-admin access, the Red Hat, certified, and community
+operator catalogs, and a cluster matching the profile above. Grafana Operator
+is community-supported; Red Hat product components continue to use their Red
+Hat Operators.
 
 ```bash
 make validate
@@ -116,8 +119,9 @@ the RHCL developer catalog,
 External Secrets-generated API keys, Keycloak JWT clients, Free/Developer/Business/
 Enterprise plan policies plus a real Pay-as-you-go metered tier, an Inventory
 API, a PostgreSQL-backed subscription
-control plane, live plan changes, Prometheus metrics, a Grafana dashboard,
-structured logs, and an OpenTelemetry-to-Tempo trace pipeline.
+control plane, live plan changes, Prometheus metrics, an operator-managed
+Grafana instance and dashboard, structured logs, and an OpenTelemetry-to-Tempo
+trace pipeline.
 
 The monetization portal is exposed through a portable OpenShift Route and uses
 Red Hat build of Keycloak Authorization Code flow with PKCE. Its subscription,
@@ -154,6 +158,7 @@ make lifecycle-test
 make demo
 make metered-demo
 make observe
+make grafana
 make reset-demo
 make portal
 ```
@@ -173,11 +178,13 @@ before the Inventory API and are therefore never counted or billed. Run
 `make reset-demo` afterward to return Demo Company to Free.
 
 `make observe` queries OpenShift user-workload monitoring and prints the live
-commercial and policy evidence without requiring a Grafana installation. It
+commercial and policy evidence directly from Thanos. It
 shows PostgreSQL-backed accepted usage, overage and revenue; Limitador decisions
 split between API-key and JWT; and Istio gateway responses by HTTP status. The
-managed Grafana dashboard presents the same separation visually. In particular,
-HTTP 429 traffic remains observable while never being included in billing.
+operator-managed Grafana instance presents the same separation visually. Run
+`make grafana` to print its admitted HTTPS URL and generated administrator
+login. In particular, HTTP 429 traffic remains observable while never being
+included in billing.
 
 The portable demo profile intentionally requires neither a LoadBalancer
 provider nor production infrastructure. It uses `ClusterIP` plus admitted

@@ -178,12 +178,16 @@ Print the live business and enforcement summary from OpenShift monitoring:
 
 ```bash
 make observe
+make grafana
 ```
 
 The output separates current-month accepted billable usage and revenue from
 last-hour Connectivity Link decisions and gateway HTTP status. API-key and JWT
 decisions are attributed using their distinct Limitador namespaces. This is the
-fastest portable presentation path because it does not require Grafana.
+fastest terminal presentation path. `make grafana` prints the automatically
+provisioned Grafana URL and generated administrator credential.
+Administrators can also open it from the monetization portal's **Platform
+views → Business dashboard** link.
 
 Accepted traffic and plan attribution:
 
@@ -207,17 +211,21 @@ oc get route tempo-api-monetization-jaegerui \
   -n api-monetization-observability -o jsonpath='https://{.spec.host}{"\n"}'
 ```
 
-The Grafana dashboard JSON is managed in the
-`api-monetization-grafana-dashboard` ConfigMap. It contains current-month
+The Grafana Operator imports the dashboard JSON from the
+`api-monetization-grafana-dashboard` ConfigMap through the
+`GrafanaDashboard/api-monetization` resource. It contains current-month
 accepted usage, commercial allowance and hard quota, billable overage and
 revenue, API-key/JWT allow and limit decisions, gateway response codes, latency,
-and live plan-change counters. Import it into an existing operator-managed
-Grafana instance when one is available:
+and live plan-change counters. Inspect the declarative import with:
 
 ```bash
 oc get configmap api-monetization-grafana-dashboard \
   -n api-monetization-observability \
   -o go-template='{{index .data "api-monetization.json"}}'
+oc get grafanas.grafana.integreatly.org,\
+grafanadatasources.grafana.integreatly.org,\
+grafanadashboards.grafana.integreatly.org \
+  -n api-monetization-observability
 ```
 
 ## Business message
