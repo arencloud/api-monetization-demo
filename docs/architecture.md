@@ -170,6 +170,8 @@ if Kubernetes cleanup is temporarily delayed.
 - Authorino reads Keycloak signing keys from the internal JWKS endpoint, which
   remains stable behind its mesh sidecar, and separately validates the portable
   external issuer claim and API audience on every JWT request.
+- Demo and lifecycle automation obtain tokens through the admitted HTTPS
+  Keycloak Route, so test tokens carry the same issuer as real portal clients.
 - The Inventory API remains strict-mTLS on its runtime port. A separate
   documentation-only port serves the OpenAPI document to the RHCL Developer
   Portal controller, and an earlier Argo sync-wave hook proves that document is

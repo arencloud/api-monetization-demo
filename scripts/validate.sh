@@ -348,6 +348,18 @@ if not any(
 ):
     raise SystemExit("JWT authorization must validate the portable external Keycloak issuer")
 
+control_token_script = pathlib.Path("scripts/control-token.sh").read_text(encoding="utf-8")
+if not all(
+    value in control_token_script
+    for value in (
+        "keycloak_route=api-monetization-keycloak",
+        "--cacert \"$route_ca_file\"",
+        "--connect-to \"$keycloak_hostname:443:$router_hostname:443\"",
+        '"https://$keycloak_hostname/realms/api-monetization/protocol/openid-connect/token"',
+    )
+) or "port-forward" in control_token_script:
+    raise SystemExit("Automation tokens must be issued through the admitted HTTPS Keycloak Route")
+
 with open("platform/gateway/inventory-plan-policy.yaml", encoding="utf-8") as stream:
     plan_policy = yaml.safe_load(stream)
 plan_tiers = {plan["tier"]: plan for plan in plan_policy["spec"]["plans"]}

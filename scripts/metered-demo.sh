@@ -19,7 +19,6 @@ application_namespace=api-monetization-apps
 data_namespace=api-monetization-data
 gateway_namespace=api-monetization-gateway
 control_port=${METERED_CONTROL_LOCAL_PORT:-18097}
-token_port=${METERED_TOKEN_LOCAL_PORT:-18098}
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 work_dir=$(mktemp -d)
 port_forward_pid=""
@@ -58,7 +57,7 @@ done
 curl --silent --fail "http://127.0.0.1:$control_port/readyz" >/dev/null || \
   fail "monetization control plane did not become ready"
 
-control_token=$(CONTROL_TOKEN_LOCAL_PORT="$token_port" "$script_dir/control-token.sh")
+control_token=$("$script_dir/control-token.sh")
 auth_header="Authorization: Bearer $control_token"
 
 plans=$(curl --silent --show-error --fail --header "$auth_header" \

@@ -16,21 +16,14 @@ data_namespace=api-monetization-data
 gitops_namespace=openshift-gitops
 gitops_application=api-monetization-gateway
 control_port=${CONTROL_LOCAL_PORT:-18080}
-keycloak_port=${KEYCLOAK_LOCAL_PORT:-18081}
-control_token_port=${CONTROL_TOKEN_LOCAL_PORT:-18083}
 control_internal_port=${CONTROL_INTERNAL_LOCAL_PORT:-18084}
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 port_forward_pids=()
 route_ca_file=""
 
-if [[ $control_port == "$keycloak_port" ||
-  $control_port == "$control_token_port" ||
-  $control_port == "$control_internal_port" ||
-  $keycloak_port == "$control_token_port" ||
-  $keycloak_port == "$control_internal_port" ||
-  $control_token_port == "$control_internal_port" ]]; then
+if [[ $control_port == "$control_internal_port" ]]; then
   echo "error: demo local port settings must be unique" >&2
-  echo "CONTROL_LOCAL_PORT=$control_port KEYCLOAK_LOCAL_PORT=$keycloak_port CONTROL_TOKEN_LOCAL_PORT=$control_token_port CONTROL_INTERNAL_LOCAL_PORT=$control_internal_port" >&2
+  echo "CONTROL_LOCAL_PORT=$control_port CONTROL_INTERNAL_LOCAL_PORT=$control_internal_port" >&2
   exit 1
 fi
 
@@ -144,8 +137,7 @@ for _ in $(seq 1 30); do
   curl --silent --fail "http://127.0.0.1:$control_port/readyz" >/dev/null && break
   sleep 1
 done
-control_token=$(CONTROL_TOKEN_LOCAL_PORT="$control_token_port" \
-  "$script_dir/control-token.sh")
+control_token=$("$script_dir/control-token.sh")
 subscription_plan=$(curl --silent --show-error --fail \
   --header "Authorization: Bearer $control_token" \
   "http://127.0.0.1:$control_port/api/subscriptions" \
@@ -183,21 +175,11 @@ request_api_key() {
     "https://$api_hostname/inventory"
 }
 
-keycloak_host=api-monetization-service.api-monetization-identity.svc.cluster.local
-oc port-forward -n api-monetization-identity service/api-monetization-service \
-  "$keycloak_port:8080" >/tmp/api-monetization-keycloak-port-forward.log 2>&1 &
-port_forward_pids+=("$!")
-client_secret=$(oc get secret keycloak-demo-clients -n api-monetization-identity \
-  -o go-template='{{index .data "free-client-secret"}}' | base64 -d)
-
 issue_jwt() {
-  local token_response
-  token_response=$(curl --silent --show-error --fail \
-    --connect-to "$keycloak_host:8080:127.0.0.1:$keycloak_port" \
-    --user "demo-free-client:$client_secret" \
-    --data 'grant_type=client_credentials' \
-    "http://$keycloak_host:8080/realms/api-monetization/protocol/openid-connect/token")
-  jq -er '.access_token' <<<"$token_response"
+  CONTROL_TOKEN_CLIENT_ID=demo-free-client \
+    CONTROL_TOKEN_SECRET_NAME=keycloak-demo-clients \
+    CONTROL_TOKEN_SECRET_KEY=free-client-secret \
+    "$script_dir/control-token.sh"
 }
 
 jwt_client_id() {

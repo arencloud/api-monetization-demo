@@ -10,49 +10,52 @@ for command_name in oc curl jq base64; do
 done
 
 identity_namespace=api-monetization-identity
-keycloak_service=api-monetization-service
-keycloak_host=${keycloak_service}.${identity_namespace}.svc.cluster.local
-keycloak_port=${CONTROL_TOKEN_LOCAL_PORT:-18083}
+keycloak_route=api-monetization-keycloak
 client_id=${CONTROL_TOKEN_CLIENT_ID:-monetization-automation}
 credential_secret=${CONTROL_TOKEN_SECRET_NAME:-monetization-portal-credentials}
 credential_key=${CONTROL_TOKEN_SECRET_KEY:-automation-client-secret}
-port_forward_pid=""
+route_ca_file=$(mktemp)
 
 cleanup() {
-  if [[ -n $port_forward_pid ]]; then
-    kill "$port_forward_pid" 2>/dev/null || true
-  fi
+  rm -f -- "$route_ca_file"
 }
 trap cleanup EXIT
 
 oc wait --for=condition=Ready "externalsecret/$credential_secret" \
   -n "$identity_namespace" --timeout=5m >/dev/null
-oc port-forward -n "$identity_namespace" "service/$keycloak_service" \
-  "$keycloak_port:8080" >/tmp/api-monetization-control-token-port-forward.log 2>&1 &
-port_forward_pid=$!
+oc wait "route/$keycloak_route" -n "$identity_namespace" \
+  --for=jsonpath='{.status.ingress[0].conditions[0].status}'=True \
+  --timeout=5m >/dev/null
+
+keycloak_hostname=$(oc get route "$keycloak_route" -n "$identity_namespace" \
+  -o jsonpath='{.status.ingress[0].host}')
+router_hostname=$(oc get route "$keycloak_route" -n "$identity_namespace" \
+  -o jsonpath='{.status.ingress[0].routerCanonicalHostname}')
+if [[ -z $keycloak_hostname || -z $router_hostname ]]; then
+  echo "error: Keycloak Route has no admitted host or router hostname" >&2
+  exit 1
+fi
+
+ingress_certificate=$(oc get ingresscontroller.operator.openshift.io default \
+  -n openshift-ingress-operator -o jsonpath='{.spec.defaultCertificate.name}')
+if [[ -z $ingress_certificate ]]; then
+  ingress_certificate=router-certs-default
+fi
+oc get secret "$ingress_certificate" -n openshift-ingress \
+  -o go-template='{{index .data "tls.crt"}}' | base64 -d >"$route_ca_file"
 
 client_secret=$(oc get secret "$credential_secret" \
   -n "$identity_namespace" \
   -o "go-template={{index .data \"$credential_key\"}}" | base64 -d)
 
-for _ in $(seq 1 30); do
-  if ! kill -0 "$port_forward_pid" 2>/dev/null; then
-    echo "error: Keycloak port-forward stopped; local port $keycloak_port may already be in use" >&2
-    sed -n '1,10p' /tmp/api-monetization-control-token-port-forward.log >&2
+token_response=$(curl --silent --show-error --fail \
+  --cacert "$route_ca_file" \
+  --connect-to "$keycloak_hostname:443:$router_hostname:443" \
+  --user "$client_id:$client_secret" \
+  --data 'grant_type=client_credentials' \
+  "https://$keycloak_hostname/realms/api-monetization/protocol/openid-connect/token") || {
+    echo "error: failed to obtain a monetization control-plane token through the Keycloak Route" >&2
     exit 1
-  fi
-  if token_response=$(curl --silent --show-error --fail \
-      --connect-to "$keycloak_host:8080:127.0.0.1:$keycloak_port" \
-      --user "$client_id:$client_secret" \
-      --data 'grant_type=client_credentials' \
-      "http://$keycloak_host:8080/realms/api-monetization/protocol/openid-connect/token" \
-      2>/dev/null); then
-    jq -er '.access_token' <<<"$token_response"
-    exit 0
-  fi
-  sleep 1
-done
+  }
 
-echo "error: failed to obtain a monetization control-plane token" >&2
-echo "check /tmp/api-monetization-control-token-port-forward.log and the monetization-automation Keycloak client" >&2
-exit 1
+jq -er '.access_token' <<<"$token_response"

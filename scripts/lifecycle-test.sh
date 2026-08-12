@@ -13,8 +13,6 @@ application_namespace=api-monetization-apps
 data_namespace=api-monetization-data
 gateway_namespace=api-monetization-gateway
 control_port=${LIFECYCLE_CONTROL_LOCAL_PORT:-18090}
-admin_token_port=${LIFECYCLE_ADMIN_TOKEN_LOCAL_PORT:-18091}
-developer_token_port=${LIFECYCLE_DEVELOPER_TOKEN_LOCAL_PORT:-18092}
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 work_dir=$(mktemp -d)
 port_forward_pid=""
@@ -185,17 +183,11 @@ for application in api-monetization-identity api-monetization-control api-moneti
   wait_for_application "$application"
 done
 
-[[ $control_port != "$admin_token_port" && \
-  $control_port != "$developer_token_port" && \
-  $admin_token_port != "$developer_token_port" ]] || \
-  fail "lifecycle-test local ports must be unique"
-
 echo "obtaining dedicated lifecycle-test identities"
-admin_token=$(CONTROL_TOKEN_LOCAL_PORT="$admin_token_port" "$script_dir/control-token.sh")
+admin_token=$("$script_dir/control-token.sh")
 developer_token=$(CONTROL_TOKEN_CLIENT_ID=monetization-developer-automation \
   CONTROL_TOKEN_SECRET_NAME=monetization-developer-credentials \
   CONTROL_TOKEN_SECRET_KEY=developer-automation-client-secret \
-  CONTROL_TOKEN_LOCAL_PORT="$developer_token_port" \
   "$script_dir/control-token.sh")
 
 developer_payload=${developer_token#*.}

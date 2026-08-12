@@ -476,7 +476,6 @@ fi
 developer_token=$(CONTROL_TOKEN_CLIENT_ID=monetization-developer-automation \
   CONTROL_TOKEN_SECRET_NAME=monetization-developer-credentials \
   CONTROL_TOKEN_SECRET_KEY=developer-automation-client-secret \
-  CONTROL_TOKEN_LOCAL_PORT=18085 \
   "$(dirname "${BASH_SOURCE[0]}")/control-token.sh")
 developer_identity=$(curl --silent --show-error --fail \
   --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
