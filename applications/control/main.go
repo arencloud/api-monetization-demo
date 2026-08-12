@@ -294,7 +294,11 @@ type usageSummary struct {
 	Plan                 string  `json:"plan"`
 	Requests             int64   `json:"requests"`
 	IncludedRequests     *int64  `json:"includedRequests"`
+	MonthlyQuotaRequests *int64  `json:"monthlyQuotaRequests"`
+	RateLimitRequests    *int32  `json:"rateLimitRequests"`
+	RateLimitWindowSecs  *int32  `json:"rateLimitWindowSeconds"`
 	OverageRequests      int64   `json:"overageRequests"`
+	OverageRevenueEuro   float64 `json:"overageRevenueEuro"`
 	ProjectedRevenueEuro float64 `json:"projectedRevenueEuro"`
 	PeriodStart          string  `json:"periodStart"`
 	PeriodEnd            string  `json:"periodEnd"`
@@ -315,8 +319,14 @@ func (a *app) loadUsage(ctx context.Context) ([]usageSummary, error) {
 		SELECT c.external_id, s.api_product_id, s.plan_id,
 		       COALESCE(SUM(u.billable_units), 0)::bigint,
 		       p.included_requests,
+		       p.monthly_quota_requests,
+		       p.rate_limit_requests,
+		       p.rate_limit_window_seconds,
 		       GREATEST(COALESCE(SUM(u.billable_units), 0)::bigint
 		         - COALESCE(p.included_requests, COALESCE(SUM(u.billable_units), 0)::bigint), 0),
+		       (GREATEST(COALESCE(SUM(u.billable_units), 0)::bigint
+		          - COALESCE(p.included_requests, COALESCE(SUM(u.billable_units), 0)::bigint), 0)
+		         * p.overage_micros_per_request::numeric / 1000000)::double precision,
 		       ((COALESCE(p.monthly_price_cents, 0)::numeric / 100)
 		       + (GREATEST(COALESCE(SUM(u.billable_units), 0)::bigint
 		            - COALESCE(p.included_requests, COALESCE(SUM(u.billable_units), 0)::bigint), 0)
@@ -328,7 +338,9 @@ func (a *app) loadUsage(ctx context.Context) ([]usageSummary, error) {
 		  AND u.occurred_at >= $1 AND u.occurred_at < $2
 		WHERE s.status='active'
 		GROUP BY c.external_id, s.api_product_id, s.plan_id, p.included_requests,
-		         p.monthly_price_cents, p.overage_micros_per_request
+		         p.monthly_quota_requests, p.rate_limit_requests,
+		         p.rate_limit_window_seconds, p.monthly_price_cents,
+		         p.overage_micros_per_request
 		ORDER BY c.external_id, s.api_product_id`, start, end)
 	if err != nil {
 		return nil, err
@@ -337,7 +349,11 @@ func (a *app) loadUsage(ctx context.Context) ([]usageSummary, error) {
 	result := make([]usageSummary, 0)
 	for rows.Next() {
 		var item usageSummary
-		if err = rows.Scan(&item.Customer, &item.Product, &item.Plan, &item.Requests, &item.IncludedRequests, &item.OverageRequests, &item.ProjectedRevenueEuro); err != nil {
+		if err = rows.Scan(&item.Customer, &item.Product, &item.Plan,
+			&item.Requests, &item.IncludedRequests, &item.MonthlyQuotaRequests,
+			&item.RateLimitRequests, &item.RateLimitWindowSecs,
+			&item.OverageRequests, &item.OverageRevenueEuro,
+			&item.ProjectedRevenueEuro); err != nil {
 			return nil, err
 		}
 		item.PeriodStart = start.Format(time.DateOnly)
@@ -392,11 +408,36 @@ func (a *app) businessMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Fprintln(w, "# HELP monetization_billable_requests Stored accepted requests by customer and plan.")
 	fmt.Fprintln(w, "# TYPE monetization_billable_requests gauge")
+	fmt.Fprintln(w, "# HELP monetization_included_requests Commercial requests included in the current plan.")
+	fmt.Fprintln(w, "# TYPE monetization_included_requests gauge")
+	fmt.Fprintln(w, "# HELP monetization_monthly_quota_requests Enforced monthly safety quota for the current plan.")
+	fmt.Fprintln(w, "# TYPE monetization_monthly_quota_requests gauge")
+	fmt.Fprintln(w, "# HELP monetization_overage_requests Accepted requests above the included allowance.")
+	fmt.Fprintln(w, "# TYPE monetization_overage_requests gauge")
+	fmt.Fprintln(w, "# HELP monetization_overage_revenue_euros Projected current-month revenue from accepted overage.")
+	fmt.Fprintln(w, "# TYPE monetization_overage_revenue_euros gauge")
 	fmt.Fprintln(w, "# HELP monetization_projected_revenue_euros Projected monthly base and overage revenue.")
 	fmt.Fprintln(w, "# TYPE monetization_projected_revenue_euros gauge")
+	fmt.Fprintln(w, "# HELP monetization_rate_limit_requests Short-window request limit for the current plan.")
+	fmt.Fprintln(w, "# TYPE monetization_rate_limit_requests gauge")
+	fmt.Fprintln(w, "# HELP monetization_rate_limit_window_seconds Short-window rate-limit duration for the current plan.")
+	fmt.Fprintln(w, "# TYPE monetization_rate_limit_window_seconds gauge")
 	for _, item := range usage {
-		fmt.Fprintf(w, "monetization_billable_requests{customer=%q,product=%q,plan=%q} %d\n", item.Customer, item.Product, item.Plan, item.Requests)
-		fmt.Fprintf(w, "monetization_projected_revenue_euros{customer=%q,product=%q,plan=%q} %.6f\n", item.Customer, item.Product, item.Plan, item.ProjectedRevenueEuro)
+		labels := fmt.Sprintf("customer=%q,product=%q,plan=%q", item.Customer, item.Product, item.Plan)
+		fmt.Fprintf(w, "monetization_billable_requests{%s} %d\n", labels, item.Requests)
+		if item.IncludedRequests != nil {
+			fmt.Fprintf(w, "monetization_included_requests{%s} %d\n", labels, *item.IncludedRequests)
+		}
+		if item.MonthlyQuotaRequests != nil {
+			fmt.Fprintf(w, "monetization_monthly_quota_requests{%s} %d\n", labels, *item.MonthlyQuotaRequests)
+		}
+		fmt.Fprintf(w, "monetization_overage_requests{%s} %d\n", labels, item.OverageRequests)
+		fmt.Fprintf(w, "monetization_overage_revenue_euros{%s} %.6f\n", labels, item.OverageRevenueEuro)
+		fmt.Fprintf(w, "monetization_projected_revenue_euros{%s} %.6f\n", labels, item.ProjectedRevenueEuro)
+		if item.RateLimitRequests != nil && item.RateLimitWindowSecs != nil {
+			fmt.Fprintf(w, "monetization_rate_limit_requests{%s} %d\n", labels, *item.RateLimitRequests)
+			fmt.Fprintf(w, "monetization_rate_limit_window_seconds{%s} %d\n", labels, *item.RateLimitWindowSecs)
+		}
 	}
 }
 

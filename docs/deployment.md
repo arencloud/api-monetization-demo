@@ -75,6 +75,7 @@ oc get istio -n api-monetization-mesh-system
 oc get istiocni -n api-monetization-istio-cni
 make verify
 make demo
+make observe
 ```
 
 `make verify` finishes with the lifecycle enforcement test. The test mutates

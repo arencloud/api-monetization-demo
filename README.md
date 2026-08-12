@@ -153,6 +153,7 @@ After deployment and verification, run the deterministic scenario:
 make lifecycle-test
 make demo
 make metered-demo
+make observe
 make reset-demo
 make portal
 ```
@@ -170,6 +171,13 @@ no included requests, a 10,000-request monthly safety cap, a 100/minute rate
 limit, and a €0.01 charge per accepted request. HTTP 429 responses are rejected
 before the Inventory API and are therefore never counted or billed. Run
 `make reset-demo` afterward to return Demo Company to Free.
+
+`make observe` queries OpenShift user-workload monitoring and prints the live
+commercial and policy evidence without requiring a Grafana installation. It
+shows PostgreSQL-backed accepted usage, overage and revenue; Limitador decisions
+split between API-key and JWT; and Istio gateway responses by HTTP status. The
+managed Grafana dashboard presents the same separation visually. In particular,
+HTTP 429 traffic remains observable while never being included in billing.
 
 The portable demo profile intentionally requires neither a LoadBalancer
 provider nor production infrastructure. It uses `ClusterIP` plus admitted

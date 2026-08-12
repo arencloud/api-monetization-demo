@@ -117,6 +117,16 @@ included allowances so production-scale usage can accrue overage without
 disabling abuse protection. Requests rejected with HTTP 429 never reach the API
 usage exporter and are not billable.
 
+The observability model preserves this boundary. The control plane exports
+current-month accepted usage, included allowance, hard quota, overage units,
+overage revenue, total projected revenue, and short-window limits as Prometheus
+gauges. Limitador counters expose allowed and denied decisions separately for
+API-key and JWT policy namespaces. Istio gateway metrics show final HTTP status.
+Dashboards may correlate those sources, but only stored accepted usage is an
+invoice input. The Connectivity Link operator owns the gateway PodMonitor; the
+gateway queries select Envoy port 15090 explicitly so the same proxy counters
+are not counted again through the pod's status/metrics endpoint.
+
 Suspension changes the commercial subscription state while retaining issued
 credentials. Because every accepted request performs an active-entitlement
 lookup, API keys and already-issued JWTs are denied immediately and resume

@@ -28,3 +28,18 @@ spec:
             severity: critical
           annotations:
             summary: Monetization control-plane metrics target is unavailable
+        - alert: MonetizedAPIRateLimitDenialHigh
+          expr: >-
+            sum(rate(limited_calls{limitador_namespace=~"api-monetization-apps/inventory-(api-key|jwt)"}[5m]))
+            /
+            clamp_min(
+              sum(rate(limited_calls{limitador_namespace=~"api-monetization-apps/inventory-(api-key|jwt)"}[5m]))
+              + sum(rate(authorized_calls{limitador_namespace=~"api-monetization-apps/inventory-(api-key|jwt)"}[5m])),
+              0.001
+            ) > 0.25
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: More than 25 percent of monetized API calls are rate limited
+            description: Connectivity Link is rejecting a sustained share of API-key or JWT traffic; rejected calls are observable but not billable.

@@ -174,6 +174,17 @@ curl --silent --header "Authorization: Bearer $control_token" \
 
 ### 4. Show observability evidence
 
+Print the live business and enforcement summary from OpenShift monitoring:
+
+```bash
+make observe
+```
+
+The output separates current-month accepted billable usage and revenue from
+last-hour Connectivity Link decisions and gateway HTTP status. API-key and JWT
+decisions are attributed using their distinct Limitador namespaces. This is the
+fastest portable presentation path because it does not require Grafana.
+
 Accepted traffic and plan attribution:
 
 ```promql
@@ -197,9 +208,11 @@ oc get route tempo-api-monetization-jaegerui \
 ```
 
 The Grafana dashboard JSON is managed in the
-`api-monetization-grafana-dashboard` ConfigMap. It contains request volume by
-plan, customer attribution, latency, and live upgrade counters. Import it into
-an existing operator-managed Grafana instance when one is available:
+`api-monetization-grafana-dashboard` ConfigMap. It contains current-month
+accepted usage, commercial allowance and hard quota, billable overage and
+revenue, API-key/JWT allow and limit decisions, gateway response codes, latency,
+and live plan-change counters. Import it into an existing operator-managed
+Grafana instance when one is available:
 
 ```bash
 oc get configmap api-monetization-grafana-dashboard \

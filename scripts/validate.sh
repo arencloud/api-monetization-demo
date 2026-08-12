@@ -105,6 +105,36 @@ with open("platform/observability/api-monetization.json", encoding="utf-8") as s
     dashboard = json.load(stream)
 if dashboard.get("uid") != "api-monetization" or not dashboard.get("panels"):
     raise SystemExit("Grafana dashboard is missing its UID or panels")
+panel_titles = {panel.get("title") for panel in dashboard["panels"]}
+required_panels = {
+    "Accepted billable requests (current month)",
+    "Rate-limited attempts (selected range)",
+    "Billable overage requests",
+    "Connectivity Link decisions by credential",
+    "Gateway responses by HTTP status",
+    "Usage, allowance, and hard quota",
+    "Revenue by customer and plan",
+}
+if not required_panels.issubset(panel_titles):
+    raise SystemExit(f"Grafana dashboard is missing panels: {required_panels - panel_titles}")
+dashboard_queries = "\n".join(
+    target.get("expr", "")
+    for panel in dashboard["panels"]
+    for target in panel.get("targets", [])
+)
+for metric in (
+    "monetization_billable_requests",
+    "monetization_overage_requests",
+    "monetization_monthly_quota_requests",
+    "monetization_projected_revenue_euros",
+    "authorized_calls",
+    "limited_calls",
+    "istio_requests_total",
+):
+    if metric not in dashboard_queries:
+        raise SystemExit(f"Grafana dashboard does not query {metric}")
+if 'instance=~".*:15090"' not in dashboard_queries:
+    raise SystemExit("Grafana gateway query must select the Envoy metrics port to avoid duplicate scrapes")
 
 with open("applications/inventory/openapi.yaml", encoding="utf-8") as stream:
     openapi = yaml.safe_load(stream)
