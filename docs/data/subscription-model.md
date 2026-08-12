@@ -6,7 +6,7 @@ the first vertical slice.
 
 | Table | Purpose |
 | --- | --- |
-| `plans` | Commercial price, included units, overage rate, and enforcement window |
+| `plans` | Commercial price, included units, hard quota, overage rate, and enforcement window |
 | `api_products` | APIs available for subscription and usage attribution |
 | `customers` | Stable customer identity independent of login identity |
 | `subscriptions` | Customer/product/plan relationship with optimistic version field |
@@ -19,7 +19,7 @@ the first vertical slice.
 | `subscription_events` | Suspension, resumption, and cancellation audit events with actor metadata |
 | `schema_migrations` | Idempotent control-service schema migration history |
 
-The demo seed creates Free, Developer, Business, and Enterprise plans; Inventory,
+The demo seed creates Free, Pay as you go, Developer, Business, and Enterprise plans; Inventory,
 Payment, and AI Chat products; and one Free Inventory subscription for Demo
 Company.
 
@@ -34,6 +34,9 @@ Company.
   Rotation retains that digest as revoked history while clearing reusable
   Kubernetes resource references for the replacement credential.
 - Gateway telemetry is an input to `usage_events`, not an invoice by itself.
+- Included allowance and hard quota are separate. Accepted usage above the
+  allowance is billable overage until the hard quota is reached; rejected HTTP
+  429 attempts do not reach the API and are not usage events.
 - The active subscription query is the request-time entitlement read model;
   rating, usage aggregation, and invoicing remain asynchronous.
 - Usage ingestion must be idempotent by `request_id`.

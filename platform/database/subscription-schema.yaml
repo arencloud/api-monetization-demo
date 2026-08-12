@@ -19,6 +19,7 @@ data:
       display_name text NOT NULL,
       monthly_price_cents bigint,
       included_requests bigint,
+      monthly_quota_requests bigint,
       rate_limit_requests integer,
       rate_limit_window_seconds integer,
       overage_micros_per_request bigint NOT NULL DEFAULT 0,
@@ -27,6 +28,11 @@ data:
       updated_at timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT plans_price_nonnegative CHECK (monthly_price_cents IS NULL OR monthly_price_cents >= 0),
       CONSTRAINT plans_requests_nonnegative CHECK (included_requests IS NULL OR included_requests >= 0),
+      CONSTRAINT plans_quota_nonnegative CHECK (monthly_quota_requests IS NULL OR monthly_quota_requests > 0),
+      CONSTRAINT plans_allowance_within_quota CHECK (
+        monthly_quota_requests IS NULL OR included_requests IS NULL
+        OR included_requests <= monthly_quota_requests
+      ),
       CONSTRAINT plans_rate_limit_pair CHECK (
         (rate_limit_requests IS NULL AND rate_limit_window_seconds IS NULL)
         OR (rate_limit_requests > 0 AND rate_limit_window_seconds > 0)
@@ -193,12 +199,14 @@ data:
 
     INSERT INTO monetization.plans (
       id, display_name, monthly_price_cents, included_requests,
-      rate_limit_requests, rate_limit_window_seconds, overage_micros_per_request
+      monthly_quota_requests, rate_limit_requests, rate_limit_window_seconds,
+      overage_micros_per_request
     ) VALUES
-      ('free', 'Free', 0, 1000, 10, 60, 0),
-      ('developer', 'Developer', 4900, 100000, 1000, 60, 1000),
-      ('business', 'Business', 49900, 5000000, 10000, 60, 500),
-      ('enterprise', 'Enterprise', NULL, NULL, NULL, NULL, 0);
+      ('free', 'Free', 0, 1000, 1000, 10, 60, 0),
+      ('payg', 'Pay as you go', 0, 0, 10000, 100, 60, 10000),
+      ('developer', 'Developer', 4900, 100000, 1000000, 1000, 60, 1000),
+      ('business', 'Business', 49900, 5000000, 50000000, 10000, 60, 500),
+      ('enterprise', 'Enterprise', NULL, NULL, NULL, NULL, NULL, 0);
 
     INSERT INTO monetization.api_products (id, display_name, description) VALUES
       ('inventory', 'Inventory API', 'Product and stock inventory operations'),

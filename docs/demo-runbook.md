@@ -90,6 +90,21 @@ The script demonstrates, in order:
 8. Twelve requests using the exact JWT issued before the upgrade all return
    HTTP 200, proving that plan state is live and is not embedded in the token.
 
+The Free tier intentionally has no billable overage: its 1,000 included monthly
+requests equal its 1,000-request hard quota, and its 10/minute rate limit rejects
+bursts before the backend. To demonstrate real usage-based charging, run:
+
+```bash
+make metered-demo
+```
+
+This changes Demo Company to Pay as you go, where zero requests are included,
+accepted traffic costs €0.01/request, the safety limits are 100/minute and
+10,000/month, and five genuine Inventory API calls produce billable usage and a
+stored draft invoice. The script leaves the result visible in the administrator
+portal. HTTP 429 attempts remain non-billable because Connectivity Link rejects
+them before the Inventory API. Return to the baseline with `make reset-demo`.
+
 Keep this rollout watch visible during the upgrade if desired; no revision or
 pod restart should appear:
 

@@ -17,6 +17,8 @@ spec:
       rates:
         - limit: 10
           window: 1m
+        - limit: 1000
+          window: 720h
       counters:
         - expression: auth.kuadrant.customer
       when:
@@ -25,14 +27,28 @@ spec:
       rates:
         - limit: 1000
           window: 1m
+        - limit: 1000000
+          window: 720h
       counters:
         - expression: auth.kuadrant.customer
       when:
         - predicate: auth.kuadrant.plan == "developer"
+    payg:
+      rates:
+        - limit: 100
+          window: 1m
+        - limit: 10000
+          window: 720h
+      counters:
+        - expression: auth.kuadrant.customer
+      when:
+        - predicate: auth.kuadrant.plan == "payg"
     business:
       rates:
         - limit: 10000
           window: 1m
+        - limit: 50000000
+          window: 720h
       counters:
         - expression: auth.kuadrant.customer
       when:

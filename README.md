@@ -114,7 +114,8 @@ GitOps bootstrap, integrated-registry readiness validation, OpenShift Routes,
 Service Mesh, Connectivity Link, the enabled GitOps and RHCL console plugins,
 the RHCL developer catalog,
 External Secrets-generated API keys, Keycloak JWT clients, Free/Developer/Business/
-Enterprise plan policies, an Inventory API, a PostgreSQL-backed subscription
+Enterprise plan policies plus a real Pay-as-you-go metered tier, an Inventory
+API, a PostgreSQL-backed subscription
 control plane, live plan changes, Prometheus metrics, a Grafana dashboard,
 structured logs, and an OpenTelemetry-to-Tempo trace pipeline.
 
@@ -151,6 +152,7 @@ After deployment and verification, run the deterministic scenario:
 ```bash
 make lifecycle-test
 make demo
+make metered-demo
 make reset-demo
 make portal
 ```
@@ -160,6 +162,14 @@ active API-key and JWT access, administrative suspension and resume, developer
 cancellation, operator-resource cleanup, and clean resubscription. It leaves
 the browser `demo-developer` and the deterministic `demo-company` scenario
 unchanged and returns its own automation subscription to a cancelled state.
+
+`make metered-demo` changes Demo Company to Pay as you go, sends five real
+accepted requests through the OpenShift Route and Connectivity Link, waits for
+asynchronous usage attribution, and persists a draft invoice. Pay as you go has
+no included requests, a 10,000-request monthly safety cap, a 100/minute rate
+limit, and a €0.01 charge per accepted request. HTTP 429 responses are rejected
+before the Inventory API and are therefore never counted or billed. Run
+`make reset-demo` afterward to return Demo Company to Free.
 
 The portable demo profile intentionally requires neither a LoadBalancer
 provider nor production infrastructure. It uses `ClusterIP` plus admitted

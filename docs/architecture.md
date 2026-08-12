@@ -109,6 +109,14 @@ integer cents and overage uses integer micro-units rounded only after the
 period total is calculated. Drafts are estimates based on the subscription's
 current plan; issuing and payment remain asynchronous business workflows.
 
+Commercial included allowance is deliberately distinct from enforcement quota.
+Free is a hard-capped tier and therefore cannot accrue paid overage. Pay as you
+go includes zero units and charges every accepted request until its separate
+monthly safety cap. Developer and Business also have hard quotas above their
+included allowances so production-scale usage can accrue overage without
+disabling abuse protection. Requests rejected with HTTP 429 never reach the API
+usage exporter and are not billable.
+
 Suspension changes the commercial subscription state while retaining issued
 credentials. Because every accepted request performs an active-entitlement
 lookup, API keys and already-issued JWTs are denied immediately and resume

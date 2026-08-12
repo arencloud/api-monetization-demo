@@ -1,6 +1,6 @@
 SHELL := /usr/bin/env bash
 
-.PHONY: help validate test lifecycle-test preflight bootstrap render status verify portal demo reset-demo uninstall
+.PHONY: help validate test lifecycle-test preflight bootstrap render status verify portal demo metered-demo reset-demo uninstall
 
 help:
 	@echo "Targets:"
@@ -14,6 +14,7 @@ help:
 	@echo "  verify     Wait for secrets, databases, Keycloak, and realm readiness"
 	@echo "  portal     Print the portal URL and generated developer/admin logins"
 	@echo "  demo       Run API-key and JWT rate-limit and live-upgrade scenarios"
+	@echo "  metered-demo Generate real Pay-as-you-go usage and a draft invoice"
 	@echo "  reset-demo Reset the demo subscription to the Free plan"
 	@echo "  uninstall  Remove the complete demo after explicit confirmation"
 
@@ -51,6 +52,9 @@ portal:
 
 demo:
 	@./scripts/demo.sh
+
+metered-demo:
+	@./scripts/metered-demo.sh
 
 reset-demo:
 	@./scripts/reset-demo.sh

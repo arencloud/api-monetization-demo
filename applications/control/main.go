@@ -42,6 +42,8 @@ type subscription struct {
 	PlanName       string     `json:"planName"`
 	MonthlyCents   *int64     `json:"monthlyPriceCents"`
 	Included       *int64     `json:"includedRequests"`
+	MonthlyQuota   *int64     `json:"monthlyQuotaRequests"`
+	OverageMicros  int64      `json:"overageMicrosPerRequest"`
 	RateLimit      *int32     `json:"rateLimitRequests"`
 	RateWindowSecs *int32     `json:"rateLimitWindowSeconds"`
 	Version        int64      `json:"version"`
@@ -188,8 +190,9 @@ func (a *app) ready(w http.ResponseWriter, r *http.Request) {
 func (a *app) plans(w http.ResponseWriter, r *http.Request) {
 	rows, err := a.db.Query(r.Context(), `
 		SELECT id, display_name, monthly_price_cents, included_requests,
+		       monthly_quota_requests, overage_micros_per_request,
 		       rate_limit_requests, rate_limit_window_seconds
-		FROM monetization.plans WHERE active ORDER BY monthly_price_cents NULLS LAST`)
+		FROM monetization.plans WHERE active ORDER BY monthly_price_cents NULLS LAST, id`)
 	if err != nil {
 		serverError(w, err)
 		return
@@ -198,13 +201,14 @@ func (a *app) plans(w http.ResponseWriter, r *http.Request) {
 	result := make([]map[string]any, 0)
 	for rows.Next() {
 		var id, name string
-		var monthly, included *int64
+		var monthly, included, quota *int64
+		var overage int64
 		var limit, window *int32
-		if err = rows.Scan(&id, &name, &monthly, &included, &limit, &window); err != nil {
+		if err = rows.Scan(&id, &name, &monthly, &included, &quota, &overage, &limit, &window); err != nil {
 			serverError(w, err)
 			return
 		}
-		result = append(result, map[string]any{"id": id, "displayName": name, "monthlyPriceCents": monthly, "includedRequests": included, "rateLimitRequests": limit, "rateLimitWindowSeconds": window})
+		result = append(result, map[string]any{"id": id, "displayName": name, "monthlyPriceCents": monthly, "includedRequests": included, "monthlyQuotaRequests": quota, "overageMicrosPerRequest": overage, "rateLimitRequests": limit, "rateLimitWindowSeconds": window})
 	}
 	writeJSON(w, http.StatusOK, result)
 }
@@ -292,6 +296,8 @@ type usageSummary struct {
 	IncludedRequests     *int64  `json:"includedRequests"`
 	OverageRequests      int64   `json:"overageRequests"`
 	ProjectedRevenueEuro float64 `json:"projectedRevenueEuro"`
+	PeriodStart          string  `json:"periodStart"`
+	PeriodEnd            string  `json:"periodEnd"`
 }
 
 func (a *app) usage(w http.ResponseWriter, r *http.Request) {
@@ -304,21 +310,26 @@ func (a *app) usage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) loadUsage(ctx context.Context) ([]usageSummary, error) {
+	start, end := currentBillingPeriod(time.Now())
 	rows, err := a.db.Query(ctx, `
-		SELECT c.external_id, s.api_product_id, s.plan_id, count(u.id),
+		SELECT c.external_id, s.api_product_id, s.plan_id,
+		       COALESCE(SUM(u.billable_units), 0)::bigint,
 		       p.included_requests,
-		       GREATEST(count(u.id) - COALESCE(p.included_requests, count(u.id)), 0),
+		       GREATEST(COALESCE(SUM(u.billable_units), 0)::bigint
+		         - COALESCE(p.included_requests, COALESCE(SUM(u.billable_units), 0)::bigint), 0),
 		       ((COALESCE(p.monthly_price_cents, 0)::numeric / 100)
-		       + (GREATEST(count(u.id) - COALESCE(p.included_requests, count(u.id)), 0)
+		       + (GREATEST(COALESCE(SUM(u.billable_units), 0)::bigint
+		            - COALESCE(p.included_requests, COALESCE(SUM(u.billable_units), 0)::bigint), 0)
 		          * p.overage_micros_per_request::numeric / 1000000))::double precision
 		FROM monetization.subscriptions s
 		JOIN monetization.customers c ON c.id=s.customer_id
 		JOIN monetization.plans p ON p.id=s.plan_id
 		LEFT JOIN monetization.usage_events u ON u.subscription_id=s.id
+		  AND u.occurred_at >= $1 AND u.occurred_at < $2
 		WHERE s.status='active'
 		GROUP BY c.external_id, s.api_product_id, s.plan_id, p.included_requests,
 		         p.monthly_price_cents, p.overage_micros_per_request
-		ORDER BY c.external_id, s.api_product_id`)
+		ORDER BY c.external_id, s.api_product_id`, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -329,6 +340,8 @@ func (a *app) loadUsage(ctx context.Context) ([]usageSummary, error) {
 		if err = rows.Scan(&item.Customer, &item.Product, &item.Plan, &item.Requests, &item.IncludedRequests, &item.OverageRequests, &item.ProjectedRevenueEuro); err != nil {
 			return nil, err
 		}
+		item.PeriodStart = start.Format(time.DateOnly)
+		item.PeriodEnd = end.Format(time.DateOnly)
 		result = append(result, item)
 	}
 	return result, rows.Err()
@@ -399,7 +412,9 @@ func (a *app) loadSubscriptionsByState(ctx context.Context, customer, product st
 	query := `
 		SELECT s.id::text, c.external_id, c.display_name, p.id, s.plan_id,
 		       pl.display_name, pl.monthly_price_cents, pl.included_requests,
-		       pl.rate_limit_requests, pl.rate_limit_window_seconds, s.version,
+		       pl.monthly_quota_requests, pl.overage_micros_per_request,
+		       pl.rate_limit_requests,
+		       pl.rate_limit_window_seconds, s.version,
 		       s.status, s.starts_at, s.ends_at
 		FROM monetization.subscriptions s
 		JOIN monetization.customers c ON c.id = s.customer_id
@@ -427,7 +442,7 @@ func (a *app) loadSubscriptionsByState(ctx context.Context, customer, product st
 	result := make([]subscription, 0)
 	for rows.Next() {
 		var item subscription
-		if err = rows.Scan(&item.ID, &item.CustomerID, &item.Customer, &item.Product, &item.Plan, &item.PlanName, &item.MonthlyCents, &item.Included, &item.RateLimit, &item.RateWindowSecs, &item.Version, &item.Status, &item.StartsAt, &item.EndsAt); err != nil {
+		if err = rows.Scan(&item.ID, &item.CustomerID, &item.Customer, &item.Product, &item.Plan, &item.PlanName, &item.MonthlyCents, &item.Included, &item.MonthlyQuota, &item.OverageMicros, &item.RateLimit, &item.RateWindowSecs, &item.Version, &item.Status, &item.StartsAt, &item.EndsAt); err != nil {
 			return nil, err
 		}
 		result = append(result, item)
@@ -447,7 +462,9 @@ func (a *app) loadSubscriptionsByIdentityState(ctx context.Context, provider, su
 	query := `
 		SELECT s.id::text, c.external_id, c.display_name, p.id, s.plan_id,
 		       pl.display_name, pl.monthly_price_cents, pl.included_requests,
-		       pl.rate_limit_requests, pl.rate_limit_window_seconds, s.version,
+		       pl.monthly_quota_requests, pl.overage_micros_per_request,
+		       pl.rate_limit_requests,
+		       pl.rate_limit_window_seconds, s.version,
 		       s.status, s.starts_at, s.ends_at
 		FROM monetization.subscription_identities i
 		JOIN monetization.customers c ON c.id = i.customer_id
@@ -473,7 +490,7 @@ func (a *app) loadSubscriptionsByIdentityState(ctx context.Context, provider, su
 	result := make([]subscription, 0)
 	for rows.Next() {
 		var item subscription
-		if err = rows.Scan(&item.ID, &item.CustomerID, &item.Customer, &item.Product, &item.Plan, &item.PlanName, &item.MonthlyCents, &item.Included, &item.RateLimit, &item.RateWindowSecs, &item.Version, &item.Status, &item.StartsAt, &item.EndsAt); err != nil {
+		if err = rows.Scan(&item.ID, &item.CustomerID, &item.Customer, &item.Product, &item.Plan, &item.PlanName, &item.MonthlyCents, &item.Included, &item.MonthlyQuota, &item.OverageMicros, &item.RateLimit, &item.RateWindowSecs, &item.Version, &item.Status, &item.StartsAt, &item.EndsAt); err != nil {
 			return nil, err
 		}
 		result = append(result, item)

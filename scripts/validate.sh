@@ -133,6 +133,33 @@ for policy in auth_policies:
         name = policy.get("metadata", {}).get("name", "unknown")
         raise SystemExit(f"{name}: active subscription authorization is missing")
 
+with open("platform/gateway/inventory-plan-policy.yaml", encoding="utf-8") as stream:
+    plan_policy = yaml.safe_load(stream)
+plan_tiers = {plan["tier"]: plan for plan in plan_policy["spec"]["plans"]}
+payg = plan_tiers.get("payg", {}).get("limits", {})
+if payg.get("monthly") != 10000 or not any(
+    limit.get("limit") == 100 and limit.get("window") == "1m"
+    for limit in payg.get("custom", [])
+):
+    raise SystemExit("Pay-as-you-go API-key enforcement limits are incomplete")
+if plan_tiers.get("developer", {}).get("limits", {}).get("monthly") != 1000000:
+    raise SystemExit("Developer hard quota must remain above its included allowance")
+
+with open("platform/gateway/inventory-jwt-rate-limits.yaml", encoding="utf-8") as stream:
+    jwt_limits = yaml.safe_load(stream)["spec"]["limits"]
+if "payg" not in jwt_limits or not {
+    (rate.get("limit"), rate.get("window"))
+    for rate in jwt_limits["payg"].get("rates", [])
+}.issuperset({(100, "1m"), (10000, "720h")}):
+    raise SystemExit("Pay-as-you-go JWT enforcement limits are incomplete")
+expected_jwt_quotas = {"free": 1000, "developer": 1000000, "business": 50000000}
+for tier, quota in expected_jwt_quotas.items():
+    if (quota, "720h") not in {
+        (rate.get("limit"), rate.get("window"))
+        for rate in jwt_limits[tier].get("rates", [])
+    }:
+        raise SystemExit(f"{tier}: JWT hard quota is missing")
+
 with open("platform/identity/portal-identity.yaml", encoding="utf-8") as stream:
     identity_resources = [resource for resource in yaml.safe_load_all(stream) if resource]
 identity_job = next(

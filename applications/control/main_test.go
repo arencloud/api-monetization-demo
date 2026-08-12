@@ -38,7 +38,7 @@ func TestCurrentBillingPeriodUsesUTCMonth(t *testing.T) {
 
 func TestRoundMicrosToCents(t *testing.T) {
 	t.Parallel()
-	tests := map[int64]int64{0: 0, 4999: 0, 5000: 1, 14999: 1, 15000: 2}
+	tests := map[int64]int64{0: 0, 4999: 0, 5000: 1, 10000: 1, 14999: 1, 15000: 2, 25000: 3}
 	for micros, want := range tests {
 		if got := roundMicrosToCents(micros); got != want {
 			t.Errorf("roundMicrosToCents(%d)=%d, want %d", micros, got, want)

@@ -82,8 +82,9 @@ func (a *app) catalog(w http.ResponseWriter, r *http.Request) {
 func (a *app) loadPlans(ctx context.Context) ([]map[string]any, error) {
 	rows, err := a.db.Query(ctx, `
 		SELECT id, display_name, monthly_price_cents, included_requests,
+		       monthly_quota_requests, overage_micros_per_request,
 		       rate_limit_requests, rate_limit_window_seconds
-		FROM monetization.plans WHERE active ORDER BY monthly_price_cents NULLS LAST`)
+		FROM monetization.plans WHERE active ORDER BY monthly_price_cents NULLS LAST, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -91,14 +92,16 @@ func (a *app) loadPlans(ctx context.Context) ([]map[string]any, error) {
 	result := make([]map[string]any, 0)
 	for rows.Next() {
 		var id, name string
-		var monthly, included *int64
+		var monthly, included, quota *int64
+		var overage int64
 		var limit, window *int32
-		if err = rows.Scan(&id, &name, &monthly, &included, &limit, &window); err != nil {
+		if err = rows.Scan(&id, &name, &monthly, &included, &quota, &overage, &limit, &window); err != nil {
 			return nil, err
 		}
 		result = append(result, map[string]any{
 			"id": id, "displayName": name, "monthlyPriceCents": monthly,
 			"includedRequests": included, "rateLimitRequests": limit,
+			"monthlyQuotaRequests": quota, "overageMicrosPerRequest": overage,
 			"rateLimitWindowSeconds": window,
 		})
 	}

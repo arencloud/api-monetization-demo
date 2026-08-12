@@ -21,7 +21,7 @@ spec:
       predicate: >-
         has(auth.metadata.subscription) && auth.metadata.subscription.plan == "business"
       limits:
-        monthly: 5000000
+        monthly: 50000000
         custom:
           - limit: 10000
             window: 1m
@@ -29,9 +29,17 @@ spec:
       predicate: >-
         has(auth.metadata.subscription) && auth.metadata.subscription.plan == "developer"
       limits:
-        monthly: 100000
+        monthly: 1000000
         custom:
           - limit: 1000
+            window: 1m
+    - tier: payg
+      predicate: >-
+        has(auth.metadata.subscription) && auth.metadata.subscription.plan == "payg"
+      limits:
+        monthly: 10000
+        custom:
+          - limit: 100
             window: 1m
     - tier: free
       predicate: >-

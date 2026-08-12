@@ -103,7 +103,7 @@
       <article class="card"><div class="card-label">API product</div><div class="value" id="product">—</div><div class="subvalue">Inventory and availability</div></article>
       <article class="card"><div class="card-label">Current plan</div><div class="value" id="plan">—</div><div class="subvalue" id="price">—</div></article>
       <article class="card"><div class="card-label">Rate limit</div><div class="value" id="limit">—</div><div class="subvalue">Enforced by Connectivity Link</div></article>
-      <article class="card"><div class="card-label">Billable requests</div><div class="value" id="usage">—</div><div class="subvalue" id="included">—</div></article>
+      <article class="card"><div class="card-label">Accepted this month</div><div class="value" id="usage">—</div><div class="subvalue" id="included">—</div></article>
       <article class="card"><div class="card-label">Projected revenue</div><div class="value" id="revenue">—</div><div class="subvalue" id="overage">—</div></article>
 
       <article class="card wide">
@@ -169,7 +169,7 @@
           <div class="card"><div class="card-label">Plan</div><div class="value" id="developer-current-plan">—</div><div class="subvalue" id="developer-subscription-status">—</div></div>
           <div class="card"><div class="card-label">Rate limit</div><div class="value" id="developer-limit">—</div></div>
           <div class="card"><div class="card-label">API-key endpoint</div><div class="subvalue" id="developer-endpoint">Provisioning</div></div>
-          <div class="card"><div class="card-label">Usage</div><div class="value" id="developer-usage">0</div><div class="subvalue" id="developer-usage-detail">Billable requests</div></div>
+          <div class="card"><div class="card-label">Accepted this month</div><div class="value" id="developer-usage">0</div><div class="subvalue" id="developer-usage-detail">Billable requests</div></div>
         </div>
         <div class="plan-row">
           <select id="developer-upgrade-plan" aria-label="New subscription plan"></select>
@@ -346,6 +346,15 @@ function money(cents) {
   return cents == null ? 'Custom pricing' : new Intl.NumberFormat(undefined, {style: 'currency', currency: 'EUR'}).format(cents / 100) + ' / month';
 }
 
+function planTerms(plan) {
+  const included = plan.includedRequests == null ? 'custom allowance' : `${plan.includedRequests.toLocaleString()} included`;
+  const quota = plan.monthlyQuotaRequests == null ? 'no hard monthly quota' : `${plan.monthlyQuotaRequests.toLocaleString()} monthly cap`;
+  const overage = plan.overageMicrosPerRequest > 0
+    ? `${new Intl.NumberFormat(undefined, {style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 4}).format(plan.overageMicrosPerRequest / 1000000)} / accepted overage request`
+    : 'no overage charge';
+  return `${included} · ${quota} · ${overage}`;
+}
+
 function currency(cents, code = 'EUR') {
   return new Intl.NumberFormat(undefined, {style: 'currency', currency: code}).format((cents || 0) / 100);
 }
@@ -463,13 +472,13 @@ async function refreshAdmin() {
   $('#price').textContent = money(state.subscription.monthlyPriceCents);
   $('#limit').textContent = state.subscription.rateLimitRequests ? `${state.subscription.rateLimitRequests.toLocaleString()} / ${state.subscription.rateLimitWindowSeconds}s` : 'Unlimited';
   $('#usage').textContent = usageItem.requests.toLocaleString();
-  $('#included').textContent = state.subscription.includedRequests == null ? 'Custom allowance' : `${state.subscription.includedRequests.toLocaleString()} included`;
+  $('#included').textContent = `${planTerms(state.subscription)} · HTTP 429 attempts are rejected, not billed`;
   $('#revenue').textContent = new Intl.NumberFormat(undefined, {style: 'currency', currency: 'EUR'}).format(usageItem.projectedRevenueEuro);
-  $('#overage').textContent = `${usageItem.overageRequests.toLocaleString()} overage requests`;
+  $('#overage').textContent = `${usageItem.overageRequests.toLocaleString()} accepted requests above the included allowance`;
   $('#plans').replaceChildren(...plans.map(plan => {
     const option = document.createElement('option');
     option.value = plan.id;
-    option.textContent = `${plan.displayName} — ${money(plan.monthlyPriceCents)}`;
+    option.textContent = `${plan.displayName} — ${money(plan.monthlyPriceCents)} · ${planTerms(plan)}`;
     option.selected = plan.id === state.subscription.plan;
     return option;
   }));
@@ -489,7 +498,7 @@ function planOptions(target, plans, selected) {
   target.replaceChildren(...plans.map(plan => {
     const option = document.createElement('option');
     option.value = plan.id;
-    option.textContent = `${plan.displayName} — ${money(plan.monthlyPriceCents)}`;
+    option.textContent = `${plan.displayName} — ${money(plan.monthlyPriceCents)} · ${planTerms(plan)}`;
     option.selected = plan.id === selected;
     return option;
   }));
@@ -527,7 +536,7 @@ async function refreshDeveloper() {
   $('#developer-status').textContent = `Subscription ${state.subscription.customerId} is ${state.subscription.status}.`;
   const usageItem = usage.find(item => item.product === state.subscription.product) || {requests: 0, overageRequests: 0};
   $('#developer-usage').textContent = usageItem.requests.toLocaleString();
-  $('#developer-usage-detail').textContent = `${usageItem.overageRequests.toLocaleString()} overage requests`;
+  $('#developer-usage-detail').textContent = `${usageItem.overageRequests.toLocaleString()} billable overage · ${planTerms(state.subscription)} · HTTP 429 is not billed`;
   if (state.subscription.status === 'suspended') {
     $('#developer-upgrade').disabled = true;
     $('#credential-state').textContent = 'Subscription is suspended. API-key and JWT entitlement is denied.';

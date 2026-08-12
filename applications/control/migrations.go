@@ -90,6 +90,53 @@ CREATE INDEX IF NOT EXISTS subscription_events_subscription_time
   ON monetization.subscription_events (subscription_id, occurred_at DESC);
 `
 
+const meteredPlanMigration = `
+ALTER TABLE monetization.plans
+  ADD COLUMN IF NOT EXISTS monthly_quota_requests bigint;
+
+UPDATE monetization.plans SET monthly_quota_requests=1000 WHERE id='free';
+UPDATE monetization.plans SET monthly_quota_requests=1000000 WHERE id='developer';
+UPDATE monetization.plans SET monthly_quota_requests=50000000 WHERE id='business';
+UPDATE monetization.plans SET monthly_quota_requests=NULL WHERE id='enterprise';
+
+INSERT INTO monetization.plans
+  (id, display_name, monthly_price_cents, included_requests,
+   monthly_quota_requests, rate_limit_requests, rate_limit_window_seconds,
+   overage_micros_per_request, active)
+VALUES ('payg', 'Pay as you go', 0, 0, 10000, 100, 60, 10000, true)
+ON CONFLICT (id) DO UPDATE SET
+  display_name=EXCLUDED.display_name,
+  monthly_price_cents=EXCLUDED.monthly_price_cents,
+  included_requests=EXCLUDED.included_requests,
+  monthly_quota_requests=EXCLUDED.monthly_quota_requests,
+  rate_limit_requests=EXCLUDED.rate_limit_requests,
+  rate_limit_window_seconds=EXCLUDED.rate_limit_window_seconds,
+  overage_micros_per_request=EXCLUDED.overage_micros_per_request,
+  active=true,
+  updated_at=now();
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname='plans_quota_nonnegative'
+      AND conrelid='monetization.plans'::regclass
+  ) THEN
+    ALTER TABLE monetization.plans ADD CONSTRAINT plans_quota_nonnegative
+      CHECK (monthly_quota_requests IS NULL OR monthly_quota_requests > 0);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname='plans_allowance_within_quota'
+      AND conrelid='monetization.plans'::regclass
+  ) THEN
+    ALTER TABLE monetization.plans ADD CONSTRAINT plans_allowance_within_quota
+      CHECK (monthly_quota_requests IS NULL OR included_requests IS NULL
+        OR included_requests <= monthly_quota_requests);
+  END IF;
+END $$;
+`
+
 func applyDatabaseMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
@@ -109,6 +156,9 @@ func applyDatabaseMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	if _, err = tx.Exec(ctx, billingLifecycleMigration); err != nil {
 		return fmt.Errorf("apply billing lifecycle migration: %w", err)
 	}
+	if _, err = tx.Exec(ctx, meteredPlanMigration); err != nil {
+		return fmt.Errorf("apply metered plan migration: %w", err)
+	}
 	if _, err = tx.Exec(ctx, `
 		INSERT INTO monetization.schema_migrations (version, description)
 		VALUES (1, 'keycloak client to subscription identity mapping')
@@ -126,6 +176,12 @@ func applyDatabaseMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 		VALUES (3, 'invoice items and subscription lifecycle')
 		ON CONFLICT (version) DO NOTHING`); err != nil {
 		return fmt.Errorf("record billing lifecycle migration: %w", err)
+	}
+	if _, err = tx.Exec(ctx, `
+		INSERT INTO monetization.schema_migrations (version, description)
+		VALUES (4, 'separate included allowance from hard quota and add payg plan')
+		ON CONFLICT (version) DO NOTHING`); err != nil {
+		return fmt.Errorf("record metered plan migration: %w", err)
 	}
 	return tx.Commit(ctx)
 }
