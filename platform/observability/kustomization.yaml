@@ -6,6 +6,7 @@ resources:
   - collector.yaml
   - alerts.yaml
   - grafana-credentials.yaml
+  - grafana-secret-store.yaml
   - grafana-oauth-config.yaml
   - grafana-access.yaml
   - grafana.yaml

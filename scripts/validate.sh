@@ -211,7 +211,7 @@ if (
 ):
     raise SystemExit("Grafana OAuth runtime values are not sourced from managed secrets/config")
 
-with open("platform/external-secrets/kubernetes-secret-store.yaml", encoding="utf-8") as stream:
+with open("platform/observability/grafana-secret-store.yaml", encoding="utf-8") as stream:
     secret_store_resources = [resource for resource in yaml.safe_load_all(stream) if resource]
 secret_store = next(
     resource for resource in secret_store_resources if resource["kind"] == "SecretStore"
@@ -219,14 +219,20 @@ secret_store = next(
 kubernetes_provider = secret_store.get("spec", {}).get("provider", {}).get("kubernetes", {})
 if (
     secret_store.get("metadata", {}).get("namespace") != "api-monetization-observability"
-    or
-    kubernetes_provider.get("remoteNamespace") != "api-monetization-identity"
+    or secret_store.get("metadata", {}).get("annotations", {}).get(
+        "argocd.argoproj.io/sync-wave"
+    ) != "-5"
+    or kubernetes_provider.get("remoteNamespace") != "api-monetization-identity"
     or kubernetes_provider.get("auth", {}).get("serviceAccount", {}).get("name")
     != "api-monetization-secret-reader"
     or kubernetes_provider.get("server", {}).get("caProvider", {}).get("name")
     != "kube-root-ca.crt"
 ):
     raise SystemExit("Grafana cross-namespace OAuth secret store is incomplete")
+with open("platform/observability/kustomization.yaml", encoding="utf-8") as stream:
+    observability_kustomization = yaml.safe_load(stream)
+if "grafana-secret-store.yaml" not in observability_kustomization.get("resources", []):
+    raise SystemExit("Grafana SecretStore must be ordered in the Observability Argo application")
 
 with open("platform/observability/grafana-credentials.yaml", encoding="utf-8") as stream:
     grafana_credential_resources = [resource for resource in yaml.safe_load_all(stream) if resource]
@@ -237,11 +243,13 @@ grafana_oauth_secret = next(
     and resource.get("metadata", {}).get("name") == "api-monetization-grafana-oauth"
 )
 oauth_secret_spec = grafana_oauth_secret.get("spec", {})
+oauth_remote_ref = oauth_secret_spec.get("data", [{}])[0].get("remoteRef", {})
 if (
     oauth_secret_spec.get("secretStoreRef")
     != {"kind": "SecretStore", "name": "api-monetization-identity"}
-    or oauth_secret_spec.get("data", [{}])[0].get("remoteRef")
-    != {"key": "grafana-keycloak-client", "property": "client-secret"}
+    or oauth_remote_ref.get("key") != "grafana-keycloak-client"
+    or oauth_remote_ref.get("property") != "client-secret"
+    or oauth_secret_spec.get("target", {}).get("deletionPolicy") != "Retain"
 ):
     raise SystemExit("Grafana OAuth client secret is not mirrored from the identity namespace")
 
