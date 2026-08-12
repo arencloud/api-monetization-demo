@@ -340,7 +340,7 @@ func (a *app) cancelMySubscription(w http.ResponseWriter, r *http.Request) {
 		INSERT INTO monetization.subscription_events
 		(subscription_id, event_type, actor, details)
 		VALUES ($1::uuid, 'subscription-cancelled', $2,
-		        jsonb_build_object('previousStatus', $3))`,
+		        jsonb_build_object('previousStatus', $3::text))`,
 		subscription.ID, claims.PreferredUsername, subscription.Status)
 	if err != nil {
 		serverError(w, err)

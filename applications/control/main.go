@@ -611,7 +611,7 @@ func (a *app) changeSubscriptionStatus(w http.ResponseWriter, r *http.Request) {
 		INSERT INTO monetization.subscription_events
 		(subscription_id, event_type, actor, details)
 		VALUES ($1::uuid, $2, $3,
-		        jsonb_build_object('previousStatus', $4, 'newStatus', $5))`,
+		        jsonb_build_object('previousStatus', $4::text, 'newStatus', $5::text))`,
 		current[0].ID, "subscription-"+input.Status, actor,
 		current[0].Status, input.Status)
 	if err != nil {
