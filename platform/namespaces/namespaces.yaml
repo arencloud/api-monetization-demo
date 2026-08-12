@@ -13,6 +13,7 @@ metadata:
   labels:
     app.kubernetes.io/part-of: api-monetization
     app.kubernetes.io/component: connectivity
+    istio-discovery: enabled
 ---
 apiVersion: v1
 kind: Namespace

@@ -126,6 +126,7 @@ break-glass access; that credential is not stored in Git.
 
 The expected end state is that every Argo CD application is `Synced` and
 `Healthy`, every operator CSV is `Succeeded`, the `Kuadrant` resource is ready,
+its `mtlsAuthorino` and `mtlsLimitador` status fields are both `true`,
 the `Istio`/`IstioCNI` resources report healthy status, both PostgreSQL clusters
 are ready, and the Keycloak realm import reports `Done`.
 

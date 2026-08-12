@@ -164,6 +164,9 @@ if Kubernetes cleanup is temporarily delayed.
   explicitly open an API product.
 - Service Mesh mTLS protects internal calls independently of external client
   authentication.
+- RHCL internal mTLS is enabled explicitly for both Authorino and Limitador.
+  The Kuadrant operator injects their mesh proxies and enforces mutual TLS for
+  the gateway authorization and rate-limit calls.
 - The Inventory API remains strict-mTLS on its runtime port. A separate
   documentation-only port serves the OpenAPI document to the RHCL Developer
   Portal controller, and an earlier Argo sync-wave hook proves that document is

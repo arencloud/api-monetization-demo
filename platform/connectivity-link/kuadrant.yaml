@@ -7,6 +7,10 @@ metadata:
     app.kubernetes.io/name: kuadrant
     app.kubernetes.io/part-of: api-monetization
 spec:
+  mtls:
+    enable: true
+    authorino: true
+    limitador: true
   components:
     developerPortal:
       enabled: true

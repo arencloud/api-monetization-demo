@@ -73,6 +73,27 @@ wait_for_http_route() {
   return 1
 }
 
+wait_for_kuadrant_mtls() {
+  local generation=""
+  local status=""
+
+  for _ in $(seq 1 120); do
+    generation=$(oc get kuadrant.kuadrant.io kuadrant -n kuadrant-system \
+      -o jsonpath='{.metadata.generation}' 2>/dev/null || true)
+    status=$(oc get kuadrant.kuadrant.io kuadrant -n kuadrant-system \
+      -o jsonpath='{.status.observedGeneration}{"|"}{.status.mtlsAuthorino}{"|"}{.status.mtlsLimitador}' \
+      2>/dev/null || true)
+    if [[ -n $generation && $status == "$generation|true|true" ]]; then
+      echo "RHCL internal mTLS is enabled for Authorino and Limitador"
+      return 0
+    fi
+    sleep 5
+  done
+
+  echo "error: RHCL internal mTLS was not enabled (last state: ${status:-not reported})" >&2
+  return 1
+}
+
 echo "waiting for GitOps applications"
 for application_name in \
   api-monetization-namespaces \
@@ -139,6 +160,26 @@ oc wait --for=condition=Ready authorinos.operator.authorino.kuadrant.io/authorin
   -n kuadrant-system --timeout=10m
 oc wait --for=condition=Ready limitadors.limitador.kuadrant.io/limitador \
   -n kuadrant-system --timeout=10m
+wait_for_kuadrant_mtls
+oc rollout status deployment/authorino -n kuadrant-system --timeout=10m
+oc rollout status deployment/limitador-limitador -n kuadrant-system --timeout=10m
+for component_selector in authorino-resource=authorino limitador-resource=limitador; do
+  if ! oc get pods -n kuadrant-system -l "$component_selector" -o json | jq -e '
+    any(.items[];
+      any(.status.conditions[]?; .type == "Ready" and .status == "True") and
+      any(.spec.containers[]; .name == "istio-proxy")
+    )
+  ' >/dev/null; then
+    echo "error: $component_selector has no ready pod with the Istio proxy required for RHCL mTLS" >&2
+    exit 1
+  fi
+done
+if ! oc get peerauthentications.security.istio.io -n kuadrant-system -o json | jq -e '
+  any(.items[]; .spec.mtls.mode == "STRICT")
+' >/dev/null; then
+  echo "error: RHCL did not enforce STRICT peer authentication in kuadrant-system" >&2
+  exit 1
+fi
 oc wait --for=condition=Programmed gateways.gateway.networking.k8s.io/api-monetization \
   -n api-monetization-gateway --timeout=10m
 gateway_class=$(oc get gateway api-monetization -n api-monetization-gateway \

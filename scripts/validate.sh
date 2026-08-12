@@ -292,6 +292,23 @@ with open("platform/gateway/gateway.yaml", encoding="utf-8") as stream:
 if gateway.get("spec", {}).get("gatewayClassName") != "istio":
     raise SystemExit("Gateway must use the project Service Mesh GatewayClass")
 
+with open("platform/namespaces/namespaces.yaml", encoding="utf-8") as stream:
+    namespaces = [resource for resource in yaml.safe_load_all(stream) if resource]
+kuadrant_namespace = next(
+    resource for resource in namespaces if resource.get("metadata", {}).get("name") == "kuadrant-system"
+)
+if kuadrant_namespace.get("metadata", {}).get("labels", {}).get("istio-discovery") != "enabled":
+    raise SystemExit("The project Istio control plane must discover the RHCL system namespace")
+
+with open("platform/connectivity-link/kuadrant.yaml", encoding="utf-8") as stream:
+    kuadrant = yaml.safe_load(stream)
+if kuadrant.get("spec", {}).get("mtls") != {
+    "enable": True,
+    "authorino": True,
+    "limitador": True,
+}:
+    raise SystemExit("RHCL mTLS must be enabled explicitly for Authorino and Limitador")
+
 with open("platform/gateway/inventory-auth-policies.yaml", encoding="utf-8") as stream:
     auth_policies = list(yaml.safe_load_all(stream))
 for policy in auth_policies:
