@@ -24,6 +24,15 @@ rules:
       - get
       - patch
   - apiGroups:
+      - devportal.kuadrant.io
+    resources:
+      - apikeyrequests
+      - apikeyapprovals
+    verbs:
+      - delete
+      - get
+      - list
+  - apiGroups:
       - generators.external-secrets.io
     resources:
       - passwords

@@ -360,6 +360,29 @@ if not all(
 ) or "port-forward" in control_token_script:
     raise SystemExit("Automation tokens must be issued through the admitted HTTPS Keycloak Route")
 
+with open("applications/control/rbac.yaml", encoding="utf-8") as stream:
+    control_rbac = [resource for resource in yaml.safe_load_all(stream) if resource]
+credential_role = next(
+    resource
+    for resource in control_rbac
+    if resource.get("kind") == "Role"
+    and resource.get("metadata", {}).get("name") == "monetization-credential-manager"
+)
+portal_artifact_rule = next(
+    (
+        rule
+        for rule in credential_role.get("rules", [])
+        if set(rule.get("resources", [])) == {"apikeyrequests", "apikeyapprovals"}
+    ),
+    None,
+)
+if not portal_artifact_rule or set(portal_artifact_rule.get("verbs", [])) != {
+    "delete",
+    "get",
+    "list",
+}:
+    raise SystemExit("Credential cancellation needs least-privilege cleanup of RHCL request artifacts")
+
 with open("platform/gateway/inventory-plan-policy.yaml", encoding="utf-8") as stream:
     plan_policy = yaml.safe_load(stream)
 plan_tiers = {plan["tier"]: plan for plan in plan_policy["spec"]["plans"]}

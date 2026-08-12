@@ -661,18 +661,86 @@ func (k *kubeClient) createIfAbsent(ctx context.Context, path string, body any) 
 
 func (k *kubeClient) deleteDeveloperCredential(ctx context.Context, namespace, apiKeyName, secretName string) error {
 	generatorName := apiKeyName + "-generator"
-	paths := []string{
-		fmt.Sprintf("/apis/devportal.kuadrant.io/v1alpha1/namespaces/%s/apikeys/%s", namespace, apiKeyName),
+	apiKeyPath := fmt.Sprintf("/apis/devportal.kuadrant.io/v1alpha1/namespaces/%s/apikeys/%s", namespace, apiKeyName)
+	if err := k.deleteIfExists(ctx, apiKeyPath); err != nil {
+		return err
+	}
+	if err := k.waitForDeletion(ctx, []string{apiKeyPath}, 30*time.Second); err != nil {
+		return err
+	}
+
+	portalPaths, err := k.apiKeyRequestArtifactPaths(ctx, namespace, apiKeyName)
+	if err != nil {
+		return err
+	}
+	paths := append(portalPaths,
 		fmt.Sprintf("/apis/external-secrets.io/v1/namespaces/%s/externalsecrets/%s", namespace, secretName),
 		fmt.Sprintf("/api/v1/namespaces/%s/secrets/%s", namespace, secretName),
 		fmt.Sprintf("/apis/generators.external-secrets.io/v1alpha1/namespaces/%s/passwords/%s", namespace, generatorName),
-	}
+	)
 	for _, path := range paths {
 		if err := k.deleteIfExists(ctx, path); err != nil {
 			return err
 		}
 	}
-	deadline := time.Now().Add(30 * time.Second)
+	return k.waitForDeletion(ctx, paths, 30*time.Second)
+}
+
+func (k *kubeClient) apiKeyRequestArtifactPaths(ctx context.Context, namespace, apiKeyName string) ([]string, error) {
+	var requests struct {
+		Items []struct {
+			Metadata struct {
+				Name string `json:"name"`
+			} `json:"metadata"`
+			Spec struct {
+				APIKeyRef struct {
+					Name      string `json:"name"`
+					Namespace string `json:"namespace"`
+				} `json:"apiKeyRef"`
+			} `json:"spec"`
+		} `json:"items"`
+	}
+	requestListPath := fmt.Sprintf("/apis/devportal.kuadrant.io/v1alpha1/namespaces/%s/apikeyrequests", namespace)
+	if err := k.request(ctx, http.MethodGet, requestListPath, nil, &requests); err != nil {
+		return nil, err
+	}
+	requestNames := make(map[string]struct{})
+	for _, item := range requests.Items {
+		if item.Spec.APIKeyRef.Name == apiKeyName && item.Spec.APIKeyRef.Namespace == namespace {
+			requestNames[item.Metadata.Name] = struct{}{}
+		}
+	}
+
+	var approvals struct {
+		Items []struct {
+			Metadata struct {
+				Name string `json:"name"`
+			} `json:"metadata"`
+			Spec struct {
+				APIKeyRequestRef struct {
+					Name string `json:"name"`
+				} `json:"apiKeyRequestRef"`
+			} `json:"spec"`
+		} `json:"items"`
+	}
+	approvalListPath := fmt.Sprintf("/apis/devportal.kuadrant.io/v1alpha1/namespaces/%s/apikeyapprovals", namespace)
+	if err := k.request(ctx, http.MethodGet, approvalListPath, nil, &approvals); err != nil {
+		return nil, err
+	}
+	paths := make([]string, 0, len(requestNames)*2)
+	for _, item := range approvals.Items {
+		if _, matches := requestNames[item.Spec.APIKeyRequestRef.Name]; matches {
+			paths = append(paths, approvalListPath+"/"+item.Metadata.Name)
+		}
+	}
+	for requestName := range requestNames {
+		paths = append(paths, requestListPath+"/"+requestName)
+	}
+	return paths, nil
+}
+
+func (k *kubeClient) waitForDeletion(ctx context.Context, paths []string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		pending := false
 		for _, path := range paths {
@@ -691,7 +759,7 @@ func (k *kubeClient) deleteDeveloperCredential(ctx context.Context, namespace, a
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	return errors.New("timed out waiting for operator-managed API credential deletion")
+	return fmt.Errorf("timed out waiting for %d operator-managed credential resources to be deleted", len(paths))
 }
 
 func (k *kubeClient) deleteIfExists(ctx context.Context, path string) error {

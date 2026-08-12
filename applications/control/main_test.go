@@ -91,6 +91,49 @@ func TestDeleteIfExistsDeletesResource(t *testing.T) {
 	}
 }
 
+func TestDeleteDeveloperCredentialRemovesPortalRequestArtifacts(t *testing.T) {
+	t.Parallel()
+	const namespace = "api-monetization-apps"
+	const apiKeyName = "dev-test-inventory"
+	const requestName = "api-monetization-apps-dev-test-inventory-12345678"
+	const approvalName = requestName + "-auto"
+	deleted := make(map[string]bool)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/apis/devportal.kuadrant.io/v1alpha1/namespaces/api-monetization-apps/apikeyrequests":
+			fmt.Fprintf(w, `{"items":[{"metadata":{"name":%q},"spec":{"apiKeyRef":{"name":%q,"namespace":%q}}},{"metadata":{"name":"unrelated"},"spec":{"apiKeyRef":{"name":"another-key","namespace":%q}}}]}`, requestName, apiKeyName, namespace, namespace)
+			return
+		case "/apis/devportal.kuadrant.io/v1alpha1/namespaces/api-monetization-apps/apikeyapprovals":
+			fmt.Fprintf(w, `{"items":[{"metadata":{"name":%q},"spec":{"apiKeyRequestRef":{"name":%q}}},{"metadata":{"name":"unrelated-auto"},"spec":{"apiKeyRequestRef":{"name":"unrelated"}}}]}`, approvalName, requestName)
+			return
+		}
+		if r.Method == http.MethodDelete {
+			deleted[r.URL.Path] = true
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if r.Method == http.MethodGet && deleted[r.URL.Path] {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+	client := &kubeClient{baseURL: server.URL, token: "test", client: server.Client()}
+	if err := client.deleteDeveloperCredential(context.Background(), namespace, apiKeyName, apiKeyName+"-key"); err != nil {
+		t.Fatalf("deleteDeveloperCredential returned error: %v", err)
+	}
+	requestPath := "/apis/devportal.kuadrant.io/v1alpha1/namespaces/api-monetization-apps/apikeyrequests/" + requestName
+	approvalPath := "/apis/devportal.kuadrant.io/v1alpha1/namespaces/api-monetization-apps/apikeyapprovals/" + approvalName
+	if !deleted[requestPath] || !deleted[approvalPath] {
+		t.Fatalf("portal artifacts were not deleted: request=%v approval=%v", deleted[requestPath], deleted[approvalPath])
+	}
+	if deleted["/apis/devportal.kuadrant.io/v1alpha1/namespaces/api-monetization-apps/apikeyrequests/unrelated"] ||
+		deleted["/apis/devportal.kuadrant.io/v1alpha1/namespaces/api-monetization-apps/apikeyapprovals/unrelated-auto"] {
+		t.Fatal("unrelated portal artifacts were deleted")
+	}
+}
+
 func TestSecretValueDecodesAPIKey(t *testing.T) {
 	t.Parallel()
 	want := "generated-api-key"

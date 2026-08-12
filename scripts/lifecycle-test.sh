@@ -113,17 +113,28 @@ wait_for_credential_absence() {
 wait_for_credential() {
   local api_key_name=$1
   local secret_name="${api_key_name}-key"
-  for _ in $(seq 1 120); do
+  local approval_state=""
+  local secret_state=""
+  local secret_status="pending"
+  for attempt in $(seq 1 120); do
+    approval_state=$(oc get apikey.devportal.kuadrant.io "$api_key_name" \
+      -n "$application_namespace" \
+      -o jsonpath='{range .status.conditions[*]}{.type}={.status}:{.reason}{" "}{end}' \
+      2>/dev/null || true)
+    secret_state=$(oc get secret "$secret_name" -n "$application_namespace" \
+      -o jsonpath='{.metadata.name}' 2>/dev/null || true)
+    secret_status="pending"
+    [[ -n $secret_state ]] && secret_status="ready"
     if oc get secret "$secret_name" -n "$application_namespace" >/dev/null 2>&1 && \
-      [[ $(oc get apikey.devportal.kuadrant.io "$api_key_name" \
-        -n "$application_namespace" \
-        -o jsonpath='{range .status.conditions[?(@.type=="Approved")]}{.status}{end}' \
-        2>/dev/null || true) == "True" ]]; then
+      [[ $approval_state == *"Approved=True"* ]]; then
       return 0
+    fi
+    if (( attempt % 5 == 0 )); then
+      echo "waiting for credential $api_key_name: secret=$secret_status, APIKey=${approval_state:-not reported}"
     fi
     sleep 2
   done
-  fail "operator-managed credential $api_key_name was not approved"
+  fail "operator-managed credential $api_key_name was not approved (secret=$secret_status, APIKey=${approval_state:-not reported})"
 }
 
 request_api_key() {
