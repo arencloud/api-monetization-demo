@@ -324,6 +324,30 @@ for policy in auth_policies:
         name = policy.get("metadata", {}).get("name", "unknown")
         raise SystemExit(f"{name}: active subscription authorization is missing")
 
+jwt_policy = next(
+    policy for policy in auth_policies if policy.get("metadata", {}).get("name") == "inventory-jwt"
+)
+jwt_rules = jwt_policy.get("spec", {}).get("rules", {})
+jwt_authentication = jwt_rules.get("authentication", {}).get("keycloak", {}).get("jwt", {})
+if jwt_authentication != {
+    "jwksUrl": "http://api-monetization-service.api-monetization-identity.svc.cluster.local:8080/realms/api-monetization/protocol/openid-connect/certs"
+}:
+    raise SystemExit("JWT verification must use the internal Keycloak JWKS endpoint")
+jwt_issuer_patterns = (
+    jwt_rules.get("authorization", {})
+    .get("keycloak-issuer", {})
+    .get("patternMatching", {})
+    .get("patterns", [])
+)
+if not any(
+    pattern.get("selector") == "auth.identity.iss"
+    and pattern.get("operator") == "matches"
+    and pattern.get("value")
+    == r"^https://keycloak-api-monetization[.]apps[.][^/]+/realms/api-monetization$"
+    for pattern in jwt_issuer_patterns
+):
+    raise SystemExit("JWT authorization must validate the portable external Keycloak issuer")
+
 with open("platform/gateway/inventory-plan-policy.yaml", encoding="utf-8") as stream:
     plan_policy = yaml.safe_load(stream)
 plan_tiers = {plan["tier"]: plan for plan in plan_policy["spec"]["plans"]}

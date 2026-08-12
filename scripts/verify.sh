@@ -167,7 +167,7 @@ for component_selector in authorino-resource=authorino limitador-resource=limita
   if ! oc get pods -n kuadrant-system -l "$component_selector" -o json | jq -e '
     any(.items[];
       any(.status.conditions[]?; .type == "Ready" and .status == "True") and
-      any(.spec.containers[]; .name == "istio-proxy")
+      any((.spec.containers + (.spec.initContainers // []))[]; .name == "istio-proxy")
     )
   ' >/dev/null; then
     echo "error: $component_selector has no ready pod with the Istio proxy required for RHCL mTLS" >&2
