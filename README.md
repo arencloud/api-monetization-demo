@@ -154,6 +154,21 @@ from PostgreSQL rather than embedded in the signed token.
 After deployment and verification, run the deterministic scenario:
 
 ```bash
+make showcase
+```
+
+`make showcase` is the complete presentation path. It verifies the deployed
+platform, establishes a clean Free-plan window, proves API-key and JWT rate
+limiting plus the live Developer upgrade, creates real Pay-as-you-go usage and
+a draft invoice, prints Prometheus evidence and all UI/API URLs, and restores
+Demo Company to a reusable Free state. It prints a stage-by-stage PASS/FAIL
+summary and also restores the plan after interruption. Stored accepted usage,
+invoice history, and audit records remain as intentional business evidence.
+
+The individual scenarios remain available for focused development and manual
+presentations:
+
+```bash
 make lifecycle-test
 make demo
 make metered-demo

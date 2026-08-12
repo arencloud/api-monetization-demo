@@ -79,7 +79,13 @@ make verify
 make demo
 make observe
 make grafana
+make showcase
 ```
+
+`make showcase` is the self-contained acceptance and presentation workflow. It
+runs platform verification, waits for authentic rate-limit windows, exercises
+the live plan upgrade and metered invoice, publishes observability evidence,
+prints the cluster-specific endpoints, and restores Demo Company to Free.
 
 `make verify` finishes with the lifecycle enforcement test. The test mutates
 only the dedicated `monetization-developer-automation` subscription: it creates

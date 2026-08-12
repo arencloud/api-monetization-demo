@@ -49,6 +49,20 @@ without refreshing the already-issued JWT.
 
 ## Presentation sequence
 
+For a fully automated presentation with readiness checks, real rate-limit
+windows, billing evidence, URLs, and final state restoration, run:
+
+```bash
+make showcase
+```
+
+The command deliberately waits at least 60 seconds before and after the traffic
+scenario because it proves the real Connectivity Link counters instead of
+deleting or bypassing them. It finishes with a PASS/FAIL table and leaves Demo
+Company on Free, ready for another run. Accepted usage, invoices, and audit
+history remain stored as evidence. The sections below describe the same story
+for a manually paced presentation.
+
 ### 1. Establish the baseline
 
 Show the `Inventory API` under **Connectivity Link → API Products** in the
@@ -104,6 +118,18 @@ accepted traffic costs €0.01/request, the safety limits are 100/minute and
 stored draft invoice. The script leaves the result visible in the administrator
 portal. HTTP 429 attempts remain non-billable because Connectivity Link rejects
 them before the Inventory API. Return to the baseline with `make reset-demo`.
+
+For rehearsals, the automated command accepts these bounded overrides:
+
+```bash
+SHOWCASE_COUNTER_WAIT_SECONDS=65 \
+SHOWCASE_METRICS_WAIT_SECONDS=30 \
+SHOWCASE_METERED_REQUESTS=5 \
+make showcase
+```
+
+The counter wait cannot be configured below 60 seconds because doing so would
+make the Free-plan rate-limit proof nondeterministic.
 
 Keep this rollout watch visible during the upgrade if desired; no revision or
 pod restart should appear:
