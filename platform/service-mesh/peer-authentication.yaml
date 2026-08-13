@@ -2,6 +2,18 @@ apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
+  namespace: api-monetization-ai
+  labels:
+    app.kubernetes.io/name: ai-model-mtls
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
   namespace: api-monetization-apps
   labels:
     app.kubernetes.io/name: service-mesh-mtls
@@ -40,6 +52,24 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: payments-api
+  mtls:
+    mode: STRICT
+  portLevelMtls:
+    "8082":
+      mode: DISABLE
+---
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: ai-chat-api
+  namespace: api-monetization-apps
+  labels:
+    app.kubernetes.io/name: ai-chat-api
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ai-chat-api
   mtls:
     mode: STRICT
   portLevelMtls:

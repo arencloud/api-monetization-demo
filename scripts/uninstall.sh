@@ -58,14 +58,17 @@ delete_package() {
 }
 
 delete_package applications/control
+delete_package applications/ai-chat
 delete_package applications/inventory
 delete_package applications/payments
+delete_package platform/ai-model
 delete_package platform/gateway
 delete_package platform/identity
 delete_package platform/database
 delete_package platform/secrets/demo
 delete_package platform/observability
 delete_package platform/connectivity-link
+delete_package platform/openshift-ai
 delete_package platform/external-secrets
 delete_package platform/service-mesh
 
@@ -108,6 +111,7 @@ remove_operator openshift-operators cloudnative-pg
 remove_operator openshift-operators servicemeshoperator3
 remove_operator openshift-tempo-operator tempo-product
 remove_operator openshift-operators grafana-operator
+remove_operator redhat-ods-operator rhods-operator
 
 oc delete mutatingwebhookconfiguration,validatingwebhookconfiguration \
   -l app.kubernetes.io/instance=cert-manager \

@@ -11,16 +11,20 @@ resources:
   - grafana-operator.yaml
   - service-mesh-operator.yaml
   - keycloak-operator.yaml
+  - openshift-ai-operator.yaml
   - external-secrets.yaml
   - demo-secrets.yaml
   - database.yaml
   - identity.yaml
+  - ai-chat.yaml
   - inventory.yaml
   - payments.yaml
   - control.yaml
   - gateway.yaml
   - observability.yaml
   - service-mesh.yaml
+  - openshift-ai.yaml
+  - ai-model.yaml
   - connectivity-link-operator.yaml
   - connectivity-link.yaml
   - console-plugins.yaml
@@ -29,7 +33,7 @@ configMapGenerator:
     namespace: openshift-gitops
     literals:
       - repoURL=https://github.com/arencloud/api-monetization-demo.git
-      - targetRevision=main
+      - targetRevision=feature/cpu-ai-chat
 generatorOptions:
   disableNameSuffixHash: true
 replacements:

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -34,6 +35,7 @@ func TestSelfServiceProducts(t *testing.T) {
 	}{
 		{product: "inventory", apiProduct: "inventory-api", endpoint: "https://api.example/inventory"},
 		{product: "payments", apiProduct: "payments-api", endpoint: "https://api.example/payments"},
+		{product: "ai-chat", apiProduct: "ai-chat-api", endpoint: "https://api.example/v1/chat/completions"},
 	}
 	for _, test := range tests {
 		definition, available := selfServiceProducts[test.product]
@@ -44,8 +46,8 @@ func TestSelfServiceProducts(t *testing.T) {
 			t.Errorf("endpointFor product %q=%q, want %q", test.product, got, test.endpoint)
 		}
 	}
-	if selfServiceProductAvailable("ai-chat") {
-		t.Error("AI Chat must remain unavailable until its workload and policies exist")
+	if selfServiceProductAvailable("missing") {
+		t.Error("unknown products must remain unavailable")
 	}
 }
 
@@ -185,6 +187,73 @@ func TestDeleteDeveloperCredentialRemovesPortalRequestArtifacts(t *testing.T) {
 	if deleted["/apis/devportal.kuadrant.io/v1alpha1/namespaces/api-monetization-apps/apikeyrequests/unrelated"] ||
 		deleted["/apis/devportal.kuadrant.io/v1alpha1/namespaces/api-monetization-apps/apikeyapprovals/unrelated-auto"] {
 		t.Fatal("unrelated portal artifacts were deleted")
+	}
+}
+
+func TestEnsureAutomaticAPIKeyApprovalCreatesOnlyForMatchingAutomaticProduct(t *testing.T) {
+	t.Parallel()
+	const namespace = "api-monetization-apps"
+	const apiKeyName = "dev-test-ai-chat"
+	const requestName = "api-monetization-apps-dev-test-ai-chat-12345678"
+	created := ""
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		listPath := "/apis/devportal.kuadrant.io/v1alpha1/namespaces/api-monetization-apps/apikeyrequests"
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == listPath:
+			fmt.Fprintf(w, `{"items":[{"metadata":{"name":%q},"spec":{"apiKeyRef":{"name":%q,"namespace":%q},"apiProductRef":{"name":"ai-chat-api"}}},{"metadata":{"name":"unrelated"},"spec":{"apiKeyRef":{"name":"another-key","namespace":%q},"apiProductRef":{"name":"manual-api"}}}]}`, requestName, apiKeyName, namespace, namespace)
+		case r.Method == http.MethodGet && r.URL.Path == "/apis/devportal.kuadrant.io/v1alpha1/namespaces/api-monetization-apps/apiproducts/ai-chat-api":
+			fmt.Fprint(w, `{"spec":{"approvalMode":"automatic"}}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/apis/devportal.kuadrant.io/v1alpha1/namespaces/api-monetization-apps/apikeyapprovals":
+			created = r.URL.Path
+			w.WriteHeader(http.StatusCreated)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client := &kubeClient{baseURL: server.URL, token: "test", client: server.Client()}
+	recovered, err := client.ensureAutomaticAPIKeyApproval(context.Background(), namespace, apiKeyName)
+	if err != nil || !recovered {
+		t.Fatalf("ensureAutomaticAPIKeyApproval recovered=%v error=%v, want true and no error", recovered, err)
+	}
+	if created == "" {
+		t.Fatal("approval for the matching APIKeyRequest was not created")
+	}
+}
+
+func TestEnsureAutomaticAPIKeyApprovalSkipsApprovedRequest(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("approved request must not create an approval; got %s %s", r.Method, r.URL.Path)
+		}
+		fmt.Fprint(w, `{"items":[{"metadata":{"name":"approved"},"spec":{"apiKeyRef":{"name":"dev-test-ai-chat","namespace":"api-monetization-apps"},"apiProductRef":{"name":"ai-chat-api"}},"status":{"conditions":[{"type":"Approved","status":"True"}]}}]}`)
+	}))
+	defer server.Close()
+	client := &kubeClient{baseURL: server.URL, token: "test", client: server.Client()}
+	recovered, err := client.ensureAutomaticAPIKeyApproval(context.Background(), "api-monetization-apps", "dev-test-ai-chat")
+	if err != nil || recovered {
+		t.Fatalf("ensureAutomaticAPIKeyApproval recovered=%v error=%v, want false and no error", recovered, err)
+	}
+}
+
+func TestEnsureAutomaticAPIKeyApprovalNeverApprovesManualProduct(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/apikeyrequests"):
+			fmt.Fprint(w, `{"items":[{"metadata":{"name":"manual-request"},"spec":{"apiKeyRef":{"name":"dev-test-ai-chat","namespace":"api-monetization-apps"},"apiProductRef":{"name":"ai-chat-api"}}}]}`)
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/apiproducts/ai-chat-api"):
+			fmt.Fprint(w, `{"spec":{"approvalMode":"manual"}}`)
+		default:
+			t.Fatalf("manual product must not create an approval; got %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	client := &kubeClient{baseURL: server.URL, token: "test", client: server.Client()}
+	recovered, err := client.ensureAutomaticAPIKeyApproval(context.Background(), "api-monetization-apps", "dev-test-ai-chat")
+	if err != nil || recovered {
+		t.Fatalf("ensureAutomaticAPIKeyApproval recovered=%v error=%v, want false and no error", recovered, err)
 	}
 }
 

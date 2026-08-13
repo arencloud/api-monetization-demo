@@ -293,6 +293,8 @@ type usageSummary struct {
 	Product              string  `json:"product"`
 	Plan                 string  `json:"plan"`
 	Requests             int64   `json:"requests"`
+	PromptTokens         int64   `json:"promptTokens"`
+	CompletionTokens     int64   `json:"completionTokens"`
 	IncludedRequests     *int64  `json:"includedRequests"`
 	MonthlyQuotaRequests *int64  `json:"monthlyQuotaRequests"`
 	RateLimitRequests    *int32  `json:"rateLimitRequests"`
@@ -318,6 +320,10 @@ func (a *app) loadUsage(ctx context.Context) ([]usageSummary, error) {
 	rows, err := a.db.Query(ctx, `
 		SELECT c.external_id, s.api_product_id, s.plan_id,
 		       COALESCE(SUM(u.billable_units), 0)::bigint,
+		       COALESCE(SUM(CASE WHEN s.api_product_id='ai-chat'
+		         THEN COALESCE((u.attributes->>'promptTokens')::bigint, 0) ELSE 0 END), 0)::bigint,
+		       COALESCE(SUM(CASE WHEN s.api_product_id='ai-chat'
+		         THEN COALESCE((u.attributes->>'completionTokens')::bigint, 0) ELSE 0 END), 0)::bigint,
 		       p.included_requests,
 		       p.monthly_quota_requests,
 		       p.rate_limit_requests,
@@ -350,7 +356,8 @@ func (a *app) loadUsage(ctx context.Context) ([]usageSummary, error) {
 	for rows.Next() {
 		var item usageSummary
 		if err = rows.Scan(&item.Customer, &item.Product, &item.Plan,
-			&item.Requests, &item.IncludedRequests, &item.MonthlyQuotaRequests,
+			&item.Requests, &item.PromptTokens, &item.CompletionTokens,
+			&item.IncludedRequests, &item.MonthlyQuotaRequests,
 			&item.RateLimitRequests, &item.RateLimitWindowSecs,
 			&item.OverageRequests, &item.OverageRevenueEuro,
 			&item.ProjectedRevenueEuro); err != nil {
@@ -365,30 +372,46 @@ func (a *app) loadUsage(ctx context.Context) ([]usageSummary, error) {
 
 func (a *app) recordUsage(w http.ResponseWriter, r *http.Request) {
 	var event struct {
-		RequestID     string    `json:"requestId"`
-		Customer      string    `json:"customer"`
-		Product       string    `json:"product"`
-		Operation     string    `json:"operation"`
-		OccurredAt    time.Time `json:"occurredAt"`
-		StatusCode    int       `json:"statusCode"`
-		DurationMS    float64   `json:"durationMs"`
-		ResponseBytes int64     `json:"responseBytes"`
+		RequestID     string         `json:"requestId"`
+		Customer      string         `json:"customer"`
+		Product       string         `json:"product"`
+		Operation     string         `json:"operation"`
+		OccurredAt    time.Time      `json:"occurredAt"`
+		StatusCode    int            `json:"statusCode"`
+		DurationMS    float64        `json:"durationMs"`
+		RequestBytes  int64          `json:"requestBytes"`
+		ResponseBytes int64          `json:"responseBytes"`
+		BillableUnits *int64         `json:"billableUnits"`
+		Attributes    map[string]any `json:"attributes"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32*1024)).Decode(&event); err != nil || event.RequestID == "" || event.Customer == "" || event.Product == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid usage event"})
 		return
 	}
+	billableUnits := int64(1)
+	if event.BillableUnits != nil {
+		billableUnits = *event.BillableUnits
+	}
+	if billableUnits < 0 || event.RequestBytes < 0 || event.ResponseBytes < 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "usage values must be nonnegative"})
+		return
+	}
+	if event.Attributes == nil {
+		event.Attributes = map[string]any{}
+	}
 	command, err := a.db.Exec(r.Context(), `
 		INSERT INTO monetization.usage_events
 		(request_id, subscription_id, api_product_id, operation, occurred_at,
-		 status_code, duration_ms, response_bytes)
-		SELECT $1, s.id, s.api_product_id, $4, $5, $6, $7, $8
+		 status_code, duration_ms, request_bytes, response_bytes,
+		 billable_units, attributes)
+		SELECT $1, s.id, s.api_product_id, $4, $5, $6, $7, $8, $9, $10, $11
 		FROM monetization.subscriptions s
 		JOIN monetization.customers c ON c.id=s.customer_id
 		WHERE c.external_id=$2 AND s.api_product_id=$3 AND s.status='active'
 		ON CONFLICT (request_id) DO NOTHING`,
 		event.RequestID, event.Customer, event.Product, event.Operation,
-		event.OccurredAt, event.StatusCode, event.DurationMS, event.ResponseBytes)
+		event.OccurredAt, event.StatusCode, event.DurationMS, event.RequestBytes,
+		event.ResponseBytes, billableUnits, event.Attributes)
 	if err != nil {
 		serverError(w, err)
 		return
@@ -406,14 +429,24 @@ func (a *app) businessMetrics(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("business metrics query failed", "error", err)
 		return
 	}
-	fmt.Fprintln(w, "# HELP monetization_billable_requests Stored accepted requests by customer and plan.")
+	fmt.Fprintln(w, "# HELP monetization_billable_requests Deprecated compatibility alias for monetization_billable_units.")
 	fmt.Fprintln(w, "# TYPE monetization_billable_requests gauge")
-	fmt.Fprintln(w, "# HELP monetization_included_requests Commercial requests included in the current plan.")
+	fmt.Fprintln(w, "# HELP monetization_billable_units Stored accepted native billing units by customer, product, and plan.")
+	fmt.Fprintln(w, "# TYPE monetization_billable_units gauge")
+	fmt.Fprintln(w, "# HELP monetization_ai_prompt_tokens Stored AI Chat prompt tokens in the current billing month.")
+	fmt.Fprintln(w, "# TYPE monetization_ai_prompt_tokens gauge")
+	fmt.Fprintln(w, "# HELP monetization_ai_completion_tokens Stored AI Chat completion tokens in the current billing month.")
+	fmt.Fprintln(w, "# TYPE monetization_ai_completion_tokens gauge")
+	fmt.Fprintln(w, "# HELP monetization_included_requests Deprecated compatibility alias for monetization_included_units.")
 	fmt.Fprintln(w, "# TYPE monetization_included_requests gauge")
+	fmt.Fprintln(w, "# HELP monetization_included_units Commercial native units included in the current plan.")
+	fmt.Fprintln(w, "# TYPE monetization_included_units gauge")
 	fmt.Fprintln(w, "# HELP monetization_monthly_quota_requests Enforced monthly safety quota for the current plan.")
 	fmt.Fprintln(w, "# TYPE monetization_monthly_quota_requests gauge")
-	fmt.Fprintln(w, "# HELP monetization_overage_requests Accepted requests above the included allowance.")
+	fmt.Fprintln(w, "# HELP monetization_overage_requests Deprecated compatibility alias for monetization_overage_units.")
 	fmt.Fprintln(w, "# TYPE monetization_overage_requests gauge")
+	fmt.Fprintln(w, "# HELP monetization_overage_units Accepted native units above the included allowance.")
+	fmt.Fprintln(w, "# TYPE monetization_overage_units gauge")
 	fmt.Fprintln(w, "# HELP monetization_overage_revenue_euros Projected current-month revenue from accepted overage.")
 	fmt.Fprintln(w, "# TYPE monetization_overage_revenue_euros gauge")
 	fmt.Fprintln(w, "# HELP monetization_projected_revenue_euros Projected monthly base and overage revenue.")
@@ -425,13 +458,20 @@ func (a *app) businessMetrics(w http.ResponseWriter, r *http.Request) {
 	for _, item := range usage {
 		labels := fmt.Sprintf("customer=%q,product=%q,plan=%q", item.Customer, item.Product, item.Plan)
 		fmt.Fprintf(w, "monetization_billable_requests{%s} %d\n", labels, item.Requests)
+		fmt.Fprintf(w, "monetization_billable_units{%s} %d\n", labels, item.Requests)
+		if item.Product == "ai-chat" {
+			fmt.Fprintf(w, "monetization_ai_prompt_tokens{%s} %d\n", labels, item.PromptTokens)
+			fmt.Fprintf(w, "monetization_ai_completion_tokens{%s} %d\n", labels, item.CompletionTokens)
+		}
 		if item.IncludedRequests != nil {
 			fmt.Fprintf(w, "monetization_included_requests{%s} %d\n", labels, *item.IncludedRequests)
+			fmt.Fprintf(w, "monetization_included_units{%s} %d\n", labels, *item.IncludedRequests)
 		}
 		if item.MonthlyQuotaRequests != nil {
 			fmt.Fprintf(w, "monetization_monthly_quota_requests{%s} %d\n", labels, *item.MonthlyQuotaRequests)
 		}
 		fmt.Fprintf(w, "monetization_overage_requests{%s} %d\n", labels, item.OverageRequests)
+		fmt.Fprintf(w, "monetization_overage_units{%s} %d\n", labels, item.OverageRequests)
 		fmt.Fprintf(w, "monetization_overage_revenue_euros{%s} %.6f\n", labels, item.OverageRevenueEuro)
 		fmt.Fprintf(w, "monetization_projected_revenue_euros{%s} %.6f\n", labels, item.ProjectedRevenueEuro)
 		if item.RateLimitRequests != nil && item.RateLimitWindowSecs != nil {

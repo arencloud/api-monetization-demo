@@ -33,6 +33,18 @@ rules:
       - get
       - list
   - apiGroups:
+      - devportal.kuadrant.io
+    resources:
+      - apikeyapprovals
+    verbs:
+      - create
+  - apiGroups:
+      - devportal.kuadrant.io
+    resources:
+      - apiproducts
+    verbs:
+      - get
+  - apiGroups:
       - generators.external-secrets.io
     resources:
       - passwords

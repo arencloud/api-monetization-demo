@@ -36,27 +36,37 @@ query() {
 }
 
 echo "commercial usage and revenue (current UTC month)"
-query 'monetization_billable_requests' | jq -r '
+query 'monetization_billable_units' | jq -r '
   if (.data.result | length) == 0 then "  no commercial metrics found"
   else .data.result[] |
-    "  \(.metric.customer) / \(.metric.product) / \(.metric.plan): \(.value[1]) accepted billable requests"
+    "  \(.metric.customer) / \(.metric.product) / \(.metric.plan): \(.value[1]) accepted billable units"
   end'
-query 'monetization_overage_requests' | jq -r '
+query 'monetization_overage_units' | jq -r '
   if (.data.result | length) == 0 then "  overage metric is not deployed yet"
   else .data.result[] |
-    "  \(.metric.customer) / \(.metric.product) / \(.metric.plan): \(.value[1]) accepted overage requests"
+    "  \(.metric.customer) / \(.metric.product) / \(.metric.plan): \(.value[1]) accepted overage units"
   end'
 query 'monetization_projected_revenue_euros' | jq -r '
   if (.data.result | length) == 0 then "  no projected revenue found"
   else .data.result[] |
     "  \(.metric.customer) / \(.metric.product) / \(.metric.plan): €\(.value[1]) projected revenue"
   end'
+query 'monetization_ai_prompt_tokens' | jq -r '
+  if (.data.result | length) == 0 then "  no AI prompt tokens found"
+  else .data.result[] |
+    "  \(.metric.customer) / AI Chat / \(.metric.plan): \(.value[1]) prompt tokens"
+  end'
+query 'monetization_ai_completion_tokens' | jq -r '
+  if (.data.result | length) == 0 then "  no AI completion tokens found"
+  else .data.result[] |
+    "  \(.metric.customer) / AI Chat / \(.metric.plan): \(.value[1]) completion tokens"
+  end'
 
 echo
 echo "Connectivity Link decisions by credential (last hour)"
 for decision in authorized limited; do
   metric="${decision}_calls"
-  query "sum by (limitador_namespace) (increase(${metric}{limitador_namespace=~\"api-monetization-apps/(inventory|payments)-(api-key|jwt)\"}[1h]))" \
+  query "sum by (limitador_namespace) (increase(${metric}{limitador_namespace=~\"api-monetization-apps/(inventory|payments|ai-chat)-(api-key|jwt)\"}[1h]))" \
     | jq -r --arg decision "$decision" '
       if (.data.result | length) == 0 then "  no \($decision) calls found"
       else .data.result[] |
@@ -67,7 +77,7 @@ done
 
 echo
 echo "gateway responses by HTTP status (last hour)"
-query 'sum by (destination_service_name, response_code) (increase(istio_requests_total{reporter="source",source_workload_namespace="api-monetization-gateway",source_workload="api-monetization-istio",destination_service_name=~"(inventory|payments)-api",instance=~".*:15090"}[1h]))' \
+query 'sum by (destination_service_name, response_code) (increase(istio_requests_total{reporter="source",source_workload_namespace="api-monetization-gateway",source_workload="api-monetization-istio",destination_service_name=~"(inventory|payments|ai-chat)-api",instance=~".*:15090"}[1h]))' \
   | jq -r '
     if (.data.result | length) == 0 then "  no gateway traffic found"
     else .data.result | sort_by(.metric.response_code)[] |

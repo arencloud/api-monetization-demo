@@ -208,10 +208,10 @@ data:
       ('business', 'Business', 49900, 5000000, 50000000, 10000, 60, 500),
       ('enterprise', 'Enterprise', NULL, NULL, NULL, NULL, NULL, 0);
 
-    INSERT INTO monetization.api_products (id, display_name, description) VALUES
-      ('inventory', 'Inventory API', 'Product and stock inventory operations'),
-      ('payments', 'Payment API', 'Payment authorization and settlement operations'),
-      ('ai-chat', 'AI Chat API', 'Metered AI inference operations');
+    INSERT INTO monetization.api_products (id, display_name, description, unit_name) VALUES
+      ('inventory', 'Inventory API', 'Product and stock inventory operations', 'request'),
+      ('payments', 'Payment API', 'Payment authorization and settlement operations', 'request'),
+      ('ai-chat', 'AI Chat API', 'CPU-hosted chat inference billed by prompt and completion tokens', 'token');
 
     INSERT INTO monetization.customers (external_id, display_name, billing_email)
       VALUES ('demo-company', 'Demo Company', 'billing@example.invalid');

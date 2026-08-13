@@ -117,6 +117,12 @@ wait_for_credential() {
   local secret_state=""
   local secret_status="pending"
   for attempt in $(seq 1 120); do
+    # Reading credential status also invokes the portal's narrowly scoped
+    # recovery for the RHCL APIKeyRequest initialization/auto-approval race.
+    # Keep verification on the same supported self-service path as the UI.
+    curl --silent --show-error --output /dev/null \
+      --header "Authorization: Bearer $developer_token" \
+      "http://127.0.0.1:$control_port/api/me/credentials/inventory/status" || true
     approval_state=$(oc get apikey.devportal.kuadrant.io "$api_key_name" \
       -n "$application_namespace" \
       -o jsonpath='{range .status.conditions[*]}{.type}={.status}:{.reason}{" "}{end}' \

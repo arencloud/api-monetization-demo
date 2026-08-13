@@ -5,9 +5,9 @@
   "panels": [
     {
       "type": "stat",
-      "title": "Accepted billable requests (current month)",
-      "description": "Accepted requests across all API products stored in PostgreSQL for the current UTC billing month.",
-      "targets": [{"expr": "sum(monetization_billable_requests)", "refId": "A"}],
+      "title": "Accepted billable units (current month)",
+      "description": "Accepted native units stored in PostgreSQL: requests for transactional APIs and tokens for AI Chat.",
+      "targets": [{"expr": "sum(monetization_billable_units)", "refId": "A"}],
       "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
       "gridPos": {"h": 6, "w": 6, "x": 0, "y": 0}
     },
@@ -15,15 +15,15 @@
       "type": "stat",
       "title": "Rate-limited attempts (selected range)",
       "description": "Connectivity Link/Limitador denials. These requests return HTTP 429 before reaching a product backend and are not billed.",
-      "targets": [{"expr": "sum(increase(limited_calls{limitador_namespace=~\"api-monetization-apps/(inventory|payments)-(api-key|jwt)\"}[$__range]))", "refId": "A"}],
+      "targets": [{"expr": "sum(increase(limited_calls{limitador_namespace=~\"api-monetization-apps/(inventory|payments|ai-chat)-(api-key|jwt)\"}[$__range]))", "refId": "A"}],
       "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "fixedColor", "fixedColor": "orange"}}, "overrides": []},
       "gridPos": {"h": 6, "w": 6, "x": 6, "y": 0}
     },
     {
       "type": "stat",
-      "title": "Billable overage requests",
+      "title": "Billable overage units",
       "description": "Accepted requests above the included commercial allowance. This is independent of rejected HTTP 429 attempts.",
-      "targets": [{"expr": "sum(monetization_overage_requests)", "refId": "A"}],
+      "targets": [{"expr": "sum(monetization_overage_units)", "refId": "A"}],
       "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "fixedColor", "fixedColor": "red"}}, "overrides": []},
       "gridPos": {"h": 6, "w": 6, "x": 12, "y": 0}
     },
@@ -41,12 +41,12 @@
       "description": "Limitador decisions separated into API-key and JWT policy namespaces.",
       "targets": [
         {
-          "expr": "sum by (product, credential) (label_replace(label_replace(rate(authorized_calls{limitador_namespace=~\"api-monetization-apps/(inventory|payments)-(api-key|jwt)\"}[$__rate_interval]), \"product\", \"$1\", \"limitador_namespace\", \".*/(inventory|payments)-.*\"), \"credential\", \"$2\", \"limitador_namespace\", \".*/(inventory|payments)-(.*)\"))",
+          "expr": "sum by (product, credential) (label_replace(label_replace(rate(authorized_calls{limitador_namespace=~\"api-monetization-apps/(inventory|payments|ai-chat)-(api-key|jwt)\"}[$__rate_interval]), \"product\", \"$1\", \"limitador_namespace\", \".*/(inventory|payments|ai-chat)-.*\"), \"credential\", \"$2\", \"limitador_namespace\", \".*/(inventory|payments|ai-chat)-(.*)\"))",
           "legendFormat": "{{product}} / {{credential}} allowed",
           "refId": "A"
         },
         {
-          "expr": "sum by (product, credential) (label_replace(label_replace(rate(limited_calls{limitador_namespace=~\"api-monetization-apps/(inventory|payments)-(api-key|jwt)\"}[$__rate_interval]), \"product\", \"$1\", \"limitador_namespace\", \".*/(inventory|payments)-.*\"), \"credential\", \"$2\", \"limitador_namespace\", \".*/(inventory|payments)-(.*)\"))",
+          "expr": "sum by (product, credential) (label_replace(label_replace(rate(limited_calls{limitador_namespace=~\"api-monetization-apps/(inventory|payments|ai-chat)-(api-key|jwt)\"}[$__rate_interval]), \"product\", \"$1\", \"limitador_namespace\", \".*/(inventory|payments|ai-chat)-.*\"), \"credential\", \"$2\", \"limitador_namespace\", \".*/(inventory|payments|ai-chat)-(.*)\"))",
           "legendFormat": "{{product}} / {{credential}} rate limited",
           "refId": "B"
         }
@@ -57,9 +57,9 @@
     {
       "type": "timeseries",
       "title": "Gateway responses by HTTP status",
-      "description": "Istio gateway responses for Inventory and Payment, including policy-generated 401, 403, and 429 responses.",
+      "description": "Istio gateway responses for Inventory, Payment, and AI Chat, including policy-generated 401, 403, and 429 responses.",
       "targets": [{
-        "expr": "sum by (destination_service_name, response_code) (rate(istio_requests_total{reporter=\"source\",source_workload_namespace=\"api-monetization-gateway\",source_workload=\"api-monetization-istio\",destination_service_name=~\"(inventory|payments)-api\",instance=~\".*:15090\"}[$__rate_interval]))",
+        "expr": "sum by (destination_service_name, response_code) (rate(istio_requests_total{reporter=\"source\",source_workload_namespace=\"api-monetization-gateway\",source_workload=\"api-monetization-istio\",destination_service_name=~\"(inventory|payments|ai-chat)-api\",instance=~\".*:15090\"}[$__rate_interval]))",
         "legendFormat": "{{destination_service_name}} HTTP {{response_code}}",
         "refId": "A"
       }],
@@ -71,9 +71,9 @@
       "title": "Usage, allowance, and hard quota",
       "description": "Accepted billable usage is compared with the commercial allowance and the separate enforced safety quota.",
       "targets": [
-        {"expr": "sum by (customer, product, plan) (monetization_billable_requests)", "legendFormat": "{{customer}} / {{product}} / {{plan}} accepted", "instant": true, "refId": "A"},
-        {"expr": "sum by (customer, product, plan) (monetization_included_requests)", "legendFormat": "{{customer}} / {{product}} / {{plan}} included", "instant": true, "refId": "B"},
-        {"expr": "sum by (customer, product, plan) (monetization_monthly_quota_requests)", "legendFormat": "{{customer}} / {{product}} / {{plan}} hard quota", "instant": true, "refId": "C"}
+        {"expr": "sum by (customer, product, plan) (monetization_billable_units{product!=\"ai-chat\"})", "legendFormat": "{{customer}} / {{product}} / {{plan}} accepted requests", "instant": true, "refId": "A"},
+        {"expr": "sum by (customer, product, plan) (monetization_included_units{product!=\"ai-chat\"})", "legendFormat": "{{customer}} / {{product}} / {{plan}} included requests", "instant": true, "refId": "B"},
+        {"expr": "sum by (customer, product, plan) (monetization_monthly_quota_requests{product!=\"ai-chat\"})", "legendFormat": "{{customer}} / {{product}} / {{plan}} hard request quota", "instant": true, "refId": "C"}
       ],
       "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
       "gridPos": {"h": 9, "w": 12, "x": 0, "y": 15}
@@ -92,8 +92,8 @@
       "type": "table",
       "title": "Current customer plan attribution",
       "targets": [
-        {"expr": "sum by (customer, product, plan) (monetization_billable_requests)", "format": "table", "instant": true, "refId": "A"},
-        {"expr": "sum by (customer, product, plan) (monetization_overage_requests)", "format": "table", "instant": true, "refId": "B"}
+        {"expr": "sum by (customer, product, plan) (monetization_billable_units)", "format": "table", "instant": true, "refId": "A"},
+        {"expr": "sum by (customer, product, plan) (monetization_overage_units)", "format": "table", "instant": true, "refId": "B"}
       ],
       "transformations": [{"id": "merge", "options": {}}],
       "gridPos": {"h": 9, "w": 10, "x": 0, "y": 24}
@@ -101,7 +101,7 @@
     {
       "type": "timeseries",
       "title": "Mean accepted-request latency (ms)",
-      "targets": [{"expr": "sum by (service) (rate(api_request_duration_milliseconds_total{service=~\"(inventory|payments)-api\"}[$__rate_interval])) / clamp_min(sum by (service) (rate(api_requests_total{service=~\"(inventory|payments)-api\"}[$__rate_interval])), 0.001)", "legendFormat": "{{service}}", "refId": "A"}],
+      "targets": [{"expr": "sum by (service) (rate(api_request_duration_milliseconds_total{service=~\"(inventory|payments|ai-chat)-api\"}[$__rate_interval])) / clamp_min(sum by (service) (rate(api_requests_total{service=~\"(inventory|payments|ai-chat)-api\"}[$__rate_interval])), 0.001)", "legendFormat": "{{service}}", "refId": "A"}],
       "fieldConfig": {"defaults": {"unit": "ms"}, "overrides": []},
       "gridPos": {"h": 9, "w": 10, "x": 10, "y": 24}
     },
@@ -112,13 +112,25 @@
       "gridPos": {"h": 9, "w": 4, "x": 20, "y": 24}
     },
     {
+      "type": "timeseries",
+      "title": "AI Chat token attribution",
+      "description": "Prompt and completion tokens reported by vLLM and persisted as native AI billing evidence.",
+      "targets": [
+        {"expr": "sum by (customer, plan) (monetization_ai_prompt_tokens)", "legendFormat": "{{customer}} / {{plan}} / prompt", "refId": "A"},
+        {"expr": "sum by (customer, plan) (monetization_ai_completion_tokens)", "legendFormat": "{{customer}} / {{plan}} / completion", "refId": "B"},
+        {"expr": "sum by (customer, plan) (monetization_included_units{product=\"ai-chat\"})", "legendFormat": "{{customer}} / {{plan}} / included tokens", "refId": "C"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 33}
+    },
+    {
       "type": "text",
       "title": "How to read this dashboard",
       "options": {
         "mode": "markdown",
-        "content": "**Accepted/billable** requests reached Inventory or Payment and were stored against that product subscription. **Overage** is accepted usage above the plan allowance. **Rate-limited** requests were denied by Connectivity Link with HTTP 429 before the backend and are observable, but never billed. API-key and JWT policy decisions are isolated per product."
+        "content": "**Accepted/billable units** are requests for Inventory and Payment and vLLM-reported tokens for AI Chat. **Overage** is accepted usage above the plan allowance. **Rate-limited** requests were denied by Connectivity Link with HTTP 429 before the backend and are observable, but never billed. API-key and JWT policy decisions are isolated per product."
       },
-      "gridPos": {"h": 5, "w": 24, "x": 0, "y": 33}
+      "gridPos": {"h": 5, "w": 24, "x": 0, "y": 41}
     }
   ],
   "refresh": "15s",
@@ -129,5 +141,5 @@
   "timezone": "browser",
   "title": "API Monetization: Traffic, Limits, and Revenue",
   "uid": "api-monetization",
-  "version": 3
+  "version": 4
 }

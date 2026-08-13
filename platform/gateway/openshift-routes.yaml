@@ -5,6 +5,7 @@ metadata:
   namespace: api-monetization-gateway
   annotations:
     argocd.argoproj.io/sync-wave: "10"
+    haproxy.router.openshift.io/timeout: 180s
   labels:
     app.kubernetes.io/name: api-monetization-gateway
     app.kubernetes.io/part-of: api-monetization
@@ -29,6 +30,7 @@ metadata:
   namespace: api-monetization-gateway
   annotations:
     argocd.argoproj.io/sync-wave: "10"
+    haproxy.router.openshift.io/timeout: 180s
   labels:
     app.kubernetes.io/name: api-monetization-gateway
     app.kubernetes.io/part-of: api-monetization

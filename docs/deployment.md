@@ -16,6 +16,8 @@
 - Cluster nodes can pull from `registry.redhat.io`, `registry.access.redhat.com`,
   `ghcr.io`, `docker.io`, and GitHub's `pkg-containers.githubusercontent.com`
   blob endpoint.
+- For the CPU AI milestone, cluster workloads can reach `huggingface.co` and
+  its model-content CDN endpoints.
 
 The preflight check is read-only:
 
@@ -94,6 +96,8 @@ oc get istio -n api-monetization-mesh-system
 oc get istiocni -n api-monetization-istio-cni
 make verify
 make multi-product-test
+make ai-model-test
+make ai-monetization-test
 make demo
 make observe
 make grafana
@@ -121,6 +125,34 @@ credentials, both JWT paths, and independent usage attribution with:
 
 ```bash
 make multi-product-test
+```
+
+Prove the OpenShift AI model independently before placing Connectivity Link in
+front of it:
+
+```bash
+make ai-model-test
+```
+
+The first start can take several minutes while a node pulls the Red Hat vLLM
+CPU image and the Pod downloads the approximately 1 GB pinned model snapshot.
+Later starts can reuse node image layers, but the demo intentionally uses an
+ephemeral model cache and one replica. This profile requires neither a GPU nor
+RWX storage. The runtime is Technology Preview in OpenShift AI 3.4 and is meant
+for demonstration rather than performance or production support claims.
+
+The model namespace is enrolled in the project Service Mesh revision. KServe
+injects an Istio proxy and rewrites health probes, while a mesh-aware ClusterIP
+Service, strict peer authentication, and an explicit `ISTIO_MUTUAL` destination
+rule secure calls from the AI facade to vLLM. The OpenShift edge Routes use the
+supported HAProxy timeout annotation with a 180-second budget so CPU inference
+can complete without weakening TLS or bypassing the gateway.
+
+After the model and monetization applications are healthy, validate the public
+product contract and token billing:
+
+```bash
+make ai-monetization-test
 ```
 
 Print the admitted portal URL and generated developer and administrator logins:

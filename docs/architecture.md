@@ -57,11 +57,19 @@ creates a namespaced External Secrets `Password` generator and `ExternalSecret`,
 then creates the RHCL `APIKey` referencing the generated Secret. RHCL approves
 and labels the credential for request-time authentication. The portal reveals
 the raw key once and PostgreSQL retains only its prefix and SHA-256 digest.
-Each credential references exactly one RHCL `APIProduct`. Inventory and Payment
-therefore have separate HTTPRoutes, authentication metadata lookups, rate-limit
+Each credential references exactly one RHCL `APIProduct`. Inventory, Payment,
+and AI Chat therefore have separate HTTPRoutes, authentication metadata lookups, rate-limit
 counters, usage records, and invoice lines even when the same Keycloak subject
 subscribes to both. The external API-key and JWT hostnames are shared; product
-paths (`/inventory` and `/payments`) select the independently governed route.
+paths (`/inventory`, `/payments`, and `/v1/chat/completions`) select the
+independently governed route. AI Chat terminates at a small mesh-injected
+facade; the KServe predictor remains cluster-internal. The facade constrains
+non-streaming requests, invokes vLLM, and records its prompt plus completion
+token counts as the subscription's native billable units. The model namespace
+is enrolled in the same Red Hat OpenShift Service Mesh revision. Red Hat's
+documented KServe sidecar and probe-rewrite annotations inject the predictor,
+and an explicit `ISTIO_MUTUAL` destination rule plus namespace-wide `STRICT`
+peer authentication protect the facade-to-model hop.
 
 ## Request lifecycle
 
@@ -69,11 +77,16 @@ paths (`/inventory` and `/payments`) select the independently governed route.
 2. `AuthPolicy` verifies the credentials and enriches request context with a
    stable customer and plan identity.
 3. An authorization rule verifies API product, operation, and subscription.
-4. Rate-limit policy selects counters using authenticated identity/plan data.
+4. Request and token rate-limit policies select counters using authenticated
+   identity and plan data. Request limits protect inference capacity before the
+   call; RHCL extracts `usage.total_tokens` after a successful OpenAI-compatible
+   response and adds that cost to the customer's Limitador token counter.
 5. The gateway routes the accepted request to a mesh-protected backend.
 6. Metrics, structured access logs, and traces share request, customer, and API
    identifiers without exposing credential material.
-7. Usage is aggregated asynchronously into billable records. A narrow,
+7. Usage is aggregated asynchronously into billable records. Transactional
+   APIs contribute one unit per accepted request; AI Chat contributes the exact
+   `usage.total_tokens` returned by vLLM. A narrow,
    read-only entitlement lookup participates in authentication; usage rating,
    invoicing, and other billing work never participate in the synchronous path.
 

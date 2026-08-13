@@ -225,7 +225,7 @@
 
       <aside class="card side">
         <h2>Multi-product catalog</h2>
-        <p class="subvalue">Inventory and Payment are independently subscribable and metered. AI Chat remains visible as the next product candidate.</p>
+        <p class="subvalue">Inventory, Payment, and CPU-hosted AI Chat are independently subscribable and metered.</p>
       </aside>
     </div>
   </section>
@@ -359,7 +359,9 @@ function clusterLinks() {
 }
 
 function productPath(product) {
-  return product === 'payments' ? '/payments' : '/inventory';
+  if (product === 'payments') return '/payments';
+  if (product === 'ai-chat') return '/v1/chat/completions';
+  return '/inventory';
 }
 
 function updateProductLinks() {
@@ -373,11 +375,12 @@ function money(cents) {
   return cents == null ? 'Custom pricing' : new Intl.NumberFormat(undefined, {style: 'currency', currency: 'EUR'}).format(cents / 100) + ' / month';
 }
 
-function planTerms(plan) {
-  const included = plan.includedRequests == null ? 'custom allowance' : `${plan.includedRequests.toLocaleString()} included`;
-  const quota = plan.monthlyQuotaRequests == null ? 'no hard monthly quota' : `${plan.monthlyQuotaRequests.toLocaleString()} monthly cap`;
+function planTerms(plan, unitName = 'request') {
+  const units = `${unitName}s`;
+  const included = plan.includedRequests == null ? 'custom allowance' : `${plan.includedRequests.toLocaleString()} ${units} included`;
+  const quota = plan.monthlyQuotaRequests == null ? 'no hard monthly request quota' : `${plan.monthlyQuotaRequests.toLocaleString()} monthly request safety cap`;
   const overage = plan.overageMicrosPerRequest > 0
-    ? `${new Intl.NumberFormat(undefined, {style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 4}).format(plan.overageMicrosPerRequest / 1000000)} / accepted overage request`
+    ? `${new Intl.NumberFormat(undefined, {style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 4}).format(plan.overageMicrosPerRequest / 1000000)} / accepted overage ${unitName}`
     : 'no overage charge';
   return `${included} · ${quota} · ${overage}`;
 }
@@ -502,15 +505,15 @@ async function refreshAdmin() {
   updateProductLinks();
   $('#plan').textContent = state.subscription.planName;
   $('#price').textContent = money(state.subscription.monthlyPriceCents);
-  $('#limit').textContent = state.subscription.rateLimitRequests ? `${state.subscription.rateLimitRequests.toLocaleString()} / ${state.subscription.rateLimitWindowSeconds}s` : 'Unlimited';
+  $('#limit').textContent = state.subscription.rateLimitRequests ? `${state.subscription.rateLimitRequests.toLocaleString()} requests / ${state.subscription.rateLimitWindowSeconds}s` : 'Unlimited';
   $('#usage').textContent = usageItem.requests.toLocaleString();
-  $('#included').textContent = `${planTerms(state.subscription)} · HTTP 429 attempts are rejected, not billed`;
+  $('#included').textContent = `${usageItem.requests.toLocaleString()} accepted ${selectedProduct?.unitName || 'request'} units · ${planTerms(state.subscription, selectedProduct?.unitName)} · HTTP 429 attempts are rejected, not billed`;
   $('#revenue').textContent = new Intl.NumberFormat(undefined, {style: 'currency', currency: 'EUR'}).format(usageItem.projectedRevenueEuro);
   $('#overage').textContent = `${usageItem.overageRequests.toLocaleString()} accepted requests above the included allowance`;
   $('#plans').replaceChildren(...plans.map(plan => {
     const option = document.createElement('option');
     option.value = plan.id;
-    option.textContent = `${plan.displayName} — ${money(plan.monthlyPriceCents)} · ${planTerms(plan)}`;
+    option.textContent = `${plan.displayName} — ${money(plan.monthlyPriceCents)} · ${planTerms(plan, selectedProduct?.unitName)}`;
     option.selected = plan.id === state.subscription.plan;
     return option;
   }));
@@ -547,17 +550,17 @@ function renderAdminProductCatalog(products, subscriptions, usage) {
     description.textContent = product.description;
     const metrics = document.createElement('div');
     metrics.className = 'status';
-    metrics.textContent = `${active} active · ${suspended} suspended · ${accepted.toLocaleString()} accepted · ${new Intl.NumberFormat(undefined, {style: 'currency', currency: 'EUR'}).format(revenue)} projected`;
+    metrics.textContent = `${active} active · ${suspended} suspended · ${accepted.toLocaleString()} accepted ${product.unitName}s · ${new Intl.NumberFormat(undefined, {style: 'currency', currency: 'EUR'}).format(revenue)} projected`;
     card.append(stateLabel, title, description, metrics);
     return card;
   }));
 }
 
-function planOptions(target, plans, selected) {
+function planOptions(target, plans, selected, unitName = 'request') {
   target.replaceChildren(...plans.map(plan => {
     const option = document.createElement('option');
     option.value = plan.id;
-    option.textContent = `${plan.displayName} — ${money(plan.monthlyPriceCents)} · ${planTerms(plan)}`;
+    option.textContent = `${plan.displayName} — ${money(plan.monthlyPriceCents)} · ${planTerms(plan, unitName)}`;
     option.selected = plan.id === selected;
     return option;
   }));
@@ -585,8 +588,8 @@ async function refreshDeveloper() {
   $('#developer-product').textContent = product?.displayName || 'Inventory API';
   $('#developer-description').textContent = product?.description || 'Product and stock inventory operations';
   updateProductLinks();
-  planOptions($('#developer-plans'), state.plans, 'free');
-  planOptions($('#developer-upgrade-plan'), state.plans, state.subscription?.plan);
+  planOptions($('#developer-plans'), state.plans, 'free', product?.unitName);
+  planOptions($('#developer-upgrade-plan'), state.plans, state.subscription?.plan, product?.unitName);
   $('#subscribe-controls').classList.toggle('hidden', Boolean(state.subscription));
   $('#developer-subscription').classList.toggle('hidden', !state.subscription);
   renderBilling(billing);
@@ -603,11 +606,11 @@ async function refreshDeveloper() {
   }
   $('#developer-current-plan').textContent = state.subscription.planName;
   $('#developer-subscription-status').textContent = state.subscription.status;
-  $('#developer-limit').textContent = state.subscription.rateLimitRequests ? `${state.subscription.rateLimitRequests.toLocaleString()} / ${state.subscription.rateLimitWindowSeconds}s` : 'Unlimited';
+  $('#developer-limit').textContent = state.subscription.rateLimitRequests ? `${state.subscription.rateLimitRequests.toLocaleString()} requests / ${state.subscription.rateLimitWindowSeconds}s` : 'Unlimited';
   $('#developer-status').textContent = `Subscription ${state.subscription.customerId} is ${state.subscription.status}.`;
   const usageItem = usage.find(item => item.product === state.subscription.product) || {requests: 0, overageRequests: 0};
   $('#developer-usage').textContent = usageItem.requests.toLocaleString();
-  $('#developer-usage-detail').textContent = `${usageItem.overageRequests.toLocaleString()} billable overage · ${planTerms(state.subscription)} · HTTP 429 is not billed`;
+  $('#developer-usage-detail').textContent = `${usageItem.overageRequests.toLocaleString()} billable overage ${product?.unitName || 'request'}s · ${planTerms(state.subscription, product?.unitName)} · HTTP 429 is not billed`;
   if (state.subscription.status === 'suspended') {
     $('#developer-upgrade').disabled = true;
     $('#credential-state').textContent = 'Subscription is suspended. API-key and JWT entitlement is denied.';

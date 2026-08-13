@@ -90,6 +90,25 @@ for resource in yaml.safe_load_all(rendered):
     if not __import__("pathlib").Path(source_path, "kustomization.yaml").is_file():
         raise SystemExit(f"{name}: source path {source_path} has no kustomization.yaml")
 
+with open("gitops/applications/gateway.yaml", encoding="utf-8") as stream:
+    gateway_application = yaml.safe_load(stream)
+hostname_ignores = {
+    item.get("name")
+    for item in gateway_application.get("spec", {}).get("ignoreDifferences", [])
+    if item.get("group") == "gateway.networking.k8s.io"
+    and item.get("kind") == "HTTPRoute"
+    and "/spec/hostnames" in item.get("jsonPointers", [])
+}
+required_hostname_ignores = {
+    "inventory-api-key", "inventory-jwt", "payments-api-key", "payments-jwt",
+    "ai-chat-api-key", "ai-chat-jwt",
+}
+if not required_hostname_ignores.issubset(hostname_ignores):
+    raise SystemExit(
+        "Gateway Application must preserve cluster-generated HTTPRoute hostnames: "
+        f"{required_hostname_ignores - hostname_ignores}"
+    )
+
 for build_file in pathlib.Path("applications").glob("*/build.yaml"):
     for resource in yaml.safe_load_all(build_file.read_text()):
         if not resource or resource.get("kind") != "BuildConfig":
@@ -101,8 +120,118 @@ for build_file in pathlib.Path("applications").glob("*/build.yaml"):
                 f"{build_file}: build Git source {actual} does not match root source {expected}"
             )
 
+with open("operators/openshift-ai/subscription.yaml", encoding="utf-8") as stream:
+    openshift_ai_subscription = yaml.safe_load(stream)
+openshift_ai_spec = openshift_ai_subscription.get("spec", {})
+if (
+    openshift_ai_spec.get("name") != "rhods-operator"
+    or openshift_ai_spec.get("channel") != "stable-3.x"
+    or openshift_ai_spec.get("source") != "redhat-operators"
+    or openshift_ai_spec.get("startingCSV") != "rhods-operator.3.4.3"
+):
+    raise SystemExit("OpenShift AI Operator subscription is not pinned to the tested 3.4.3 lane")
+
+with open("platform/ai-model/serving-runtime.yaml", encoding="utf-8") as stream:
+    ai_runtime = yaml.safe_load(stream)
+with open("platform/ai-model/inference-service.yaml", encoding="utf-8") as stream:
+    ai_service = yaml.safe_load(stream)
+runtime_image = ai_runtime["spec"]["containers"][0]["image"]
+predictor_model = ai_service["spec"]["predictor"]["model"]
+storage_uri = predictor_model.get("storageUri", "")
+if not runtime_image.startswith("registry.redhat.io/rhaii/vllm-cpu-rhel9@sha256:"):
+    raise SystemExit("OpenShift AI CPU serving image must be a digest-pinned Red Hat image")
+if not re.fullmatch(r"hf://Qwen/Qwen2\.5-0\.5B-Instruct:[0-9a-f]{40}", storage_uri):
+    raise SystemExit("OpenShift AI model must use the approved, revision-pinned Hugging Face URI")
+if (
+    ai_service.get("metadata", {}).get("annotations", {}).get(
+        "serving.kserve.io/deploymentMode"
+    ) != "Standard"
+    or predictor_model.get("runtime") != ai_runtime["metadata"]["name"]
+):
+    raise SystemExit("OpenShift AI InferenceService deployment mode or runtime reference is invalid")
+ai_annotations = ai_service.get("metadata", {}).get("annotations", {})
+if (
+    ai_annotations.get("sidecar.istio.io/inject") != "true"
+    or ai_annotations.get("sidecar.istio.io/rewriteAppHTTPProbers") != "true"
+):
+    raise SystemExit("OpenShift AI InferenceService must use the documented Service Mesh sidecar annotations")
+
+with open("platform/gateway/ai-chat-token-rate-limits.yaml", encoding="utf-8") as stream:
+    token_policies = [resource for resource in yaml.safe_load_all(stream) if resource]
+expected_token_limits = {
+    "free": 1000,
+    "payg": 10000,
+    "developer": 1000000,
+    "business": 50000000,
+}
+expected_token_targets = {"ai-chat-api-key", "ai-chat-jwt"}
+actual_token_targets = set()
+for policy in token_policies:
+    if policy.get("apiVersion") != "kuadrant.io/v1alpha1" or policy.get("kind") != "TokenRateLimitPolicy":
+        raise SystemExit("AI token quota must use the RHCL TokenRateLimitPolicy API")
+    target = policy["spec"]["targetRef"]
+    actual_token_targets.add(target["name"])
+    limits = policy["spec"]["limits"]
+    counter_expression = (
+        "auth.identity.userid"
+        if target["name"] == "ai-chat-api-key"
+        else "auth.kuadrant.customer"
+    )
+    for plan, expected_limit in expected_token_limits.items():
+        plan_limit = limits.get(plan, {})
+        rates = plan_limit.get("rates", [])
+        if rates != [{"limit": expected_limit, "window": "720h"}]:
+            raise SystemExit(f"{policy['metadata']['name']}: {plan} token quota does not match the commercial plan")
+        if plan_limit.get("counters") != [{"expression": counter_expression}]:
+            raise SystemExit(f"{policy['metadata']['name']}: {plan} token quota is not isolated by the RHCL customer identity")
+        if plan_limit.get("when") != [{"predicate": f'auth.kuadrant.plan == "{plan}"'}]:
+            raise SystemExit(f"{policy['metadata']['name']}: {plan} token quota does not select the RHCL plan metadata")
+if actual_token_targets != expected_token_targets:
+    raise SystemExit(f"AI token policies do not cover both credential routes: {actual_token_targets}")
+
+with open("platform/gateway/ai-chat-auth-policies.yaml", encoding="utf-8") as stream:
+    ai_auth_policies = [resource for resource in yaml.safe_load_all(stream) if resource]
+for policy in ai_auth_policies:
+    expected_filter_name = (
+        "identity" if policy["metadata"]["name"] == "ai-chat-api-key" else "kuadrant"
+    )
+    response_properties = (
+        policy.get("spec", {}).get("rules", {}).get("response", {})
+        .get("success", {}).get("filters", {}).get(expected_filter_name, {})
+        .get("json", {}).get("properties", {})
+    )
+    expected_properties = (
+        {"userid": {"expression": 'auth.identity.metadata.annotations["secret.kuadrant.io/user-id"]'}}
+        if policy["metadata"]["name"] == "ai-chat-api-key"
+        else {
+            "customer": {"selector": "auth.metadata.subscription.customerId"},
+            "plan": {"selector": "auth.metadata.subscription.plan"},
+        }
+    )
+    if response_properties != expected_properties:
+        raise SystemExit(f"{policy['metadata']['name']}: AuthPolicy must publish customer and plan metadata for RHCL token accounting")
+
+with open("platform/gateway/openshift-routes.yaml", encoding="utf-8") as stream:
+    gateway_routes = [resource for resource in yaml.safe_load_all(stream) if resource]
+for route in gateway_routes:
+    if route.get("metadata", {}).get("annotations", {}).get(
+        "haproxy.router.openshift.io/timeout"
+    ) != "180s":
+        raise SystemExit(f"{route['metadata']['name']}: OpenShift Route timeout must accommodate CPU model inference")
+
+with open("platform/gateway/ai-chat-plan-policy.yaml", encoding="utf-8") as stream:
+    ai_plan_policy = yaml.safe_load(stream)
+for plan in ai_plan_policy["spec"]["plans"]:
+    if "monthly" in plan.get("limits", {}):
+        raise SystemExit("AI PlanPolicy must leave monthly enforcement to TokenRateLimitPolicy")
+with open("platform/gateway/ai-chat-jwt-rate-limits.yaml", encoding="utf-8") as stream:
+    ai_jwt_request_policy = yaml.safe_load(stream)
+if any(len(limit.get("rates", [])) != 1 for limit in ai_jwt_request_policy["spec"]["limits"].values()):
+    raise SystemExit("AI JWT RateLimitPolicy must enforce only request burst protection")
+
 promoted_applications = {
     "control": "monetization-control",
+    "ai-chat": "ai-chat-api",
     "inventory": "inventory-api",
     "payments": "payments-api",
 }
@@ -186,13 +315,14 @@ if dashboard.get("uid") != "api-monetization" or not dashboard.get("panels"):
     raise SystemExit("Grafana dashboard is missing its UID or panels")
 panel_titles = {panel.get("title") for panel in dashboard["panels"]}
 required_panels = {
-    "Accepted billable requests (current month)",
+    "Accepted billable units (current month)",
     "Rate-limited attempts (selected range)",
-    "Billable overage requests",
+    "Billable overage units",
     "Connectivity Link decisions by credential",
     "Gateway responses by HTTP status",
     "Usage, allowance, and hard quota",
     "Revenue by customer and plan",
+    "AI Chat token attribution",
 }
 if not required_panels.issubset(panel_titles):
     raise SystemExit(f"Grafana dashboard is missing panels: {required_panels - panel_titles}")
@@ -202,10 +332,13 @@ dashboard_queries = "\n".join(
     for target in panel.get("targets", [])
 )
 for metric in (
-    "monetization_billable_requests",
-    "monetization_overage_requests",
+    "monetization_billable_units",
+    "monetization_included_units",
+    "monetization_overage_units",
     "monetization_monthly_quota_requests",
     "monetization_projected_revenue_euros",
+    "monetization_ai_prompt_tokens",
+    "monetization_ai_completion_tokens",
     "authorized_calls",
     "limited_calls",
     "istio_requests_total",

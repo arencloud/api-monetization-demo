@@ -33,7 +33,7 @@ spec:
             - pipefail
             - -c
             - |
-              for product in inventory payments; do
+              for product in inventory payments ai-chat; do
                 url="http://${product}-api.api-monetization-apps.svc.cluster.local:8082/openapi.yaml"
                 ready=false
                 for attempt in $(seq 1 120); do

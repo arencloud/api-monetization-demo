@@ -24,6 +24,7 @@ type productDefinition struct {
 }
 
 var selfServiceProducts = map[string]productDefinition{
+	"ai-chat":   {APIProduct: "ai-chat-api", Path: "/v1/chat/completions"},
 	"inventory": {APIProduct: "inventory-api", Path: "/inventory"},
 	"payments":  {APIProduct: "payments-api", Path: "/payments"},
 }
@@ -407,6 +408,12 @@ func (a *app) credentialStatus(w http.ResponseWriter, r *http.Request) {
 	status := "provisioning"
 	if state.Approved {
 		status = "ready"
+	} else if recovered, recoveryErr := a.kube.ensureAutomaticAPIKeyApproval(r.Context(), a.apiKeyNS, apiKeyName); recoveryErr != nil {
+		slog.Warn("failed to recover automatic API key approval",
+			"customer", customer.ExternalID, "product", subscription.Product, "error", recoveryErr)
+	} else if recovered {
+		slog.Info("recovered automatic API key approval",
+			"customer", customer.ExternalID, "product", subscription.Product)
 	}
 	if state.Approved && revealed {
 		status = "active"
@@ -761,6 +768,82 @@ func (k *kubeClient) apiKeyRequestArtifactPaths(ctx context.Context, namespace, 
 		paths = append(paths, requestListPath+"/"+requestName)
 	}
 	return paths, nil
+}
+
+// ensureAutomaticAPIKeyApproval recovers from a race in which the Developer
+// Portal auto-approval reconciler observes an APIKeyRequest before its status is
+// initialized. It submits the missing approval only after independently checking
+// that the referenced APIProduct is configured for automatic approval. RHCL
+// validates the approval and remains responsible for credential enforcement.
+func (k *kubeClient) ensureAutomaticAPIKeyApproval(ctx context.Context, namespace, apiKeyName string) (bool, error) {
+	var requests struct {
+		Items []struct {
+			Metadata struct {
+				Name string `json:"name"`
+			} `json:"metadata"`
+			Spec struct {
+				APIKeyRef struct {
+					Name      string `json:"name"`
+					Namespace string `json:"namespace"`
+				} `json:"apiKeyRef"`
+				APIProductRef struct {
+					Name string `json:"name"`
+				} `json:"apiProductRef"`
+			} `json:"spec"`
+			Status struct {
+				Conditions []struct {
+					Type   string `json:"type"`
+					Status string `json:"status"`
+				} `json:"conditions"`
+			} `json:"status"`
+		} `json:"items"`
+	}
+	listPath := fmt.Sprintf("/apis/devportal.kuadrant.io/v1alpha1/namespaces/%s/apikeyrequests", namespace)
+	if err := k.request(ctx, http.MethodGet, listPath, nil, &requests); err != nil {
+		return false, err
+	}
+	for _, item := range requests.Items {
+		if item.Spec.APIKeyRef.Name != apiKeyName || item.Spec.APIKeyRef.Namespace != namespace {
+			continue
+		}
+		approved := false
+		for _, condition := range item.Status.Conditions {
+			if condition.Type == "Approved" && condition.Status == "True" {
+				approved = true
+			}
+		}
+		if approved {
+			continue
+		}
+		var product struct {
+			Spec struct {
+				ApprovalMode string `json:"approvalMode"`
+			} `json:"spec"`
+		}
+		productPath := fmt.Sprintf("/apis/devportal.kuadrant.io/v1alpha1/namespaces/%s/apiproducts/%s", namespace, item.Spec.APIProductRef.Name)
+		if err := k.request(ctx, http.MethodGet, productPath, nil, &product); err != nil {
+			return false, err
+		}
+		if product.Spec.ApprovalMode != "automatic" {
+			return false, nil
+		}
+		approval := map[string]any{
+			"apiVersion": "devportal.kuadrant.io/v1alpha1", "kind": "APIKeyApproval",
+			"metadata": map[string]any{"name": item.Metadata.Name + "-portal-auto", "namespace": namespace},
+			"spec": map[string]any{
+				"apiKeyRequestRef": map[string]string{"name": item.Metadata.Name},
+				"approved":         true, "reason": "PortalAutomaticApproval",
+				"message":    "Recovered automatic approval for a self-service subscription",
+				"reviewedAt": time.Now().UTC().Format(time.RFC3339Nano), "reviewedBy": "monetization-control",
+			},
+		}
+		approvalPath := fmt.Sprintf("/apis/devportal.kuadrant.io/v1alpha1/namespaces/%s/apikeyapprovals", namespace)
+		if err := k.createIfAbsent(ctx, approvalPath, approval); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	return false, nil
 }
 
 func (k *kubeClient) waitForDeletion(ctx context.Context, paths []string, timeout time.Duration) error {

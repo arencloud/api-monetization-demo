@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-chat-api
+  namespace: api-monetization-apps
+  annotations:
+    image.openshift.io/triggers: >-
+      [{"from":{"kind":"ImageStreamTag","name":"ai-chat-api:demo","namespace":"api-monetization-apps"},"fieldPath":"spec.template.spec.containers[?(@.name==\"ai-chat-api\")].image","paused":false}]
+  labels:
+    app.kubernetes.io/name: ai-chat-api
+    app.kubernetes.io/part-of: api-monetization
+    app.kubernetes.io/component: ai-api-facade
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: ai-chat-api}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ai-chat-api
+        app.kubernetes.io/part-of: api-monetization
+        app.kubernetes.io/component: ai-api-facade
+        sidecar.istio.io/inject: "true"
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: ai-chat-api
+          image: image-registry.openshift-image-registry.svc:5000/api-monetization-apps/ai-chat-api:demo
+          imagePullPolicy: Always
+          ports:
+            - {name: http, containerPort: 8080}
+            - {name: openapi, containerPort: 8082}
+          env:
+            - name: MODEL_URL
+              value: http://ai-chat-model-mtls.api-monetization-ai.svc.cluster.local:8080
+            - name: USAGE_SINK_URL
+              value: http://monetization-control.api-monetization-data.svc.cluster.local:8081/internal/usage
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: openapi
+              mountPath: /opt/app-root/src/openapi.yaml
+              subPath: openapi.yaml
+              readOnly: true
+      volumes:
+        - name: openapi
+          configMap: {name: ai-chat-api-openapi}

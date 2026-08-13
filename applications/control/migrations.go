@@ -137,6 +137,20 @@ BEGIN
 END $$;
 `
 
+const aiChatProductMigration = `
+INSERT INTO monetization.api_products
+  (id, display_name, description, unit_name, active)
+VALUES
+  ('ai-chat', 'AI Chat API',
+   'CPU-hosted chat inference billed by prompt and completion tokens',
+   'token', true)
+ON CONFLICT (id) DO UPDATE SET
+  display_name=EXCLUDED.display_name,
+  description=EXCLUDED.description,
+  unit_name=EXCLUDED.unit_name,
+  active=true;
+`
+
 func applyDatabaseMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
@@ -158,6 +172,9 @@ func applyDatabaseMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	if _, err = tx.Exec(ctx, meteredPlanMigration); err != nil {
 		return fmt.Errorf("apply metered plan migration: %w", err)
+	}
+	if _, err = tx.Exec(ctx, aiChatProductMigration); err != nil {
+		return fmt.Errorf("apply AI Chat product migration: %w", err)
 	}
 	if _, err = tx.Exec(ctx, `
 		INSERT INTO monetization.schema_migrations (version, description)
@@ -182,6 +199,12 @@ func applyDatabaseMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 		VALUES (4, 'separate included allowance from hard quota and add payg plan')
 		ON CONFLICT (version) DO NOTHING`); err != nil {
 		return fmt.Errorf("record metered plan migration: %w", err)
+	}
+	if _, err = tx.Exec(ctx, `
+		INSERT INTO monetization.schema_migrations (version, description)
+		VALUES (5, 'publish token-metered AI Chat product')
+		ON CONFLICT (version) DO NOTHING`); err != nil {
+		return fmt.Errorf("record AI Chat product migration: %w", err)
 	}
 	return tx.Commit(ctx)
 }
