@@ -173,11 +173,30 @@ for policy in token_policies:
     actual_token_targets.add(target["name"])
     limits = policy["spec"]["limits"]
     for plan, expected_limit in expected_token_limits.items():
-        rates = limits.get(plan, {}).get("rates", [])
+        plan_limit = limits.get(plan, {})
+        rates = plan_limit.get("rates", [])
         if rates != [{"limit": expected_limit, "window": "720h"}]:
             raise SystemExit(f"{policy['metadata']['name']}: {plan} token quota does not match the commercial plan")
+        if plan_limit.get("counters") != [{"expression": "auth.kuadrant.customer"}]:
+            raise SystemExit(f"{policy['metadata']['name']}: {plan} token quota is not isolated by the Kuadrant customer metadata")
+        if plan_limit.get("when") != [{"predicate": f'auth.kuadrant.plan == "{plan}"'}]:
+            raise SystemExit(f"{policy['metadata']['name']}: {plan} token quota does not select the Kuadrant plan metadata")
 if actual_token_targets != expected_token_targets:
     raise SystemExit(f"AI token policies do not cover both credential routes: {actual_token_targets}")
+
+with open("platform/gateway/ai-chat-auth-policies.yaml", encoding="utf-8") as stream:
+    ai_auth_policies = [resource for resource in yaml.safe_load_all(stream) if resource]
+for policy in ai_auth_policies:
+    kuadrant_properties = (
+        policy.get("spec", {}).get("rules", {}).get("response", {})
+        .get("success", {}).get("filters", {}).get("kuadrant", {})
+        .get("json", {}).get("properties", {})
+    )
+    if kuadrant_properties != {
+        "customer": {"selector": "auth.metadata.subscription.customerId"},
+        "plan": {"selector": "auth.metadata.subscription.plan"},
+    }:
+        raise SystemExit(f"{policy['metadata']['name']}: AuthPolicy must publish customer and plan metadata for RHCL token accounting")
 
 with open("platform/gateway/ai-chat-plan-policy.yaml", encoding="utf-8") as stream:
     ai_plan_policy = yaml.safe_load(stream)

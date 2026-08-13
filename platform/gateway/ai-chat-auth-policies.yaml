@@ -30,6 +30,12 @@ spec:
             - {selector: auth.metadata.subscription.status, operator: eq, value: active}
     response:
       success:
+        filters:
+          kuadrant:
+            json:
+              properties:
+                customer: {selector: auth.metadata.subscription.customerId}
+                plan: {selector: auth.metadata.subscription.plan}
         headers:
           x-monetization-customer:
             plain: {selector: auth.identity.metadata.annotations.secret\.kuadrant\.io/user-id}

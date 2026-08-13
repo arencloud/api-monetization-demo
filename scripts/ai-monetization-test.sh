@@ -41,6 +41,10 @@ gateway_router=$(oc get route api-monetization -n api-monetization-gateway \
 echo "waiting for the CPU model, AI Chat facade, and monetization control plane"
 oc wait --for=condition=Ready inferenceservice.serving.kserve.io/ai-chat \
   -n api-monetization-ai --timeout=15m
+oc wait --for=condition=Enforced tokenratelimitpolicy.kuadrant.io/ai-chat-api-key-tokens \
+  -n api-monetization-apps --timeout=5m
+oc wait --for=condition=Enforced tokenratelimitpolicy.kuadrant.io/ai-chat-jwt-tokens \
+  -n api-monetization-apps --timeout=5m
 oc rollout status deployment/ai-chat-api -n api-monetization-apps --timeout=10m
 oc rollout status deployment/monetization-control -n api-monetization-data --timeout=10m
 
@@ -103,6 +107,16 @@ chat_request() {
   printf '%s' "$units"
 }
 
+limitador_authorized_hits() {
+  local policy_namespace=$1
+  oc exec -n kuadrant-system deployment/limitador-limitador -c limitador -- \
+    curl --silent --show-error --fail http://127.0.0.1:8080/metrics \
+    | awk -v metric="authorized_hits{limitador_namespace=\"$policy_namespace\"}" '
+        $1 == metric { print int($2); found=1 }
+        END { if (!found) print 0 }
+      '
+}
+
 echo "preparing a dedicated AI Chat Developer subscription"
 cancel_if_present
 portal_request POST /api/me/subscriptions \
@@ -122,9 +136,30 @@ reveal=$(portal_request POST /api/me/credentials/ai-chat/reveal)
 api_key=$(jq -r '.apiKey // empty' <<<"$reveal")
 [[ -n $api_key ]] || { echo "error: AI Chat API key was not returned" >&2; exit 1; }
 
+api_key_hits_before=$(limitador_authorized_hits api-monetization-apps/ai-chat-api-key)
+jwt_hits_before=$(limitador_authorized_hits api-monetization-apps/ai-chat-jwt)
 api_key_units=$(chat_request "$api_hostname" "APIKEY $api_key" api-key)
 jwt_units=$(chat_request "$jwt_hostname" "Bearer $developer_token" jwt)
 expected_units=$((api_key_units + jwt_units))
+
+echo "waiting for RHCL to add response tokens to the Limitador counters"
+api_key_hits_delta=0
+jwt_hits_delta=0
+for _ in $(seq 1 30); do
+  api_key_hits_after=$(limitador_authorized_hits api-monetization-apps/ai-chat-api-key)
+  jwt_hits_after=$(limitador_authorized_hits api-monetization-apps/ai-chat-jwt)
+  api_key_hits_delta=$((api_key_hits_after - api_key_hits_before))
+  jwt_hits_delta=$((jwt_hits_after - jwt_hits_before))
+  if (( api_key_hits_delta >= api_key_units && jwt_hits_delta >= jwt_units )); then
+    break
+  fi
+  sleep 2
+done
+if (( api_key_hits_delta < api_key_units || jwt_hits_delta < jwt_units )); then
+  echo "error: RHCL token counters advanced by API-key=$api_key_hits_delta and JWT=$jwt_hits_delta; expected at least $api_key_units and $jwt_units" >&2
+  exit 1
+fi
+echo "RHCL TokenRateLimitPolicy accounted for API-key=$api_key_hits_delta and JWT=$jwt_hits_delta Limitador hits"
 
 echo "waiting for asynchronous token usage attribution"
 recorded_units=0

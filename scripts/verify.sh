@@ -226,8 +226,9 @@ model_pod=$(oc get pods -n api-monetization-ai \
   -l serving.kserve.io/inferenceservice=ai-chat \
   -o jsonpath='{.items[0].metadata.name}')
 if [[ -z $model_pod ]] || ! oc get pod "$model_pod" -n api-monetization-ai -o json | jq -e '
-  ([.spec.containers[].name] | index("istio-proxy")) != null and
-  ([.status.containerStatuses[] | select(.name == "istio-proxy" and .ready == true)] | length) == 1
+  ([.spec.containers[].name, .spec.initContainers[]?.name] | index("istio-proxy")) != null and
+  ([.status.containerStatuses[]?, .status.initContainerStatuses[]? |
+    select(.name == "istio-proxy" and .ready == true)] | length) == 1
 ' >/dev/null; then
   echo "error: OpenShift AI predictor does not have a ready Service Mesh sidecar" >&2
   exit 1
