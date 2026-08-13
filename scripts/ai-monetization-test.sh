@@ -145,21 +145,23 @@ expected_units=$((api_key_units + jwt_units))
 echo "waiting for RHCL to add response tokens to the Limitador counters"
 api_key_hits_delta=0
 jwt_hits_delta=0
+expected_api_key_hits=$((api_key_units + 1))
+expected_jwt_hits=$((jwt_units + 1))
 for _ in $(seq 1 30); do
   api_key_hits_after=$(limitador_authorized_hits api-monetization-apps/ai-chat-api-key)
   jwt_hits_after=$(limitador_authorized_hits api-monetization-apps/ai-chat-jwt)
   api_key_hits_delta=$((api_key_hits_after - api_key_hits_before))
   jwt_hits_delta=$((jwt_hits_after - jwt_hits_before))
-  if (( api_key_hits_delta >= api_key_units && jwt_hits_delta >= jwt_units )); then
+  if (( api_key_hits_delta >= expected_api_key_hits && jwt_hits_delta >= expected_jwt_hits )); then
     break
   fi
   sleep 2
 done
-if (( api_key_hits_delta < api_key_units || jwt_hits_delta < jwt_units )); then
-  echo "error: RHCL token counters advanced by API-key=$api_key_hits_delta and JWT=$jwt_hits_delta; expected at least $api_key_units and $jwt_units" >&2
+if (( api_key_hits_delta < expected_api_key_hits || jwt_hits_delta < expected_jwt_hits )); then
+  echo "error: RHCL counters advanced by API-key=$api_key_hits_delta and JWT=$jwt_hits_delta; expected each model token plus one request-guard hit ($expected_api_key_hits and $expected_jwt_hits)" >&2
   exit 1
 fi
-echo "RHCL TokenRateLimitPolicy accounted for API-key=$api_key_hits_delta and JWT=$jwt_hits_delta Limitador hits"
+echo "RHCL accounted for each model token plus the separate request-guard hit: API-key=$api_key_hits_delta, JWT=$jwt_hits_delta"
 
 echo "waiting for asynchronous token usage attribution"
 recorded_units=0
