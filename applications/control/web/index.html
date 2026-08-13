@@ -61,6 +61,11 @@
     .badge::before { content: ''; width: .48rem; height: .48rem; border-radius: 50%; background: #6ec664; }
     .catalog-card { grid-column: span 7; }
     .credential-card { grid-column: span 5; }
+    .full { grid-column: span 12; }
+    .product-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .8rem; margin-top: 1rem; }
+    .product-summary .list-item { min-height: 9rem; }
+    .product-state { color: #92d68a; font-size: .8rem; font-weight: 750; text-transform: uppercase; letter-spacing: .08em; }
+    .product-state.planned { color: #f0ab00; }
     .credential { display: block; margin: 1rem 0; padding: 1rem; border: 1px solid #59616a; border-radius: 6px; background: #080a0c; color: #b9daf5; overflow-wrap: anywhere; user-select: all; }
     .credential-actions { display: flex; flex-wrap: wrap; gap: .65rem; }
     .list { display: grid; gap: .65rem; margin-top: 1rem; }
@@ -99,6 +104,13 @@
 
   <section id="admin-dashboard" class="hidden" aria-label="Monetization administration dashboard">
     <div class="grid">
+      <article class="card full">
+        <div class="eyebrow">Product catalog</div>
+        <h2>API portfolio</h2>
+        <p class="subvalue">All commercial products, including products with no current customer subscription.</p>
+        <div id="admin-product-catalog" class="product-summary"></div>
+      </article>
+
       <article class="card"><div class="card-label">Customer</div><div class="value" id="customer">—</div><div class="subvalue" id="customer-id">—</div></article>
       <article class="card"><div class="card-label">API product</div><div class="value" id="product">—</div><div class="subvalue" id="admin-product-description">—</div></article>
       <article class="card"><div class="card-label">Current plan</div><div class="value" id="plan">—</div><div class="subvalue" id="price">—</div></article>
@@ -466,24 +478,27 @@ function renderIdentity() {
 }
 
 async function refreshAdmin() {
-  const [subscriptions, plans, usage, invoices] = await Promise.all([api('/api/subscriptions'), api('/api/plans'), api('/api/usage'), api('/api/invoices')]);
+  const [catalog, subscriptions, plans, usage, invoices] = await Promise.all([api('/api/catalog'), api('/api/subscriptions'), api('/api/plans'), api('/api/usage'), api('/api/invoices')]);
+  renderAdminProductCatalog(catalog.products, subscriptions, usage);
   if (!subscriptions.length) throw new Error('No active subscriptions were found');
   const selectedID = state.subscription?.id;
   state.adminSubscriptions = subscriptions;
   state.subscription = subscriptions.find(item => item.id === selectedID) || subscriptions[0];
   state.plans = plans;
   $('#admin-subscriptions').replaceChildren(...subscriptions.map(item => {
+    const product = catalog.products.find(candidate => candidate.id === item.product);
     const option = document.createElement('option');
     option.value = item.id;
-    option.textContent = `${item.customer} · ${item.product} · ${item.status}`;
+    option.textContent = `${item.customer} · ${product?.displayName || item.product} · ${item.status}`;
     option.selected = item.id === state.subscription.id;
     return option;
   }));
   const usageItem = usage.find(item => item.customer === state.subscription.customerId && item.product === state.subscription.product) || {requests: 0, overageRequests: 0, projectedRevenueEuro: 0};
   $('#customer').textContent = state.subscription.customer;
   $('#customer-id').textContent = state.subscription.customerId;
-  $('#product').textContent = state.subscription.product;
-  $('#admin-product-description').textContent = state.subscription.product === 'payments' ? 'Authorization and settlement' : 'Inventory and availability';
+  const selectedProduct = catalog.products.find(item => item.id === state.subscription.product);
+  $('#product').textContent = selectedProduct?.displayName || state.subscription.product;
+  $('#admin-product-description').textContent = selectedProduct?.description || 'Commercial API product';
   updateProductLinks();
   $('#plan').textContent = state.subscription.planName;
   $('#price').textContent = money(state.subscription.monthlyPriceCents);
@@ -509,6 +524,33 @@ async function refreshAdmin() {
   const latest = customerInvoices[0];
   $('#admin-invoice-total').textContent = latest ? currency(latest.totalCents, latest.currency) : '—';
   $('#admin-invoice-period').textContent = latest ? `${latest.periodStart} – ${latest.periodEnd} · ${latest.status}` : 'No draft generated';
+}
+
+function renderAdminProductCatalog(products, subscriptions, usage) {
+  const target = $('#admin-product-catalog');
+  target.replaceChildren(...products.map(product => {
+    const productSubscriptions = subscriptions.filter(item => item.product === product.id);
+    const active = productSubscriptions.filter(item => item.status === 'active').length;
+    const suspended = productSubscriptions.filter(item => item.status === 'suspended').length;
+    const productUsage = usage.filter(item => item.product === product.id);
+    const accepted = productUsage.reduce((total, item) => total + item.requests, 0);
+    const revenue = productUsage.reduce((total, item) => total + item.projectedRevenueEuro, 0);
+    const card = document.createElement('div');
+    card.className = 'list-item';
+    const stateLabel = document.createElement('div');
+    stateLabel.className = `product-state${product.available ? '' : ' planned'}`;
+    stateLabel.textContent = product.available ? 'Enabled end to end' : 'Planned';
+    const title = document.createElement('h3');
+    title.textContent = product.displayName;
+    const description = document.createElement('div');
+    description.className = 'subvalue';
+    description.textContent = product.description;
+    const metrics = document.createElement('div');
+    metrics.className = 'status';
+    metrics.textContent = `${active} active · ${suspended} suspended · ${accepted.toLocaleString()} accepted · ${new Intl.NumberFormat(undefined, {style: 'currency', currency: 'EUR'}).format(revenue)} projected`;
+    card.append(stateLabel, title, description, metrics);
+    return card;
+  }));
 }
 
 function planOptions(target, plans, selected) {
