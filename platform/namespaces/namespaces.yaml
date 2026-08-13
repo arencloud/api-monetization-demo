@@ -15,6 +15,7 @@ metadata:
     app.kubernetes.io/part-of: api-monetization
     app.kubernetes.io/component: cpu-model-serving
     opendatahub.io/dashboard: "true"
+    istio-discovery: enabled
 ---
 apiVersion: v1
 kind: Namespace

@@ -65,7 +65,10 @@ paths (`/inventory`, `/payments`, and `/v1/chat/completions`) select the
 independently governed route. AI Chat terminates at a small mesh-injected
 facade; the KServe predictor remains cluster-internal. The facade constrains
 non-streaming requests, invokes vLLM, and records its prompt plus completion
-token counts as the subscription's native billable units.
+token counts as the subscription's native billable units. The model namespace
+is included in Istio discovery without enabling sidecar injection, allowing the
+facade's proxy to discover the non-mesh KServe endpoint and select plaintext
+for that one internal hop.
 
 ## Request lifecycle
 

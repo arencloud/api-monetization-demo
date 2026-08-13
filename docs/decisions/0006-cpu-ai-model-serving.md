@@ -32,6 +32,11 @@ would also introduce its own RHCL governance layer, which would duplicate the
 monetization control plane demonstrated by this repository, so MaaS remains
 disabled.
 
+The OpenShift AI namespace participates in Istio service discovery but does not
+enable sidecar injection. This lets the facade sidecar identify KServe as a
+non-mesh endpoint and use plaintext on that internal hop while inbound facade
+traffic remains protected by strict mesh mTLS.
+
 ## Consequences
 
 - CPU inference has intentionally modest throughput and is suitable for a live

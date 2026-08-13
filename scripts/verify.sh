@@ -204,6 +204,12 @@ if [[ $peer_mtls != "STRICT" ]]; then
   echo "error: application namespace must enforce STRICT mTLS" >&2
   exit 1
 fi
+ai_discovery=$(oc get namespace api-monetization-ai \
+  -o jsonpath='{.metadata.labels.istio-discovery}')
+if [[ $ai_discovery != enabled ]]; then
+  echo "error: Service Mesh discovery must include the OpenShift AI model namespace" >&2
+  exit 1
+fi
 for product in inventory payments ai-chat; do
   openapi_mtls=$(oc get peerauthentication.security.istio.io "$product-api" \
     -n api-monetization-apps -o jsonpath='{.spec.portLevelMtls.8082.mode}')
