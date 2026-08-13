@@ -2,17 +2,113 @@
 
 ## Prerequisites
 
+### Cluster sizing
+
+Size this repository as an OpenShift AI cluster, not as only two small API
+Deployments. The CPU model, four in-cluster source builds, RHCL, Service Mesh,
+Keycloak, two PostgreSQL clusters, Grafana, Tempo, and their Operators all run
+at the same time.
+
+Red Hat OpenShift AI 3.4 requires a minimum of two worker nodes with 8 CPUs and
+32 GiB of RAM each. That requirement is higher than the generic OpenShift
+compute-node minimum and is therefore the governing product baseline for this
+demo. The following profiles are planning targets for a fresh cluster:
+
+| Profile | Control plane | Schedulable workers | Aggregate worker capacity | Demo headroom before bootstrap | Provisionable persistent capacity | Intended use |
+| --- | --- | --- | --- | --- | --- | --- |
+| Minimum | 3 × 4 vCPU, 16 GiB RAM, 100 GiB disk | 2 × 8 vCPU, 32 GiB RAM, 100 GiB disk | 16 vCPU, 64 GiB RAM | 10 vCPU and 32 GiB RAM after existing pod requests | 60 GiB | Functional installation and single-user validation; builds and first model start can be slow |
+| Recommended | 3 × 4 vCPU, 16 GiB RAM, 100 GiB disk | 3 × 8 vCPU, 32 GiB RAM, 150 GiB disk | 24 vCPU, 96 GiB RAM | 16 vCPU and 48 GiB RAM after existing pod requests | 100 GiB | Reliable installation, rehearsal, and live presentation |
+| Large showcase | 3 × 8 vCPU, 32 GiB RAM, 150 GiB disk | 3 × 16 vCPU, 64 GiB RAM, 200 GiB disk | 48 vCPU, 192 GiB RAM | 28 vCPU and 96 GiB RAM after existing pod requests | 200 GiB | Parallel builds, repeated tests, and additional observability or development workloads |
+
+The Large showcase row is not an OpenShift maximum. OpenShift can scale beyond
+it; it is the upper planning profile for this single-cluster demo. The
+headroom column means scheduler-visible allocatable capacity minus existing pod
+requests, not currently unused CPU and memory reported by metrics. The values
+include practical margin above the resources declared in this repository for
+operator-generated operands, Service Mesh sidecars, image builds, and rollout
+overlap. Existing workloads on a shared cluster must fit outside that margin.
+
+A single-node OpenShift lab is also possible, but Red Hat OpenShift AI requires
+at least 32 CPUs and 128 GiB of RAM for that topology. Use at least 200 GiB of
+node disk for this demo and treat the result as a non-HA lab. The multi-node
+Recommended profile is preferred for presentations.
+
+These baselines come from the Red Hat product documentation:
+
+- [OpenShift AI 3.4 installation requirements](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/installing_and_uninstalling_openshift_ai_self-managed/installing_and_uninstalling_openshift_ai_self-managed)
+  specify the two-worker and single-node minimums, a default dynamic storage
+  class, and the restriction against installing Open Data Hub on the cluster.
+- [OpenShift 4.22 bare-metal machine requirements](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/installing_on_bare_metal/user-provisioned-infrastructure)
+  specify the 4-vCPU, 16-GiB, 100-GB control-plane minimum used in the table.
+- [OpenShift node resource guidance](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/nodes/working-with-nodes)
+  explains that scheduling is based on allocatable resources after system
+  reservations rather than the node's full physical capacity.
+
+Check capacity before bootstrap:
+
+```bash
+oc get nodes \
+  -o 'custom-columns=NAME:.metadata.name,WORKER:.metadata.labels.node-role\.kubernetes\.io/worker,ARCH:.status.nodeInfo.architecture,CPU:.status.allocatable.cpu,MEMORY:.status.allocatable.memory,EPHEMERAL:.status.allocatable.ephemeral-storage'
+oc describe nodes | sed -n '/Allocated resources:/,/Events:/p'
+oc adm top nodes
+```
+
+Use the first two commands to assess scheduler capacity and committed requests.
+Use `oc adm top nodes` only as a secondary utilization check; low instantaneous
+usage does not mean that enough capacity remains schedulable. At least one
+schedulable worker must be `amd64` because the selected Red Hat vLLM runtime is
+the CPU x86 variant.
+
+### Storage sizing
+
+RWX storage is not required. A default dynamic RWO-capable `StorageClass` is
+sufficient for the repository-managed stateful workloads. Plan storage as
+follows:
+
+| Consumer | Baseline | Notes |
+| --- | --- | --- |
+| Integrated OpenShift registry | 50 GiB persistent volume, one replica | Required before bootstrap; infrastructure-owned and intentionally not managed by this repository |
+| Subscription PostgreSQL | 2 GiB RWO PVC | Demo data, subscriptions, usage, invoices, and audit history |
+| Keycloak PostgreSQL | 2 GiB RWO PVC | Identity and realm state |
+| AI model and container layers | Node-local ephemeral storage | Approximately 1 GiB pinned model plus the Red Hat serving image and build layers; retain at least 30 GiB free per candidate worker |
+| Tempo | Memory-backed 1 GiB volume | Demo-only trace retention; no persistent volume |
+
+The absolute persistent-volume request is 54 GiB. The 60-GiB Minimum profile
+allows only a small provisioning margin; 100 GiB or more is recommended. The
+StorageClass and its backing storage must also have enough unallocated capacity
+to satisfy those claims.
+
+Verify storage and the integrated registry before bootstrap:
+
+```bash
+oc get storageclass
+oc get configs.imageregistry.operator.openshift.io/cluster \
+  -o jsonpath='{.spec.managementState}{" storage="}{.spec.storage}{" replicas="}{.spec.replicas}{"\n"}'
+oc get pvc -n openshift-image-registry
+```
+
+The expected registry result is `Managed`, one replica, and a Bound 50-GiB PVC.
+The preflight check rejects `emptyDir`, an unavailable registry, and an unbound
+configured registry PVC. It reports the detected capacity but does not enforce
+or resize an existing claim, so confirm the 50-GiB value explicitly.
+
+### Platform and workstation requirements
+
 - OpenShift Container Platform 4.21 or 4.22.
 - A user with `cluster-admin` privileges.
-- The `oc` CLI and network access to the cluster.
+- The `oc`, `git`, `make`, `curl`, `jq`, and `python3` CLIs, the Python `PyYAML` package,
+  and network access to the cluster.
 - `redhat-operators` available in `openshift-marketplace`.
 - `certified-operators` available in `openshift-marketplace`.
 - `community-operators` available in `openshift-marketplace` for Grafana.
 - Red Hat entitlements that expose the `rhcl-operator` package.
 - The repository is reachable by the in-cluster Argo CD repository server.
 - A default dynamic `StorageClass` is configured for PostgreSQL PVCs.
+- Open Data Hub is not installed; it conflicts with the Red Hat OpenShift AI
+  installation supported by this profile.
 - The integrated OpenShift image registry is `Managed`, Available, and uses
-  persistent infrastructure-backed storage rather than `emptyDir`.
+  a one-replica 50-GiB persistent infrastructure-backed volume rather than
+  `emptyDir`.
 - Cluster nodes can pull from `registry.redhat.io`, `registry.access.redhat.com`,
   `ghcr.io`, `docker.io`, and GitHub's `pkg-containers.githubusercontent.com`
   blob endpoint.
@@ -32,6 +128,10 @@ It also reports a non-blocking warning when no MetalLB, cloud, or other external
 Service LoadBalancer assignment is detected. That result is advisory because the
 Gateway performs a live assignment probe during its GitOps sync. Registry
 readiness is mandatory because OpenShift builds publish their output there.
+Capacity and outbound model-download bandwidth remain manual planning gates:
+taints, reservations, storage backends, and shared-cluster workloads make a
+single automated total misleading. Use the sizing commands above and the
+runbook checklist in addition to `make preflight`.
 
 ## Bootstrap
 
