@@ -1,6 +1,6 @@
 SHELL := /usr/bin/env bash
 
-.PHONY: help validate test lifecycle-test multi-product-test preflight bootstrap render status verify observe grafana portal demo metered-demo showcase reset-demo uninstall
+.PHONY: help validate test lifecycle-test multi-product-test promotion-status preflight bootstrap render status verify observe grafana portal demo metered-demo showcase reset-demo uninstall
 
 help:
 	@echo "Targets:"
@@ -8,6 +8,7 @@ help:
 	@echo "  test       Run Go unit tests"
 	@echo "  lifecycle-test Prove suspend, resume, cancel, cleanup, and resubscribe"
 	@echo "  multi-product-test Prove independent Inventory and Payment subscriptions"
+	@echo "  promotion-status Prove Argo revision, Build, image tag, and running digest provenance"
 	@echo "  preflight  Check cluster access, version, permissions, and catalogs"
 	@echo "  bootstrap  Install OpenShift GitOps and register the root application"
 	@echo "  render     Render all Kustomize packages into stdout"
@@ -34,6 +35,9 @@ lifecycle-test:
 multi-product-test:
 	@./scripts/multi-product-test.sh
 
+promotion-status:
+	@./scripts/build-promotion-status.sh
+
 preflight:
 	@./scripts/preflight.sh
 
@@ -52,6 +56,7 @@ status:
 
 verify:
 	@./scripts/verify.sh
+	@./scripts/build-promotion-status.sh
 	@./scripts/lifecycle-test.sh
 
 observe:

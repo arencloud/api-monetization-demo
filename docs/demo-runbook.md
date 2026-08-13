@@ -11,8 +11,9 @@ without refreshing the already-issued JWT.
 
 ## Before the presentation
 
-1. Push the exact Git revision that will be deployed. In-cluster OpenShift builds
-   and Argo CD both read the configured `main` revision.
+1. Push the exact Git revision that will be deployed. Argo CD injects its resolved
+   commit into each in-cluster OpenShift build and retains an immutable revision
+   tag for verification.
 2. Log in to a fresh OpenShift 4.21 or 4.22 cluster as `cluster-admin`.
 3. Confirm at least 12 GiB of allocatable memory remains for the demo profile.
 4. Run the complete deployment sequence:
@@ -23,6 +24,7 @@ without refreshing the already-issued JWT.
    make preflight
    make bootstrap
    make status
+   make promotion-status
    make verify
    ```
 

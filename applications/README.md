@@ -9,6 +9,10 @@ The demo owns three small Go services:
 - `control`: the commercial control plane. It records plan changes in
   PostgreSQL and updates the RHCL-managed API-key enforcement metadata.
 
-Both images are built on the cluster by OpenShift `BuildConfig` resources and
-published to the integrated image registry. Argo CD owns the build definitions,
-image streams, deployments, services, and monitoring resources.
+All three images are built on the cluster by OpenShift `BuildConfig` resources
+and published to the integrated image registry. Argo CD passes its resolved Git
+commit to each build hook. A successful build is retained under an immutable
+`git-<commit>` ImageStreamTag before the delivery tag rolls the Deployment.
+Argo CD owns the build definitions, image streams, deployments, services, and
+monitoring resources, while `make promotion-status` verifies the complete
+revision-to-running-digest provenance chain.

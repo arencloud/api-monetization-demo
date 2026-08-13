@@ -13,6 +13,10 @@ spec:
     repoURL: https://github.com/arencloud/api-monetization-demo.git
     targetRevision: main
     path: applications/payments
+    kustomize:
+      commonAnnotations:
+        api-monetization.demo/source-revision: ${ARGOCD_APP_REVISION}
+      commonAnnotationsEnvsubst: true
   destination:
     server: https://kubernetes.default.svc
     namespace: api-monetization-apps
