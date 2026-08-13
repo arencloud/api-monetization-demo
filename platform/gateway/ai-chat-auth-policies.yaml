@@ -36,6 +36,8 @@ spec:
               properties:
                 userid:
                   expression: auth.identity.metadata.annotations["secret.kuadrant.io/user-id"]
+                subscription:
+                  selector: auth.metadata.subscription.id
         headers:
           x-monetization-customer:
             plain: {selector: auth.identity.metadata.annotations.secret\.kuadrant\.io/user-id}
@@ -92,6 +94,7 @@ spec:
               properties:
                 customer: {selector: auth.metadata.subscription.customerId}
                 plan: {selector: auth.metadata.subscription.plan}
+                subscription: {selector: auth.metadata.subscription.id}
         headers:
           x-monetization-customer:
             plain: {selector: auth.metadata.subscription.customerId}
@@ -105,3 +108,31 @@ spec:
         code: 403
         headers: {content-type: {value: application/json}}
         body: {value: '{"error":"token audience and active subscription are required"}'}
+---
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: ai-chat-api-key-preflight
+  namespace: api-monetization-apps
+  annotations: {argocd.argoproj.io/sync-wave: "20"}
+  labels: {app.kubernetes.io/part-of: api-monetization}
+spec:
+  targetRef: {group: gateway.networking.k8s.io, kind: HTTPRoute, name: ai-chat-api-key-preflight}
+  rules:
+    authentication:
+      browser-preflight:
+        anonymous: {}
+---
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: ai-chat-jwt-preflight
+  namespace: api-monetization-apps
+  annotations: {argocd.argoproj.io/sync-wave: "20"}
+  labels: {app.kubernetes.io/part-of: api-monetization}
+spec:
+  targetRef: {group: gateway.networking.k8s.io, kind: HTTPRoute, name: ai-chat-jwt-preflight}
+  rules:
+    authentication:
+      browser-preflight:
+        anonymous: {}

@@ -1,6 +1,6 @@
 SHELL := /usr/bin/env bash
 
-.PHONY: help validate test lifecycle-test multi-product-test ai-model-test ai-monetization-test promotion-status preflight bootstrap render status verify observe grafana portal demo metered-demo showcase reset-demo uninstall
+.PHONY: help validate test lifecycle-test multi-product-test ai-model-test ai-monetization-test ai-demo promotion-status preflight bootstrap render status verify observe grafana portal demo metered-demo showcase reset-demo uninstall
 
 help:
 	@echo "Targets:"
@@ -10,6 +10,7 @@ help:
 	@echo "  multi-product-test Prove independent Inventory and Payment subscriptions"
 	@echo "  ai-model-test Prove CPU-only OpenShift AI chat inference"
 	@echo "  ai-monetization-test Prove API-key/JWT AI inference and token billing"
+	@echo "  ai-demo    Prove Free AI token exhaustion and a live Developer upgrade"
 	@echo "  promotion-status Prove Argo revision, Build, image tag, and running digest provenance"
 	@echo "  preflight  Check cluster access, version, permissions, and catalogs"
 	@echo "  bootstrap  Install OpenShift GitOps and register the root application"
@@ -42,6 +43,9 @@ ai-model-test:
 
 ai-monetization-test:
 	@./scripts/ai-monetization-test.sh
+
+ai-demo:
+	@./scripts/ai-demo.sh
 
 promotion-status:
 	@./scripts/build-promotion-status.sh

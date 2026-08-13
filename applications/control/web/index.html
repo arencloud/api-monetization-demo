@@ -21,7 +21,7 @@
     * { box-sizing: border-box; }
     body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 80% 0, #4d1018 0, #171016 20rem, #090b0d 44rem); }
     button, a { font: inherit; }
-    button:focus-visible, a:focus-visible, select:focus-visible { outline: 3px solid #73bcf7; outline-offset: 2px; }
+    button:focus-visible, a:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid #73bcf7; outline-offset: 2px; }
     header { min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0 4vw; border-bottom: 1px solid #ffffff18; background: #090b0de8; backdrop-filter: blur(14px); position: sticky; top: 0; z-index: 2; }
     .brand { display: flex; align-items: center; gap: .8rem; font-weight: 750; }
     .brand-mark { width: 34px; height: 23px; border-radius: 50% 50% 42% 42%; background: var(--red); transform: skew(-10deg); box-shadow: 0 8px 0 -3px #9b0000; }
@@ -72,9 +72,16 @@
     .list-item { border: 1px solid #3c4249; border-radius: 7px; padding: .8rem; background: #101317; }
     .list-title { display: flex; justify-content: space-between; gap: .8rem; font-weight: 700; }
     .product-description { min-height: 3.2rem; color: #d2d5d8; line-height: 1.55; }
+    .playground-layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(260px, 2fr); gap: 1rem; margin-top: 1rem; }
+    .playground-controls { display: grid; gap: .8rem; }
+    textarea { width: 100%; min-height: 9rem; resize: vertical; padding: .9rem; color: white; background: #080a0c; border: 1px solid #555d65; border-radius: 7px; font: inherit; line-height: 1.5; }
+    .response { min-height: 9rem; margin: 0; padding: 1rem; white-space: pre-wrap; overflow-wrap: anywhere; color: #d9eaf7; background: #080a0c; border: 1px solid #3c4249; border-radius: 7px; }
+    .token-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; margin-top: 1rem; }
+    .token-stat { padding: .85rem; border: 1px solid #3c4249; border-radius: 7px; background: #101317; }
+    .token-stat .value { font-size: 1.45rem; }
     .hidden { display: none !important; }
     footer { color: #777e85; border-top: 1px solid #ffffff12; padding: 2rem 0 0; margin-top: 3rem; font-size: .88rem; }
-    @media (max-width: 840px) { .card, .wide, .side { grid-column: span 12; } header { padding: 0 1rem; } main { padding-top: 2.5rem; } .identity span { display: none; } }
+    @media (max-width: 840px) { .card, .wide, .side { grid-column: span 12; } .playground-layout { grid-template-columns: 1fr; } .token-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } header { padding: 0 1rem; } main { padding-top: 2.5rem; } .identity span { display: none; } }
     @media (max-width: 520px) { .plan-row { flex-direction: column; } .card { padding: 1.1rem; } }
   </style>
 </head>
@@ -177,6 +184,50 @@
         </div>
       </article>
 
+      <article id="ai-playground" class="card full hidden">
+        <div class="eyebrow">Live AI monetization</div>
+        <h2>AI Chat playground</h2>
+        <p class="subvalue">Call the admitted OpenShift Route through Connectivity Link. The KServe model remains private behind Service Mesh mTLS.</p>
+        <div class="playground-layout">
+          <div class="playground-controls">
+            <label for="playground-auth" class="card-label">Credential</label>
+            <select id="playground-auth">
+              <option value="jwt">Keycloak JWT</option>
+              <option value="api-key">API key (reveal in this browser first)</option>
+            </select>
+            <label for="playground-prompt" class="card-label">Prompt</label>
+            <textarea id="playground-prompt">Explain API token monetization on OpenShift in one short sentence.</textarea>
+            <div class="plan-row">
+              <select id="playground-max-tokens" aria-label="Maximum completion tokens">
+                <option value="8">8 completion tokens</option>
+                <option value="16" selected>16 completion tokens</option>
+                <option value="32">32 completion tokens</option>
+                <option value="64">64 completion tokens</option>
+              </select>
+              <button id="send-chat" class="button primary" type="button">Send chat</button>
+              <button id="exhaust-ai-quota" class="button danger" type="button">Demonstrate Free HTTP 429</button>
+            </div>
+            <p id="playground-status" class="status" aria-live="polite">Choose a credential and send a prompt.</p>
+          </div>
+          <div>
+            <div class="card-label">Model response</div>
+            <pre id="playground-response" class="response">No response yet.</pre>
+            <div class="token-grid">
+              <div class="token-stat"><div class="card-label">Prompt</div><div class="value" id="response-prompt-tokens">0</div><div class="subvalue">tokens</div></div>
+              <div class="token-stat"><div class="card-label">Completion</div><div class="value" id="response-completion-tokens">0</div><div class="subvalue">tokens</div></div>
+              <div class="token-stat"><div class="card-label">Total</div><div class="value" id="response-total-tokens">0</div><div class="subvalue">this response</div></div>
+              <div class="token-stat"><div class="card-label">Billing header</div><div class="value" id="response-billable-tokens">0</div><div class="subvalue">accepted units</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="token-grid">
+          <div class="token-stat"><div class="card-label">Consumed</div><div class="value" id="ai-consumed-tokens">0</div><div class="subvalue">stored billable tokens</div></div>
+          <div class="token-stat"><div class="card-label">Remaining</div><div class="value" id="ai-remaining-tokens">—</div><div class="subvalue" id="ai-quota-detail">plan token quota</div></div>
+          <div class="token-stat"><div class="card-label">Above allowance</div><div class="value" id="ai-overage-tokens">0</div><div class="subvalue">accepted tokens; price depends on plan</div></div>
+          <div class="token-stat"><div class="card-label">Projected AI revenue</div><div class="value" id="ai-projected-revenue">€0.00</div><div class="subvalue">current month</div></div>
+        </div>
+      </article>
+
       <article id="developer-subscription" class="card wide hidden">
         <h2>My subscription</h2>
         <div class="grid">
@@ -234,7 +285,7 @@
 </main>
 <script>
 const storageKey = 'api-monetization-oidc';
-const state = { config: null, tokens: null, identity: null, subscription: null, subscriptions: [], selectedProduct: 'inventory', adminSubscriptions: [], plans: [], catalog: null, credential: null, jwtToken: null, apiBase: null, jwtBase: null, billing: null, audit: [] };
+const state = { config: null, tokens: null, identity: null, subscription: null, subscriptions: [], selectedProduct: 'inventory', adminSubscriptions: [], plans: [], catalog: null, credential: null, apiKey: null, jwtToken: null, apiBase: null, jwtBase: null, billing: null, audit: [], aiUsage: null };
 const $ = selector => document.querySelector(selector);
 
 function encodeBase64URL(bytes) {
@@ -378,7 +429,7 @@ function money(cents) {
 function planTerms(plan, unitName = 'request') {
   const units = `${unitName}s`;
   const included = plan.includedRequests == null ? 'custom allowance' : `${plan.includedRequests.toLocaleString()} ${units} included`;
-  const quota = plan.monthlyQuotaRequests == null ? 'no hard monthly request quota' : `${plan.monthlyQuotaRequests.toLocaleString()} monthly request safety cap`;
+  const quota = plan.monthlyQuotaRequests == null ? `no hard monthly ${unitName} quota` : `${plan.monthlyQuotaRequests.toLocaleString()} monthly ${unitName} safety cap`;
   const overage = plan.overageMicrosPerRequest > 0
     ? `${new Intl.NumberFormat(undefined, {style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 4}).format(plan.overageMicrosPerRequest / 1000000)} / accepted overage ${unitName}`
     : 'no overage charge';
@@ -470,6 +521,136 @@ function renderAudit(events) {
   }
 }
 
+function renderAIUsage(item) {
+  state.aiUsage = item || {requests: 0, overageRequests: 0, projectedRevenueEuro: 0};
+  const consumed = state.aiUsage.requests || 0;
+  const quota = state.subscription?.monthlyQuotaRequests;
+  const remaining = quota == null ? null : Math.max(quota - consumed, 0);
+  $('#ai-consumed-tokens').textContent = consumed.toLocaleString();
+  $('#ai-remaining-tokens').textContent = remaining == null ? 'Custom' : remaining.toLocaleString();
+  $('#ai-quota-detail').textContent = quota == null ? 'custom plan quota' : `${quota.toLocaleString()} enforced tokens per 720h window`;
+  $('#ai-overage-tokens').textContent = (state.aiUsage.overageRequests || 0).toLocaleString();
+  $('#ai-projected-revenue').textContent = new Intl.NumberFormat(undefined, {style: 'currency', currency: 'EUR'}).format(state.aiUsage.projectedRevenueEuro || 0);
+}
+
+function updatePlaygroundCredential() {
+  const apiKeyOption = $('#playground-auth').querySelector('option[value="api-key"]');
+  apiKeyOption.disabled = !state.apiKey;
+  apiKeyOption.textContent = state.apiKey ? 'API key' : 'API key (reveal in this browser first)';
+  if (!state.apiKey && $('#playground-auth').value === 'api-key') $('#playground-auth').value = 'jwt';
+}
+
+async function selectedPlaygroundAuthorization() {
+  if ($('#playground-auth').value === 'api-key') {
+    if (!state.apiKey) throw new Error('Reveal or rotate the AI Chat API key in this browser before using API-key mode.');
+    return {base: state.apiBase, header: `APIKEY ${state.apiKey}`, label: 'API key'};
+  }
+  return {base: state.jwtBase, header: `Bearer ${await gatewayAccessToken()}`, label: 'Keycloak JWT'};
+}
+
+async function refreshAIUsageAfter(previous, added) {
+  const expected = previous + added;
+  for (let attempt = 0; attempt < 15; attempt += 1) {
+    const usage = await api('/api/me/usage');
+    const item = usage.find(candidate => candidate.product === 'ai-chat');
+    renderAIUsage(item);
+    if ((item?.requests || 0) >= expected) return;
+    await new Promise(resolve => setTimeout(resolve, 2000));
+  }
+}
+
+async function performChat(prompt, maxTokens) {
+  if (!state.apiBase || !state.jwtBase) throw new Error('The admitted OpenShift AI routes are not available.');
+  const credential = await selectedPlaygroundAuthorization();
+  const previousUsage = state.aiUsage?.requests || 0;
+  const response = await fetch(`${credential.base}/v1/chat/completions`, {
+    method: 'POST',
+    mode: 'cors',
+    credentials: 'omit',
+    headers: {Authorization: credential.header, 'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      model: 'ai-chat', stream: false, temperature: 0, max_tokens: maxTokens,
+      messages: [{role: 'user', content: prompt}]
+    })
+  });
+  const body = await response.json().catch(() => ({error: `HTTP ${response.status}`}));
+  if (response.status === 429) {
+    $('#playground-response').textContent = body.error || 'Token quota exceeded';
+    return {limited: true, credential: credential.label};
+  }
+  if (!response.ok) throw new Error(body.error || `AI gateway returned HTTP ${response.status}`);
+  const usage = body.usage || {};
+  const promptTokens = Number(usage.prompt_tokens || 0);
+  const completionTokens = Number(usage.completion_tokens || 0);
+  const totalTokens = Number(usage.total_tokens || promptTokens + completionTokens);
+  const billedTokens = Number(response.headers.get('X-Monetization-Billable-Units') || 0);
+  if (!Number.isInteger(totalTokens) || totalTokens <= 0 || billedTokens !== totalTokens) {
+    throw new Error('The model token total and monetization billing header do not match.');
+  }
+  $('#playground-response').textContent = body.choices?.[0]?.message?.content || 'The model returned no message content.';
+  $('#response-prompt-tokens').textContent = promptTokens.toLocaleString();
+  $('#response-completion-tokens').textContent = completionTokens.toLocaleString();
+  $('#response-total-tokens').textContent = totalTokens.toLocaleString();
+  $('#response-billable-tokens').textContent = billedTokens.toLocaleString();
+  await refreshAIUsageAfter(previousUsage, totalTokens);
+  return {limited: false, credential: credential.label, totalTokens};
+}
+
+async function sendChat() {
+  const button = $('#send-chat');
+  const status = $('#playground-status');
+  const prompt = $('#playground-prompt').value.trim();
+  if (!prompt) { status.className = 'status error'; status.textContent = 'Enter a prompt first.'; return; }
+  button.disabled = true;
+  status.className = 'status';
+  status.textContent = 'Calling the CPU model through Connectivity Link and Service Mesh…';
+  try {
+    const result = await performChat(prompt, Number($('#playground-max-tokens').value));
+    status.className = result.limited ? 'status error' : 'status success';
+    status.textContent = result.limited
+      ? `${result.credential} request returned HTTP 429. Upgrade the plan and send the same prompt again.`
+      : `${result.credential} request succeeded with ${result.totalTokens.toLocaleString()} billable tokens.`;
+  } catch (error) {
+    status.className = 'status error';
+    status.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function demonstrateAIQuota() {
+  const button = $('#exhaust-ai-quota');
+  const status = $('#playground-status');
+  if (state.subscription?.plan !== 'free') {
+    status.className = 'status error';
+    status.textContent = 'Change AI Chat to the Free plan before running the HTTP 429 demonstration.';
+    return;
+  }
+  if (!confirm('Send a large, deterministic prompt to consume the Free token quota and prove the next request returns HTTP 429?')) return;
+  button.disabled = true;
+  $('#send-chat').disabled = true;
+  status.className = 'status';
+  status.textContent = 'Consuming the Free token quota with a deterministic prompt…';
+  try {
+    const quotaPrompt = `${'token '.repeat(1300)}Reply with OK.`;
+    let result = await performChat(quotaPrompt, 4);
+    for (let attempt = 0; attempt < 3 && !result.limited; attempt += 1) {
+      status.textContent = 'Token cost recorded. Verifying that Connectivity Link now rejects the next request…';
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      result = await performChat('Confirm quota enforcement.', 4);
+    }
+    if (!result.limited) throw new Error('Free token quota did not produce HTTP 429 after the deterministic quota prompt.');
+    status.className = 'status success';
+    status.textContent = `${result.credential} reached the Free token quota and Connectivity Link returned HTTP 429. Upgrade to Developer to continue immediately.`;
+  } catch (error) {
+    status.className = 'status error';
+    status.textContent = error.message;
+  } finally {
+    button.disabled = false;
+    $('#send-chat').disabled = false;
+  }
+}
+
 function renderIdentity() {
   const signedIn = Boolean(state.tokens);
   $('#signed-out-actions').classList.toggle('hidden', signedIn);
@@ -509,7 +690,7 @@ async function refreshAdmin() {
   $('#usage').textContent = usageItem.requests.toLocaleString();
   $('#included').textContent = `${usageItem.requests.toLocaleString()} accepted ${selectedProduct?.unitName || 'request'} units · ${planTerms(state.subscription, selectedProduct?.unitName)} · HTTP 429 attempts are rejected, not billed`;
   $('#revenue').textContent = new Intl.NumberFormat(undefined, {style: 'currency', currency: 'EUR'}).format(usageItem.projectedRevenueEuro);
-  $('#overage').textContent = `${usageItem.overageRequests.toLocaleString()} accepted requests above the included allowance`;
+  $('#overage').textContent = `${usageItem.overageRequests.toLocaleString()} accepted ${selectedProduct?.unitName || 'request'} units above the included allowance`;
   $('#plans').replaceChildren(...plans.map(plan => {
     const option = document.createElement('option');
     option.value = plan.id;
@@ -592,10 +773,13 @@ async function refreshDeveloper() {
   planOptions($('#developer-upgrade-plan'), state.plans, state.subscription?.plan, product?.unitName);
   $('#subscribe-controls').classList.toggle('hidden', Boolean(state.subscription));
   $('#developer-subscription').classList.toggle('hidden', !state.subscription);
+  $('#ai-playground').classList.toggle('hidden', state.selectedProduct !== 'ai-chat' || state.subscription?.status !== 'active');
   renderBilling(billing);
   renderAudit(audit);
   if (!state.subscription) {
     state.credential = null;
+    state.apiKey = null;
+    state.aiUsage = null;
     $('#developer-status').textContent = billing ? 'No active subscription. Billing history remains available below.' : 'Choose a commercial plan to create your subscription.';
     $('#credential-state').textContent = 'Subscribe to create a credential.';
     $('#reveal-credential').classList.add('hidden');
@@ -611,7 +795,9 @@ async function refreshDeveloper() {
   const usageItem = usage.find(item => item.product === state.subscription.product) || {requests: 0, overageRequests: 0};
   $('#developer-usage').textContent = usageItem.requests.toLocaleString();
   $('#developer-usage-detail').textContent = `${usageItem.overageRequests.toLocaleString()} billable overage ${product?.unitName || 'request'}s · ${planTerms(state.subscription, product?.unitName)} · HTTP 429 is not billed`;
+  if (state.subscription.product === 'ai-chat') renderAIUsage(usageItem);
   if (state.subscription.status === 'suspended') {
+    state.apiKey = null;
     $('#developer-upgrade').disabled = true;
     $('#credential-state').textContent = 'Subscription is suspended. API-key and JWT entitlement is denied.';
     $('#reveal-credential').classList.add('hidden');
@@ -630,6 +816,7 @@ async function refreshDeveloper() {
   $('#get-jwt').classList.remove('hidden');
   $('#jwt-endpoint').textContent = state.jwtBase ? state.jwtBase + productPath(state.selectedProduct) : '';
   if (!state.jwtToken) $('#jwt-state').textContent = 'A short-lived Keycloak access token is ready on request.';
+  updatePlaygroundCredential();
 }
 
 async function refreshPortal() {
@@ -722,12 +909,14 @@ async function revealCredential() {
   $('#reveal-credential').disabled = true;
   try {
     const credential = await api(`/api/me/credentials/${state.selectedProduct}/reveal`, {method: 'POST'});
+    state.apiKey = credential.apiKey;
     $('#credential-value').textContent = credential.apiKey;
     $('#credential-value').classList.remove('hidden');
     $('#copy-credential').classList.remove('hidden');
     $('#reveal-credential').classList.add('hidden');
     $('#credential-state').textContent = 'Copy this API key now. It will not be displayed again.';
     $('#developer-endpoint').textContent = credential.endpoint || $('#developer-endpoint').textContent;
+    updatePlaygroundCredential();
   } catch (error) {
     $('#credential-state').textContent = error.message;
     $('#reveal-credential').disabled = false;
@@ -740,6 +929,7 @@ async function rotateCredential() {
   $('#credential-state').textContent = 'Revoking the previous key and generating a replacement…';
   try {
     await api(`/api/me/credentials/${state.selectedProduct}/rotate`, {method: 'POST'});
+    state.apiKey = null;
     $('#credential-value').textContent = '';
     $('#credential-value').classList.add('hidden');
     $('#copy-credential').classList.add('hidden');
@@ -829,6 +1019,7 @@ async function cancelSubscription() {
       body: JSON.stringify({version: state.subscription.version})
     });
     state.jwtToken = null;
+    state.apiKey = null;
     $('#jwt-value').textContent = '';
     $('#jwt-value').classList.add('hidden');
     $('#copy-jwt').classList.add('hidden');
@@ -875,6 +1066,7 @@ $('#admin-subscriptions').addEventListener('change', event => {
 $('#admin-subscription-status').addEventListener('click', changeAdminSubscriptionStatus);
 $('#developer-products').addEventListener('change', event => {
   state.selectedProduct = event.target.value;
+  state.apiKey = null;
   state.jwtToken = null;
   $('#credential-value').textContent = '';
   $('#credential-value').classList.add('hidden');
@@ -894,6 +1086,8 @@ $('#admin-generate-invoice').addEventListener('click', generateAdminInvoice);
 $('#copy-credential').addEventListener('click', () => navigator.clipboard.writeText($('#credential-value').textContent));
 $('#get-jwt').addEventListener('click', revealJWT);
 $('#copy-jwt').addEventListener('click', () => navigator.clipboard.writeText(state.jwtToken || ''));
+$('#send-chat').addEventListener('click', sendChat);
+$('#exhaust-ai-quota').addEventListener('click', demonstrateAIQuota);
 function showNotice(message) { $('#notice').textContent = message; $('#notice').classList.remove('hidden'); }
 start().catch(error => showNotice(error.message));
 </script>

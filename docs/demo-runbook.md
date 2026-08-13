@@ -214,6 +214,7 @@ test proves this without changing the browser account:
 ```bash
 make multi-product-test
 make ai-monetization-test
+make ai-demo
 ```
 
 For AI Chat, the API-key and JWT routes both expose
@@ -224,6 +225,31 @@ token quota. RHCL `TokenRateLimitPolicy` extracts the OpenAI-compatible
 `X-Monetization-Billable-Units` equals vLLM's `usage.total_tokens`; the portal,
 invoice preview, Prometheus metrics, and Grafana dashboard use that stored token
 total rather than counting the completion as one request.
+
+Select an active AI Chat subscription in the portal to open **AI Chat
+playground**. Choose **Keycloak JWT** or reveal the AI API key once and choose
+**API key**, enter a prompt, and select **Send Chat**. The browser calls the
+admitted Gateway API hostname, not the internal model service. The result shows
+the completion, prompt/completion/total token split, billing header, stored
+tokens, remaining plan allowance, above-allowance tokens, and projected AI
+revenue.
+
+For a repeatable live quota story, use **Demonstrate Free HTTP 429** on a new
+Free AI subscription, then change the plan to Developer and send another chat.
+The large first request is accepted and its actual response token total is
+added by RHCL after inference; the following request is rejected with HTTP 429.
+The plan change immediately admits the next request. For an unattended proof of
+both credential paths and automatic cleanup, run:
+
+```bash
+make ai-demo
+```
+
+The command discovers ingress hosts and certificates from the cluster, uses a
+dedicated Keycloak automation identity, and cancels its test subscription on
+success or interruption. Each resubscription receives a new UUID and therefore
+a fresh RHCL token-counter identity. It does not delete shared Limitador data or
+contain a cluster-specific hostname.
 
 The Gateway-to-facade and facade-to-KServe predictor hops both use strict Red
 Hat OpenShift Service Mesh mTLS. The predictor uses the KServe sidecar injection

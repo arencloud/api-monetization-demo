@@ -45,11 +45,12 @@ func main() {
 	apiMux := http.NewServeMux()
 	apiMux.HandleFunc("GET /healthz", health)
 	apiMux.HandleFunc("GET /readyz", api.ready)
+	apiMux.HandleFunc("OPTIONS /v1/chat/completions", chatPreflight)
 	apiMux.HandleFunc("POST /v1/chat/completions", api.chatCompletion)
 	apiMux.HandleFunc("GET /metrics", recorder.Handler)
 	apiServer := &http.Server{
 		Addr:              env("HTTP_ADDR", ":8080"),
-		Handler:           recorder.Middleware(apiMux),
+		Handler:           corsHeaders(recorder.Middleware(apiMux)),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       20 * time.Second,
 		WriteTimeout:      180 * time.Second,
@@ -81,6 +82,24 @@ func main() {
 		slog.Error("server stopped", "error", err)
 		os.Exit(1)
 	}
+}
+
+func corsHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The gateway endpoints are public developer APIs authenticated entirely
+		// by their Authorization header. They do not use browser cookies, so a
+		// wildcard origin is portable across fresh OpenShift ingress domains.
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+		w.Header().Set("Access-Control-Expose-Headers", "X-Monetization-Billable-Units, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset")
+		w.Header().Set("Access-Control-Max-Age", "600")
+		next.ServeHTTP(w, r)
+	})
+}
+
+func chatPreflight(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a *chatAPI) chatCompletion(w http.ResponseWriter, r *http.Request) {

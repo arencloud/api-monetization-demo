@@ -389,6 +389,8 @@ spec:
               align_route "$jwt_hostname" payments-jwt
               align_route "$api_hostname" ai-chat-api-key
               align_route "$jwt_hostname" ai-chat-jwt
+              align_route "$api_hostname" ai-chat-api-key-preflight
+              align_route "$jwt_hostname" ai-chat-jwt-preflight
               publish_openapi "$api_hostname" inventory
               publish_openapi "$api_hostname" payments
               publish_openapi "$api_hostname" ai-chat
