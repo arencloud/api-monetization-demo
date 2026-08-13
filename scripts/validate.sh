@@ -192,8 +192,13 @@ for policy in ai_auth_policies:
         .get("success", {}).get("filters", {}).get("kuadrant", {})
         .get("json", {}).get("properties", {})
     )
+    expected_customer_selector = (
+        r"auth.identity.metadata.annotations.secret\.kuadrant\.io/user-id"
+        if policy["metadata"]["name"] == "ai-chat-api-key"
+        else "auth.metadata.subscription.customerId"
+    )
     if kuadrant_properties != {
-        "customer": {"selector": "auth.metadata.subscription.customerId"},
+        "customer": {"selector": expected_customer_selector},
         "plan": {"selector": "auth.metadata.subscription.plan"},
     }:
         raise SystemExit(f"{policy['metadata']['name']}: AuthPolicy must publish customer and plan metadata for RHCL token accounting")
