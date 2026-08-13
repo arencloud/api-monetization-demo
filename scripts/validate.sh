@@ -124,6 +124,9 @@ for application_directory, workload_name in promoted_applications.items():
         resources = [resource for resource in yaml.safe_load_all(stream) if resource]
     role = next(resource for resource in resources if resource.get("kind") == "Role")
     job = next(resource for resource in resources if resource.get("kind") == "Job")
+    hook_delete_policy = job.get("metadata", {}).get("annotations", {}).get(
+        "argocd.argoproj.io/hook-delete-policy", ""
+    )
     container = job["spec"]["template"]["spec"]["containers"][0]
     env = {item["name"]: item for item in container.get("env", [])}
     source_revision_field = (
@@ -135,6 +138,10 @@ for application_directory, workload_name in promoted_applications.items():
     command = "\n".join(container.get("command", []) + container.get("args", []))
     if source_revision_field != "metadata.annotations['api-monetization.demo/source-revision']":
         raise SystemExit(f"{application_directory}: source build does not consume the Argo CD revision")
+    if "HookSucceeded" not in hook_delete_policy or "HookFailed" in hook_delete_policy:
+        raise SystemExit(
+            f"{application_directory}: failed promotion hooks must remain visible for diagnosis"
+        )
     for required_fragment in (
         '--commit="$SOURCE_REVISION"',
         'Failed|Error|Cancelled',
