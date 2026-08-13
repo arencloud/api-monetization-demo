@@ -11,12 +11,56 @@ without refreshing the already-issued JWT.
 
 ## Before the presentation
 
+### Select and verify the cluster profile
+
+Use the Recommended profile for a customer-facing presentation. Minimum is a
+supported functional floor, not a performance target. Large showcase is the
+upper profile for this demo rather than an OpenShift maximum.
+
+| Profile | Control plane | Workers | Required demo headroom before bootstrap | Persistent capacity |
+| --- | --- | --- | --- | --- |
+| Minimum | 3 × 4 vCPU and 16 GiB | 2 × 8 vCPU and 32 GiB | 10 vCPU and 32 GiB after existing pod requests | 60 GiB, including the registry |
+| Recommended | 3 × 4 vCPU and 16 GiB | 3 × 8 vCPU and 32 GiB | 16 vCPU and 48 GiB after existing pod requests | 100 GiB |
+| Large showcase | 3 × 8 vCPU and 32 GiB | 3 × 16 vCPU and 64 GiB | 28 vCPU and 96 GiB after existing pod requests | 200 GiB |
+
+Each Minimum control-plane and worker node needs at least a 100-GiB disk. The
+Recommended and Large profiles use larger worker disks for image, build, and
+model layers. A single-node lab instead needs at least 32 CPUs, 128 GiB RAM,
+and 200 GiB disk because Red Hat OpenShift AI sets a higher SNO requirement.
+See [Deployment prerequisites and sizing](deployment.md#cluster-sizing) for the
+resource rationale, Red Hat references, storage breakdown, and SNO caveats.
+
+Before installing, capture scheduler capacity and current commitments:
+
+```bash
+oc get nodes \
+  -o 'custom-columns=NAME:.metadata.name,ARCH:.status.nodeInfo.architecture,CPU:.status.allocatable.cpu,MEMORY:.status.allocatable.memory,EPHEMERAL:.status.allocatable.ephemeral-storage'
+oc describe nodes | sed -n '/Allocated resources:/,/Events:/p'
+oc adm top nodes
+oc get storageclass
+oc get pvc -n openshift-image-registry
+```
+
+Do not use `oc adm top nodes` alone for this decision. It shows instantaneous
+usage, while Kubernetes scheduling uses allocatable capacity and pod requests.
+Confirm that an `amd64` worker has room for the 4-vCPU/5-GiB AI serving limit,
+that a default dynamic StorageClass exists, and that the integrated registry
+has a Bound 50-GiB persistent volume with one replica. RWX storage, a GPU, and a
+LoadBalancer provider are not required.
+
+### Readiness sequence
+
 1. Push the exact Git revision that will be deployed. Argo CD injects its resolved
    commit into each in-cluster OpenShift build and retains an immutable revision
    tag for verification.
 2. Log in to a fresh OpenShift 4.21 or 4.22 cluster as `cluster-admin`.
-3. Confirm at least 12 GiB of allocatable memory remains for the demo profile.
-4. Run the complete deployment sequence:
+3. Confirm the cluster matches one of the profiles above. For a shared cluster,
+   subtract existing pod requests from worker allocatable capacity before
+   comparing it with the headroom column.
+4. Confirm the other prerequisites: Red Hat product entitlements, required
+   Operator catalogs, Open Data Hub absent, external image-registry access, and
+   outbound Hugging Face model access.
+5. Run the complete deployment sequence:
 
    ```bash
    make validate
@@ -28,7 +72,7 @@ without refreshing the already-issued JWT.
    make verify
    ```
 
-5. Confirm the expected catalog and policy resources:
+6. Confirm the expected catalog and policy resources:
 
    ```bash
    oc get apiproduct,apikey,planpolicy,authpolicy,ratelimitpolicy \
@@ -42,7 +86,7 @@ without refreshing the already-issued JWT.
    **Try it out** view must show the same API-key endpoint rather than the
    OpenShift console URL.
 
-6. Reset the commercial state, then allow one minute for any old rate-limit
+7. Reset the commercial state, then allow one minute for any old rate-limit
    counters to expire:
 
    ```bash

@@ -87,6 +87,17 @@ The optional CPU AI milestone also requires outbound access to Hugging Face.
 Its pinned Qwen2.5 0.5B model is downloaded when the serving Pod starts. No GPU,
 GPU Operator, RWX volume, or LoadBalancer provider is required.
 
+Because the current profile includes OpenShift AI, the minimum multi-node
+cluster has three 4-vCPU/16-GiB control-plane nodes and two schedulable
+8-vCPU/32-GiB workers. For a reliable live presentation, use three
+8-vCPU/32-GiB workers and at least 100 GiB of provisionable persistent
+capacity. The registry consumes a one-replica 50-GiB persistent volume; the two
+PostgreSQL clusters consume 2 GiB each. See
+[the deployment sizing profiles](docs/deployment.md#cluster-sizing) for
+Minimum, Recommended, Large showcase, and single-node requirements, and use
+[the runbook resource gate](docs/demo-runbook.md#select-and-verify-the-cluster-profile)
+before bootstrap.
+
 ## Quick start
 
 Prerequisites: `oc`, cluster-admin access, the Red Hat, certified, and community
