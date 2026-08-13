@@ -699,9 +699,10 @@ func (a *app) changeSubscriptionStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 type kubeClient struct {
-	baseURL string
-	token   string
-	client  *http.Client
+	baseURL           string
+	token             string
+	client            *http.Client
+	throttleRetryWait time.Duration
 }
 
 func newKubeClient() (*kubeClient, error) {
@@ -761,38 +762,60 @@ func (k *kubeClient) routeHost(ctx context.Context, namespace, name string) (str
 }
 
 func (k *kubeClient) request(ctx context.Context, method, path string, body any, output any) error {
-	var reader io.Reader
+	var encoded []byte
 	if body != nil {
-		encoded, err := json.Marshal(body)
+		var err error
+		encoded, err = json.Marshal(body)
 		if err != nil {
 			return err
 		}
-		reader = bytes.NewReader(encoded)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, k.baseURL+path, reader)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Authorization", "Bearer "+k.token)
-	req.Header.Set("Accept", "application/json")
-	if method == http.MethodPatch {
-		req.Header.Set("Content-Type", "application/merge-patch+json")
-	} else if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	resp, err := k.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	for attempt := 1; attempt <= 10; attempt++ {
+		var reader io.Reader
+		if body != nil {
+			reader = bytes.NewReader(encoded)
+		}
+		req, err := http.NewRequestWithContext(ctx, method, k.baseURL+path, reader)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Authorization", "Bearer "+k.token)
+		req.Header.Set("Accept", "application/json")
+		if method == http.MethodPatch {
+			req.Header.Set("Content-Type", "application/merge-patch+json")
+		} else if body != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		resp, err := k.client.Do(req)
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			if output != nil {
+				err = json.NewDecoder(resp.Body).Decode(output)
+			}
+			resp.Body.Close()
+			return err
+		}
 		message, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return &kubeAPIError{StatusCode: resp.StatusCode, Method: method, Path: path, Message: strings.TrimSpace(string(message))}
+		resp.Body.Close()
+		apiErr := &kubeAPIError{StatusCode: resp.StatusCode, Method: method, Path: path, Message: strings.TrimSpace(string(message))}
+		if resp.StatusCode != http.StatusTooManyRequests || attempt == 10 {
+			return apiErr
+		}
+		wait := k.throttleRetryWait
+		if wait <= 0 {
+			wait = time.Second
+		}
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
 	}
-	if output != nil {
-		return json.NewDecoder(resp.Body).Decode(output)
-	}
-	return nil
+	return errors.New("Kubernetes API retry limit exhausted")
 }
 
 type kubeAPIError struct {

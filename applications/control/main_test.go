@@ -115,6 +115,36 @@ func TestDeleteIfExistsDeletesResource(t *testing.T) {
 	}
 }
 
+func TestKubeRequestRetriesTooManyRequests(t *testing.T) {
+	t.Parallel()
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if r.Method != http.MethodGet {
+			t.Fatalf("unexpected method: %s", r.Method)
+		}
+		if attempts < 3 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"message":"storage is (re)initializing"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ready"}`))
+	}))
+	defer server.Close()
+	client := &kubeClient{
+		baseURL: server.URL, token: "test", client: server.Client(),
+		throttleRetryWait: time.Millisecond,
+	}
+	var result map[string]string
+	if err := client.request(context.Background(), http.MethodGet, "/resource", nil, &result); err != nil {
+		t.Fatalf("request returned error after transient throttling: %v", err)
+	}
+	if attempts != 3 || result["status"] != "ready" {
+		t.Fatalf("attempts=%d result=%v, want 3 attempts and ready status", attempts, result)
+	}
+}
+
 func TestDeleteDeveloperCredentialRemovesPortalRequestArtifacts(t *testing.T) {
 	t.Parallel()
 	const namespace = "api-monetization-apps"
