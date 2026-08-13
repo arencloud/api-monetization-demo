@@ -33,7 +33,7 @@ configMapGenerator:
     namespace: openshift-gitops
     literals:
       - repoURL=https://github.com/arencloud/api-monetization-demo.git
-      - targetRevision=main
+      - targetRevision=feature/ai-chat-playground
 generatorOptions:
   disableNameSuffixHash: true
 replacements:
