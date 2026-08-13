@@ -189,6 +189,54 @@ func TestDeleteDeveloperCredentialRemovesPortalRequestArtifacts(t *testing.T) {
 	}
 }
 
+func TestRequeuePendingAPIKeyRequestPatchesOnlyMatchingPendingRequest(t *testing.T) {
+	t.Parallel()
+	const namespace = "api-monetization-apps"
+	const apiKeyName = "dev-test-ai-chat"
+	const requestName = "api-monetization-apps-dev-test-ai-chat-12345678"
+	patched := ""
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		listPath := "/apis/devportal.kuadrant.io/v1alpha1/namespaces/api-monetization-apps/apikeyrequests"
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == listPath:
+			fmt.Fprintf(w, `{"items":[{"metadata":{"name":%q},"spec":{"apiKeyRef":{"name":%q,"namespace":%q}},"status":{"conditions":[{"type":"Pending","status":"True"}]}},{"metadata":{"name":"unrelated"},"spec":{"apiKeyRef":{"name":"another-key","namespace":%q}},"status":{"conditions":[{"type":"Pending","status":"True"}]}}]}`, requestName, apiKeyName, namespace, namespace)
+		case r.Method == http.MethodPatch && r.URL.Path == listPath+"/"+requestName:
+			if r.Header.Get("Content-Type") != "application/merge-patch+json" {
+				t.Fatalf("unexpected patch content type %q", r.Header.Get("Content-Type"))
+			}
+			patched = r.URL.Path
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client := &kubeClient{baseURL: server.URL, token: "test", client: server.Client()}
+	requeued, err := client.requeuePendingAPIKeyRequest(context.Background(), namespace, apiKeyName)
+	if err != nil || !requeued {
+		t.Fatalf("requeuePendingAPIKeyRequest requeued=%v error=%v, want true and no error", requeued, err)
+	}
+	if patched == "" {
+		t.Fatal("matching pending APIKeyRequest was not patched")
+	}
+}
+
+func TestRequeuePendingAPIKeyRequestSkipsApprovedRequest(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("approved request must not be patched; got %s %s", r.Method, r.URL.Path)
+		}
+		fmt.Fprint(w, `{"items":[{"metadata":{"name":"approved"},"spec":{"apiKeyRef":{"name":"dev-test-ai-chat","namespace":"api-monetization-apps"}},"status":{"conditions":[{"type":"Approved","status":"True"}]}}]}`)
+	}))
+	defer server.Close()
+	client := &kubeClient{baseURL: server.URL, token: "test", client: server.Client()}
+	requeued, err := client.requeuePendingAPIKeyRequest(context.Background(), "api-monetization-apps", "dev-test-ai-chat")
+	if err != nil || requeued {
+		t.Fatalf("requeuePendingAPIKeyRequest requeued=%v error=%v, want false and no error", requeued, err)
+	}
+}
+
 func TestSecretValueDecodesAPIKey(t *testing.T) {
 	t.Parallel()
 	want := "generated-api-key"

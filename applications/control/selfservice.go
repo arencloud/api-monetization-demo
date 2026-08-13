@@ -408,6 +408,12 @@ func (a *app) credentialStatus(w http.ResponseWriter, r *http.Request) {
 	status := "provisioning"
 	if state.Approved {
 		status = "ready"
+	} else if retried, retryErr := a.kube.requeuePendingAPIKeyRequest(r.Context(), a.apiKeyNS, apiKeyName); retryErr != nil {
+		slog.Warn("failed to requeue pending API key approval",
+			"customer", customer.ExternalID, "product", subscription.Product, "error", retryErr)
+	} else if retried {
+		slog.Info("requeued pending API key approval",
+			"customer", customer.ExternalID, "product", subscription.Product)
 	}
 	if state.Approved && revealed {
 		status = "active"
@@ -762,6 +768,62 @@ func (k *kubeClient) apiKeyRequestArtifactPaths(ctx context.Context, namespace, 
 		paths = append(paths, requestListPath+"/"+requestName)
 	}
 	return paths, nil
+}
+
+// requeuePendingAPIKeyRequest recovers from a race in which the Developer Portal
+// auto-approval reconciler observes a new APIKeyRequest before its Pending
+// condition is written. Updating the pending request makes the operator evaluate
+// it again; the operator remains the owner of the resulting APIKeyApproval.
+func (k *kubeClient) requeuePendingAPIKeyRequest(ctx context.Context, namespace, apiKeyName string) (bool, error) {
+	var requests struct {
+		Items []struct {
+			Metadata struct {
+				Name string `json:"name"`
+			} `json:"metadata"`
+			Spec struct {
+				APIKeyRef struct {
+					Name      string `json:"name"`
+					Namespace string `json:"namespace"`
+				} `json:"apiKeyRef"`
+			} `json:"spec"`
+			Status struct {
+				Conditions []struct {
+					Type   string `json:"type"`
+					Status string `json:"status"`
+				} `json:"conditions"`
+			} `json:"status"`
+		} `json:"items"`
+	}
+	listPath := fmt.Sprintf("/apis/devportal.kuadrant.io/v1alpha1/namespaces/%s/apikeyrequests", namespace)
+	if err := k.request(ctx, http.MethodGet, listPath, nil, &requests); err != nil {
+		return false, err
+	}
+	for _, item := range requests.Items {
+		if item.Spec.APIKeyRef.Name != apiKeyName || item.Spec.APIKeyRef.Namespace != namespace {
+			continue
+		}
+		pending := false
+		approved := false
+		for _, condition := range item.Status.Conditions {
+			if condition.Type == "Pending" && condition.Status == "True" {
+				pending = true
+			}
+			if condition.Type == "Approved" && condition.Status == "True" {
+				approved = true
+			}
+		}
+		if !pending || approved {
+			continue
+		}
+		patch := map[string]any{"metadata": map[string]any{"annotations": map[string]string{
+			"monetization.arencloud.com/approval-retry-at": time.Now().UTC().Format(time.RFC3339Nano),
+		}}}
+		if err := k.request(ctx, http.MethodPatch, listPath+"/"+item.Metadata.Name, patch, nil); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	return false, nil
 }
 
 func (k *kubeClient) waitForDeletion(ctx context.Context, paths []string, timeout time.Duration) error {
