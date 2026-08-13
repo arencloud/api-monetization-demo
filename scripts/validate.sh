@@ -90,6 +90,25 @@ for resource in yaml.safe_load_all(rendered):
     if not __import__("pathlib").Path(source_path, "kustomization.yaml").is_file():
         raise SystemExit(f"{name}: source path {source_path} has no kustomization.yaml")
 
+with open("gitops/applications/gateway.yaml", encoding="utf-8") as stream:
+    gateway_application = yaml.safe_load(stream)
+hostname_ignores = {
+    item.get("name")
+    for item in gateway_application.get("spec", {}).get("ignoreDifferences", [])
+    if item.get("group") == "gateway.networking.k8s.io"
+    and item.get("kind") == "HTTPRoute"
+    and "/spec/hostnames" in item.get("jsonPointers", [])
+}
+required_hostname_ignores = {
+    "inventory-api-key", "inventory-jwt", "payments-api-key", "payments-jwt",
+    "ai-chat-api-key", "ai-chat-jwt",
+}
+if not required_hostname_ignores.issubset(hostname_ignores):
+    raise SystemExit(
+        "Gateway Application must preserve cluster-generated HTTPRoute hostnames: "
+        f"{required_hostname_ignores - hostname_ignores}"
+    )
+
 for build_file in pathlib.Path("applications").glob("*/build.yaml"):
     for resource in yaml.safe_load_all(build_file.read_text()):
         if not resource or resource.get("kind") != "BuildConfig":

@@ -52,6 +52,18 @@ spec:
       namespace: api-monetization-apps
       jsonPointers:
         - /spec/hostnames
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: ai-chat-api-key
+      namespace: api-monetization-apps
+      jsonPointers:
+        - /spec/hostnames
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: ai-chat-jwt
+      namespace: api-monetization-apps
+      jsonPointers:
+        - /spec/hostnames
   syncPolicy:
     automated:
       prune: true
