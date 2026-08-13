@@ -29,7 +29,7 @@ configMapGenerator:
     namespace: openshift-gitops
     literals:
       - repoURL=https://github.com/arencloud/api-monetization-demo.git
-      - targetRevision=feature/retry-kubernetes-api-throttling
+      - targetRevision=main
 generatorOptions:
   disableNameSuffixHash: true
 replacements:

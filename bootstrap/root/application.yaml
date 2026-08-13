@@ -12,7 +12,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/arencloud/api-monetization-demo.git
-    targetRevision: feature/retry-kubernetes-api-throttling
+    targetRevision: main
     path: gitops/applications
   destination:
     server: https://kubernetes.default.svc
