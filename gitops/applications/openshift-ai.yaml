@@ -1,31 +1,32 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: api-monetization-root
+  name: api-monetization-openshift-ai
   namespace: openshift-gitops
+  annotations:
+    argocd.argoproj.io/sync-wave: "25"
   labels:
-    app.kubernetes.io/name: api-monetization-root
     app.kubernetes.io/part-of: api-monetization
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
 spec:
-  project: default
+  project: api-monetization
   source:
     repoURL: https://github.com/arencloud/api-monetization-demo.git
-    targetRevision: feature/cpu-ai-chat
-    path: gitops/applications
+    targetRevision: main
+    path: platform/openshift-ai
   destination:
     server: https://kubernetes.default.svc
-    namespace: openshift-gitops
+    namespace: redhat-ods-operator
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     retry:
-      limit: 10
+      limit: 30
       backoff:
-        duration: 10s
+        duration: 20s
         factor: 2
-        maxDuration: 3m
+        maxDuration: 5m
     syncOptions:
       - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+

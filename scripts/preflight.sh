@@ -220,6 +220,7 @@ check_package_channel cloudnative-pg stable-v1
 check_package_channel opentelemetry-product stable
 check_package_channel tempo-product stable
 check_package_channel grafana-operator v5
+check_package_channel rhods-operator stable-3.x
 
 check_existing_subscription() {
   local package_name=$1
@@ -250,6 +251,7 @@ check_existing_subscription cloudnative-pg stable-v1
 check_existing_subscription opentelemetry-product stable
 check_existing_subscription tempo-product stable
 check_existing_subscription grafana-operator v5
+check_existing_subscription rhods-operator stable-3.x
 
 if ((failures > 0)); then
   echo "preflight failed with $failures issue(s); no cluster changes were made" >&2
