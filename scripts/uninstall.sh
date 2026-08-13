@@ -60,6 +60,7 @@ delete_package() {
 delete_package applications/control
 delete_package applications/inventory
 delete_package applications/payments
+delete_package platform/ai-model
 delete_package platform/gateway
 delete_package platform/identity
 delete_package platform/database

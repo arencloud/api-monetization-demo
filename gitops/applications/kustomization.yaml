@@ -23,6 +23,7 @@ resources:
   - observability.yaml
   - service-mesh.yaml
   - openshift-ai.yaml
+  - ai-model.yaml
   - connectivity-link-operator.yaml
   - connectivity-link.yaml
   - console-plugins.yaml

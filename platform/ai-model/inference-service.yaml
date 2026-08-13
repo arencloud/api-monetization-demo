@@ -1,0 +1,38 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: ai-chat
+  namespace: api-monetization-ai
+  annotations:
+    serving.kserve.io/deploymentMode: RawDeployment
+    security.opendatahub.io/enable-auth: "false"
+    openshift.io/display-name: API Monetization CPU Chat
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+    app.kubernetes.io/component: cpu-model-serving
+    opendatahub.io/dashboard: "true"
+spec:
+  predictor:
+    minReplicas: 1
+    maxReplicas: 1
+    model:
+      modelFormat:
+        name: vLLM
+      runtime: vllm-cpu-x86-runtime
+      storageUri: hf://Qwen/Qwen2.5-0.5B-Instruct:7ae557604adf67be50417f59c2c2f167def9a775
+      args:
+        - --dtype=auto
+        - --max-model-len=2048
+        - --max-num-seqs=4
+        - --enforce-eager
+      env:
+        - name: VLLM_CPU_KVCACHE_SPACE
+          value: "2"
+      resources:
+        requests:
+          cpu: "2"
+          memory: 3Gi
+        limits:
+          cpu: "4"
+          memory: 5Gi
+
