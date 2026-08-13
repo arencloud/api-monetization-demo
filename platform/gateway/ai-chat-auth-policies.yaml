@@ -34,8 +34,8 @@ spec:
           identity:
             json:
               properties:
-                customer: {selector: auth.identity.metadata.annotations.secret\.kuadrant\.io/user-id}
-                plan: {selector: auth.metadata.subscription.plan}
+                userid:
+                  expression: auth.identity.metadata.annotations["secret.kuadrant.io/user-id"]
         headers:
           x-monetization-customer:
             plain: {selector: auth.identity.metadata.annotations.secret\.kuadrant\.io/user-id}

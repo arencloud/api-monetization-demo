@@ -172,17 +172,19 @@ for policy in token_policies:
     target = policy["spec"]["targetRef"]
     actual_token_targets.add(target["name"])
     limits = policy["spec"]["limits"]
-    metadata_root = (
-        "auth.identity" if target["name"] == "ai-chat-api-key" else "auth.kuadrant"
+    counter_expression = (
+        "auth.identity.userid"
+        if target["name"] == "ai-chat-api-key"
+        else "auth.kuadrant.customer"
     )
     for plan, expected_limit in expected_token_limits.items():
         plan_limit = limits.get(plan, {})
         rates = plan_limit.get("rates", [])
         if rates != [{"limit": expected_limit, "window": "720h"}]:
             raise SystemExit(f"{policy['metadata']['name']}: {plan} token quota does not match the commercial plan")
-        if plan_limit.get("counters") != [{"expression": f"{metadata_root}.customer"}]:
+        if plan_limit.get("counters") != [{"expression": counter_expression}]:
             raise SystemExit(f"{policy['metadata']['name']}: {plan} token quota is not isolated by the RHCL customer identity")
-        if plan_limit.get("when") != [{"predicate": f'{metadata_root}.plan == "{plan}"'}]:
+        if plan_limit.get("when") != [{"predicate": f'auth.kuadrant.plan == "{plan}"'}]:
             raise SystemExit(f"{policy['metadata']['name']}: {plan} token quota does not select the RHCL plan metadata")
 if actual_token_targets != expected_token_targets:
     raise SystemExit(f"AI token policies do not cover both credential routes: {actual_token_targets}")
@@ -198,15 +200,15 @@ for policy in ai_auth_policies:
         .get("success", {}).get("filters", {}).get(expected_filter_name, {})
         .get("json", {}).get("properties", {})
     )
-    expected_customer_selector = (
-        r"auth.identity.metadata.annotations.secret\.kuadrant\.io/user-id"
+    expected_properties = (
+        {"userid": {"expression": 'auth.identity.metadata.annotations["secret.kuadrant.io/user-id"]'}}
         if policy["metadata"]["name"] == "ai-chat-api-key"
-        else "auth.metadata.subscription.customerId"
+        else {
+            "customer": {"selector": "auth.metadata.subscription.customerId"},
+            "plan": {"selector": "auth.metadata.subscription.plan"},
+        }
     )
-    if response_properties != {
-        "customer": {"selector": expected_customer_selector},
-        "plan": {"selector": "auth.metadata.subscription.plan"},
-    }:
+    if response_properties != expected_properties:
         raise SystemExit(f"{policy['metadata']['name']}: AuthPolicy must publish customer and plan metadata for RHCL token accounting")
 
 with open("platform/gateway/openshift-routes.yaml", encoding="utf-8") as stream:

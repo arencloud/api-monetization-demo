@@ -10,20 +10,20 @@ spec:
   limits:
     free:
       rates: [{limit: 1000, window: 720h}]
-      counters: [{expression: auth.identity.customer}]
-      when: [{predicate: 'auth.identity.plan == "free"'}]
+      counters: [{expression: auth.identity.userid}]
+      when: [{predicate: 'auth.kuadrant.plan == "free"'}]
     payg:
       rates: [{limit: 10000, window: 720h}]
-      counters: [{expression: auth.identity.customer}]
-      when: [{predicate: 'auth.identity.plan == "payg"'}]
+      counters: [{expression: auth.identity.userid}]
+      when: [{predicate: 'auth.kuadrant.plan == "payg"'}]
     developer:
       rates: [{limit: 1000000, window: 720h}]
-      counters: [{expression: auth.identity.customer}]
-      when: [{predicate: 'auth.identity.plan == "developer"'}]
+      counters: [{expression: auth.identity.userid}]
+      when: [{predicate: 'auth.kuadrant.plan == "developer"'}]
     business:
       rates: [{limit: 50000000, window: 720h}]
-      counters: [{expression: auth.identity.customer}]
-      when: [{predicate: 'auth.identity.plan == "business"'}]
+      counters: [{expression: auth.identity.userid}]
+      when: [{predicate: 'auth.kuadrant.plan == "business"'}]
 ---
 apiVersion: kuadrant.io/v1alpha1
 kind: TokenRateLimitPolicy
