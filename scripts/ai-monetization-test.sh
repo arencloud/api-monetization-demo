@@ -38,6 +38,12 @@ jwt_hostname=$(oc get route api-monetization-jwt -n api-monetization-gateway \
 gateway_router=$(oc get route api-monetization -n api-monetization-gateway \
   -o jsonpath='{.status.ingress[0].routerCanonicalHostname}')
 
+echo "waiting for the CPU model, AI Chat facade, and monetization control plane"
+oc wait --for=condition=Ready inferenceservice.serving.kserve.io/ai-chat \
+  -n api-monetization-ai --timeout=15m
+oc rollout status deployment/ai-chat-api -n api-monetization-apps --timeout=10m
+oc rollout status deployment/monetization-control -n api-monetization-data --timeout=10m
+
 developer_token=$(CONTROL_TOKEN_CLIENT_ID=monetization-developer-automation \
   CONTROL_TOKEN_SECRET_NAME=monetization-developer-credentials \
   CONTROL_TOKEN_SECRET_KEY=developer-automation-client-secret \
