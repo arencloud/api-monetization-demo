@@ -408,11 +408,11 @@ func (a *app) credentialStatus(w http.ResponseWriter, r *http.Request) {
 	status := "provisioning"
 	if state.Approved {
 		status = "ready"
-	} else if retried, retryErr := a.kube.requeuePendingAPIKeyRequest(r.Context(), a.apiKeyNS, apiKeyName); retryErr != nil {
-		slog.Warn("failed to requeue pending API key approval",
-			"customer", customer.ExternalID, "product", subscription.Product, "error", retryErr)
-	} else if retried {
-		slog.Info("requeued pending API key approval",
+	} else if recovered, recoveryErr := a.kube.ensureAutomaticAPIKeyApproval(r.Context(), a.apiKeyNS, apiKeyName); recoveryErr != nil {
+		slog.Warn("failed to recover automatic API key approval",
+			"customer", customer.ExternalID, "product", subscription.Product, "error", recoveryErr)
+	} else if recovered {
+		slog.Info("recovered automatic API key approval",
 			"customer", customer.ExternalID, "product", subscription.Product)
 	}
 	if state.Approved && revealed {
@@ -770,11 +770,12 @@ func (k *kubeClient) apiKeyRequestArtifactPaths(ctx context.Context, namespace, 
 	return paths, nil
 }
 
-// requeuePendingAPIKeyRequest recovers from a race in which the Developer Portal
-// auto-approval reconciler observes a new APIKeyRequest before its Pending
-// condition is written. Updating the pending request makes the operator evaluate
-// it again; the operator remains the owner of the resulting APIKeyApproval.
-func (k *kubeClient) requeuePendingAPIKeyRequest(ctx context.Context, namespace, apiKeyName string) (bool, error) {
+// ensureAutomaticAPIKeyApproval recovers from a race in which the Developer
+// Portal auto-approval reconciler observes an APIKeyRequest before its status is
+// initialized. It submits the missing approval only after independently checking
+// that the referenced APIProduct is configured for automatic approval. RHCL
+// validates the approval and remains responsible for credential enforcement.
+func (k *kubeClient) ensureAutomaticAPIKeyApproval(ctx context.Context, namespace, apiKeyName string) (bool, error) {
 	var requests struct {
 		Items []struct {
 			Metadata struct {
@@ -785,6 +786,9 @@ func (k *kubeClient) requeuePendingAPIKeyRequest(ctx context.Context, namespace,
 					Name      string `json:"name"`
 					Namespace string `json:"namespace"`
 				} `json:"apiKeyRef"`
+				APIProductRef struct {
+					Name string `json:"name"`
+				} `json:"apiProductRef"`
 			} `json:"spec"`
 			Status struct {
 				Conditions []struct {
@@ -802,23 +806,39 @@ func (k *kubeClient) requeuePendingAPIKeyRequest(ctx context.Context, namespace,
 		if item.Spec.APIKeyRef.Name != apiKeyName || item.Spec.APIKeyRef.Namespace != namespace {
 			continue
 		}
-		pending := false
 		approved := false
 		for _, condition := range item.Status.Conditions {
-			if condition.Type == "Pending" && condition.Status == "True" {
-				pending = true
-			}
 			if condition.Type == "Approved" && condition.Status == "True" {
 				approved = true
 			}
 		}
-		if !pending || approved {
+		if approved {
 			continue
 		}
-		patch := map[string]any{"metadata": map[string]any{"annotations": map[string]string{
-			"monetization.arencloud.com/approval-retry-at": time.Now().UTC().Format(time.RFC3339Nano),
-		}}}
-		if err := k.request(ctx, http.MethodPatch, listPath+"/"+item.Metadata.Name, patch, nil); err != nil {
+		var product struct {
+			Spec struct {
+				ApprovalMode string `json:"approvalMode"`
+			} `json:"spec"`
+		}
+		productPath := fmt.Sprintf("/apis/devportal.kuadrant.io/v1alpha1/namespaces/%s/apiproducts/%s", namespace, item.Spec.APIProductRef.Name)
+		if err := k.request(ctx, http.MethodGet, productPath, nil, &product); err != nil {
+			return false, err
+		}
+		if product.Spec.ApprovalMode != "automatic" {
+			return false, nil
+		}
+		approval := map[string]any{
+			"apiVersion": "devportal.kuadrant.io/v1alpha1", "kind": "APIKeyApproval",
+			"metadata": map[string]any{"name": item.Metadata.Name + "-portal-auto", "namespace": namespace},
+			"spec": map[string]any{
+				"apiKeyRequestRef": map[string]string{"name": item.Metadata.Name},
+				"approved":         true, "reason": "PortalAutomaticApproval",
+				"message":    "Recovered automatic approval for a self-service subscription",
+				"reviewedAt": time.Now().UTC().Format(time.RFC3339Nano), "reviewedBy": "monetization-control",
+			},
+		}
+		approvalPath := fmt.Sprintf("/apis/devportal.kuadrant.io/v1alpha1/namespaces/%s/apikeyapprovals", namespace)
+		if err := k.createIfAbsent(ctx, approvalPath, approval); err != nil {
 			return false, err
 		}
 		return true, nil

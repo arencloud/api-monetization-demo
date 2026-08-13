@@ -35,9 +35,15 @@ rules:
   - apiGroups:
       - devportal.kuadrant.io
     resources:
-      - apikeyrequests
+      - apikeyapprovals
     verbs:
-      - patch
+      - create
+  - apiGroups:
+      - devportal.kuadrant.io
+    resources:
+      - apiproducts
+    verbs:
+      - get
   - apiGroups:
       - generators.external-secrets.io
     resources:
