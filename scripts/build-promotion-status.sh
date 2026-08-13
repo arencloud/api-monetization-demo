@@ -63,6 +63,8 @@ promotion_status api-monetization-inventory api-monetization-apps \
   inventory-api inventory-api inventory-api || failed=1
 promotion_status api-monetization-payments api-monetization-apps \
   payments-api payments-api payments-api || failed=1
+promotion_status api-monetization-ai-chat api-monetization-apps \
+  ai-chat-api ai-chat-api ai-chat-api || failed=1
 
 if ((failed)); then
   echo "error: one or more deployed images do not match their reconciled Git revisions" >&2

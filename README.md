@@ -131,16 +131,16 @@ Service Mesh, Connectivity Link, the enabled GitOps and RHCL console plugins,
 the RHCL developer catalog,
 External Secrets-generated API keys, Keycloak JWT clients, Free/Developer/Business/
 Enterprise plan policies plus a real Pay-as-you-go metered tier, independently
-monetized Inventory and Payment APIs, a PostgreSQL-backed subscription
+monetized Inventory, Payment, and AI Chat APIs, a PostgreSQL-backed subscription
 control plane, live plan changes, Prometheus metrics, an operator-managed
 Grafana instance and dashboard, structured logs, and an OpenTelemetry-to-Tempo
 trace pipeline.
 
 The current development milestone adds an Operator-managed OpenShift AI 3.4
 foundation, KServe, and a pinned Qwen2.5 0.5B Instruct model served by Red Hat's
-vLLM CPU x86 runtime. The model is currently cluster-internal; run
-`make ai-model-test` to prove real chat inference. Publishing it as a third
-Connectivity Link-monetized product is the next slice.
+vLLM CPU x86 runtime. A mesh-injected facade keeps the model internal, exposes
+its OpenAI-compatible chat operation through Connectivity Link, and stores the
+vLLM-reported prompt plus completion tokens as native billable units.
 
 The monetization portal is exposed through a portable OpenShift Route and uses
 Red Hat build of Keycloak Authorization Code flow with PKCE. Its subscription,
@@ -178,7 +178,8 @@ make showcase
 ```
 
 `make showcase` is the complete presentation path. It verifies the deployed
-platform, proves simultaneous Inventory and Payment subscriptions, establishes
+platform, proves simultaneous Inventory and Payment subscriptions, proves AI
+Chat with both credential types and real token attribution, establishes
 a clean Free-plan window, proves API-key and JWT rate
 limiting plus the live Developer upgrade, creates real Pay-as-you-go usage and
 a draft invoice, prints Prometheus evidence and all UI/API URLs, and restores
@@ -193,6 +194,7 @@ presentations:
 make lifecycle-test
 make multi-product-test
 make ai-model-test
+make ai-monetization-test
 make demo
 make metered-demo
 make observe
@@ -212,6 +214,11 @@ Developer subscriptions for the automation identity, proves both API-key and
 JWT paths, confirms per-product usage attribution, and cancels its test
 subscriptions afterward. The browser developer and Demo Company remain
 unchanged.
+
+`make ai-monetization-test` creates a dedicated Developer AI Chat subscription,
+proves API-key and Keycloak JWT inference through Connectivity Link, verifies
+that the billed units exactly match vLLM's `usage.total_tokens`, waits for the
+asynchronous PostgreSQL attribution, and cancels its automation subscription.
 
 `make metered-demo` changes Demo Company to Pay as you go, sends five real
 accepted requests through the OpenShift Route and Connectivity Link, waits for

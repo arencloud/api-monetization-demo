@@ -45,3 +45,21 @@ spec:
   portLevelMtls:
     "8082":
       mode: DISABLE
+---
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: ai-chat-api
+  namespace: api-monetization-apps
+  labels:
+    app.kubernetes.io/name: ai-chat-api
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ai-chat-api
+  mtls:
+    mode: STRICT
+  portLevelMtls:
+    "8082":
+      mode: DISABLE

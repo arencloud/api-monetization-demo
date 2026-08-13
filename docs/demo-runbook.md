@@ -152,7 +152,7 @@ make portal
 ```
 
 Run `make portal` to print both generated identities. Sign in as
-`demo-developer`, choose Inventory or Payment and a plan, and select **Subscribe and
+`demo-developer`, choose Inventory, Payment, or AI Chat and a plan, and select **Subscribe and
 generate key**. External Secrets creates the key material and RHCL approves the
 APIKey. Select **Reveal API key once**, copy it, and call the displayed endpoint.
 The key is not displayed on a later login. Select **Regenerate API key** to
@@ -169,7 +169,15 @@ test proves this without changing the browser account:
 
 ```bash
 make multi-product-test
+make ai-monetization-test
 ```
+
+For AI Chat, the API-key and JWT routes both expose
+`POST /v1/chat/completions`. Connectivity Link enforces request authentication,
+entitlement, and request-rate limits before CPU inference. The response header
+`X-Monetization-Billable-Units` equals vLLM's `usage.total_tokens`; the portal,
+invoice preview, Prometheus metrics, and Grafana dashboard use that stored token
+total rather than counting the completion as one request.
 
 Generate the current draft under **Billing and invoices**. The persisted draft
 shows the plan base charge, stored billable units, allowance, overage, and total

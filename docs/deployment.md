@@ -97,6 +97,7 @@ oc get istiocni -n api-monetization-istio-cni
 make verify
 make multi-product-test
 make ai-model-test
+make ai-monetization-test
 make demo
 make observe
 make grafana
@@ -139,6 +140,13 @@ Later starts can reuse node image layers, but the demo intentionally uses an
 ephemeral model cache and one replica. This profile requires neither a GPU nor
 RWX storage. The runtime is Technology Preview in OpenShift AI 3.4 and is meant
 for demonstration rather than performance or production support claims.
+
+After the model and monetization applications are healthy, validate the public
+product contract and token billing:
+
+```bash
+make ai-monetization-test
+```
 
 Print the admitted portal URL and generated developer and administrator logins:
 

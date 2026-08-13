@@ -133,6 +133,7 @@ if (
 
 promoted_applications = {
     "control": "monetization-control",
+    "ai-chat": "ai-chat-api",
     "inventory": "inventory-api",
     "payments": "payments-api",
 }
@@ -216,13 +217,14 @@ if dashboard.get("uid") != "api-monetization" or not dashboard.get("panels"):
     raise SystemExit("Grafana dashboard is missing its UID or panels")
 panel_titles = {panel.get("title") for panel in dashboard["panels"]}
 required_panels = {
-    "Accepted billable requests (current month)",
+    "Accepted billable units (current month)",
     "Rate-limited attempts (selected range)",
-    "Billable overage requests",
+    "Billable overage units",
     "Connectivity Link decisions by credential",
     "Gateway responses by HTTP status",
     "Usage, allowance, and hard quota",
     "Revenue by customer and plan",
+    "AI Chat token attribution",
 }
 if not required_panels.issubset(panel_titles):
     raise SystemExit(f"Grafana dashboard is missing panels: {required_panels - panel_titles}")
@@ -232,10 +234,13 @@ dashboard_queries = "\n".join(
     for target in panel.get("targets", [])
 )
 for metric in (
-    "monetization_billable_requests",
-    "monetization_overage_requests",
+    "monetization_billable_units",
+    "monetization_included_units",
+    "monetization_overage_units",
     "monetization_monthly_quota_requests",
     "monetization_projected_revenue_euros",
+    "monetization_ai_prompt_tokens",
+    "monetization_ai_completion_tokens",
     "authorized_calls",
     "limited_calls",
     "istio_requests_total",

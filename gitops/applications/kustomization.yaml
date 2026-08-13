@@ -16,6 +16,7 @@ resources:
   - demo-secrets.yaml
   - database.yaml
   - identity.yaml
+  - ai-chat.yaml
   - inventory.yaml
   - payments.yaml
   - control.yaml

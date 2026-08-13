@@ -21,8 +21,9 @@ the first vertical slice.
 
 The demo seed creates Free, Pay as you go, Developer, Business, and Enterprise
 plans; Inventory, Payment, and AI Chat products; and one Free Inventory
-subscription for Demo Company. Inventory and Payment are enabled end to end;
-AI Chat remains catalog metadata until a workload and policy bundle is added.
+subscription for Demo Company. All three products are enabled end to end. AI
+Chat uses `token` as its native commercial unit, while Inventory and Payment
+use `request`.
 
 ## Important boundaries
 
@@ -35,6 +36,11 @@ AI Chat remains catalog metadata until a workload and policy bundle is added.
   Rotation retains that digest as revoked history while clearing reusable
   Kubernetes resource references for the replacement credential.
 - Gateway telemetry is an input to `usage_events`, not an invoice by itself.
+- AI usage attributes retain the vLLM model, prompt-token, and
+  completion-token breakdown; `billable_units` stores their total.
+- Connectivity Link limits AI request frequency before inference. Commercial
+  allowance and overage use post-response token counts; the request safety cap
+  is deliberately separate from token billing.
 - Included allowance and hard quota are separate. Accepted usage above the
   allowance is billable overage until the hard quota is reached; rejected HTTP
   429 attempts do not reach the API and are not usage events.

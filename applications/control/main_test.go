@@ -34,6 +34,7 @@ func TestSelfServiceProducts(t *testing.T) {
 	}{
 		{product: "inventory", apiProduct: "inventory-api", endpoint: "https://api.example/inventory"},
 		{product: "payments", apiProduct: "payments-api", endpoint: "https://api.example/payments"},
+		{product: "ai-chat", apiProduct: "ai-chat-api", endpoint: "https://api.example/v1/chat/completions"},
 	}
 	for _, test := range tests {
 		definition, available := selfServiceProducts[test.product]
@@ -44,8 +45,8 @@ func TestSelfServiceProducts(t *testing.T) {
 			t.Errorf("endpointFor product %q=%q, want %q", test.product, got, test.endpoint)
 		}
 	}
-	if selfServiceProductAvailable("ai-chat") {
-		t.Error("AI Chat must remain unavailable until its workload and policies exist")
+	if selfServiceProductAvailable("missing") {
+		t.Error("unknown products must remain unavailable")
 	}
 }
 

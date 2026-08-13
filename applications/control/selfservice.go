@@ -24,6 +24,7 @@ type productDefinition struct {
 }
 
 var selfServiceProducts = map[string]productDefinition{
+	"ai-chat":   {APIProduct: "ai-chat-api", Path: "/v1/chat/completions"},
 	"inventory": {APIProduct: "inventory-api", Path: "/inventory"},
 	"payments":  {APIProduct: "payments-api", Path: "/payments"},
 }

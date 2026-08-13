@@ -101,10 +101,13 @@ for application_name in \
   api-monetization-demo-secrets \
   api-monetization-database \
   api-monetization-identity \
+  api-monetization-ai-chat \
   api-monetization-inventory \
   api-monetization-payments \
   api-monetization-control \
   api-monetization-service-mesh \
+  api-monetization-openshift-ai \
+  api-monetization-ai-model \
   api-monetization-connectivity-link \
   api-monetization-gateway \
   api-monetization-grafana-operator \
@@ -149,9 +152,11 @@ echo "waiting for application builds and workloads"
 oc wait clusteroperator/image-registry --for=condition=Available --timeout=10m
 wait_for_image_stream_tag inventory-api:demo api-monetization-apps
 wait_for_image_stream_tag payments-api:demo api-monetization-apps
+wait_for_image_stream_tag ai-chat-api:demo api-monetization-apps
 wait_for_image_stream_tag monetization-control:demo api-monetization-data
 oc rollout status deployment/inventory-api -n api-monetization-apps --timeout=10m
 oc rollout status deployment/payments-api -n api-monetization-apps --timeout=10m
+oc rollout status deployment/ai-chat-api -n api-monetization-apps --timeout=10m
 oc rollout status deployment/monetization-control -n api-monetization-data --timeout=10m
 oc wait route/monetization-control -n api-monetization-data \
   --for=jsonpath='{.status.ingress[0].conditions[0].status}'=True --timeout=5m
@@ -199,7 +204,7 @@ if [[ $peer_mtls != "STRICT" ]]; then
   echo "error: application namespace must enforce STRICT mTLS" >&2
   exit 1
 fi
-for product in inventory payments; do
+for product in inventory payments ai-chat; do
   openapi_mtls=$(oc get peerauthentication.security.istio.io "$product-api" \
     -n api-monetization-apps -o jsonpath='{.spec.portLevelMtls.8082.mode}')
   if [[ $openapi_mtls != "DISABLE" ]]; then
@@ -244,7 +249,7 @@ if [[ $gateway_proxy != "istio-proxy" ]]; then
   echo "error: Gateway workload is missing its Service Mesh proxy" >&2
   exit 1
 fi
-for product in inventory payments; do
+for product in inventory payments ai-chat; do
   product_proxy=$(oc get pods -n api-monetization-apps \
     -l "app.kubernetes.io/name=$product-api" \
     -o jsonpath='{range .items[*].spec.initContainers[*]}{.name}{"\n"}{end}{range .items[*].spec.containers[*]}{.name}{"\n"}{end}' \
@@ -270,7 +275,9 @@ wait_for_http_route inventory-api-key api-monetization-apps
 wait_for_http_route inventory-jwt api-monetization-apps
 wait_for_http_route payments-api-key api-monetization-apps
 wait_for_http_route payments-jwt api-monetization-apps
-for policy in inventory-api-key inventory-jwt payments-api-key payments-jwt; do
+wait_for_http_route ai-chat-api-key api-monetization-apps
+wait_for_http_route ai-chat-jwt api-monetization-apps
+for policy in inventory-api-key inventory-jwt payments-api-key payments-jwt ai-chat-api-key ai-chat-jwt; do
   oc wait --for=condition=Enforced "authpolicies.kuadrant.io/$policy" \
     -n api-monetization-apps --timeout=5m
 done
@@ -282,6 +289,10 @@ oc wait --for=condition=Enforced ratelimitpolicies.kuadrant.io/payments-jwt-plan
   -n api-monetization-apps --timeout=5m
 oc wait --for=condition=Enforced planpolicies.extensions.kuadrant.io/payments-api-plans \
   -n api-monetization-apps --timeout=5m
+oc wait --for=condition=Enforced ratelimitpolicies.kuadrant.io/ai-chat-jwt-plans \
+  -n api-monetization-apps --timeout=5m
+oc wait --for=condition=Enforced planpolicies.extensions.kuadrant.io/ai-chat-api-plans \
+  -n api-monetization-apps --timeout=5m
 oc wait --for=condition=Approved apikeys.devportal.kuadrant.io/demo-inventory-key \
   -n api-monetization-apps --timeout=5m
 
@@ -289,7 +300,7 @@ api_hostname=$(oc get route api-monetization -n api-monetization-gateway \
   -o jsonpath='{.status.ingress[0].host}')
 jwt_hostname=$(oc get route api-monetization-jwt -n api-monetization-gateway \
   -o jsonpath='{.status.ingress[0].host}')
-for product in inventory payments; do
+for product in inventory payments ai-chat; do
   api_route_hostname=$(oc get httproute "$product-api-key" -n api-monetization-apps \
     -o jsonpath='{.spec.hostnames[0]}')
   jwt_route_hostname=$(oc get httproute "$product-jwt" -n api-monetization-apps \
@@ -301,7 +312,7 @@ for product in inventory payments; do
 done
 
 echo "waiting for APIProducts to publish the admitted API URL"
-for product in inventory payments; do
+for product in inventory payments ai-chat; do
   api_product_ready=false
   api_product=""
   for _ in $(seq 1 60); do
@@ -344,6 +355,8 @@ echo "API-key endpoint: https://$api_hostname/inventory"
 echo "JWT endpoint: https://$jwt_hostname/inventory"
 echo "Payment API-key endpoint: https://$api_hostname/payments"
 echo "Payment JWT endpoint: https://$jwt_hostname/payments"
+echo "AI Chat API-key endpoint: https://$api_hostname/v1/chat/completions"
+echo "AI Chat JWT endpoint: https://$jwt_hostname/v1/chat/completions"
 
 echo "validating authenticated traffic through the complete data path"
 router_hostname=$(oc get route api-monetization -n api-monetization-gateway \
@@ -522,10 +535,11 @@ developer_catalog=$(curl --silent --show-error --fail \
   "https://$portal_hostname/api/catalog")
 if ! jq -e '
   any(.products[]; .id == "inventory" and .available == true) and
-  any(.products[]; .id == "payments" and .available == true)
+  any(.products[]; .id == "payments" and .available == true) and
+  any(.products[]; .id == "ai-chat" and .available == true and .unitName == "token")
 ' \
   <<<"$developer_catalog" >/dev/null; then
-  echo "error: developer catalog does not expose both Inventory and Payment APIs" >&2
+  echo "error: developer catalog does not expose Inventory, Payment, and token-metered AI Chat APIs" >&2
   exit 1
 fi
 echo "Portal: https://$portal_hostname (OIDC discovery, role boundary, and invoice API verified)"

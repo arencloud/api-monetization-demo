@@ -13,10 +13,11 @@ The demo does not install a GPU Operator or require accelerator resources.
 
 The first model is the public Qwen2.5 0.5B Instruct model at a pinned repository
 revision, served by the Operator-provided vLLM CPU (x86) runtime. Its public API
-is not exposed directly. The AI Chat product will place the existing
-Connectivity Link gateway in front of the model and will use the same
-API-key/JWT entitlement, rate-limit, usage, billing, and tracing path as the
-Inventory and Payment products.
+is not exposed directly. A mesh-injected AI Chat facade places the existing
+Connectivity Link gateway in front of the model and uses the same API-key/JWT
+entitlement, request-rate, usage, billing, and tracing path as the Inventory and
+Payment products. The facade disables streaming for this milestone and bills
+the prompt plus completion token total reported by vLLM.
 
 ## Rationale
 
@@ -35,6 +36,9 @@ disabled.
 
 - CPU inference has intentionally modest throughput and is suitable for a live
   demo, not performance benchmarking.
+- Connectivity Link enforces request-frequency limits before inference;
+  post-response token totals drive commercial allowance and overage. These are
+  deliberately distinct controls.
 - The vLLM CPU (x86) runtime is marked Technology Preview by OpenShift AI 3.4;
   it is acceptable for this demo profile but is not a production support claim.
 - One replica and an ephemeral model cache are sufficient; RWX storage is not

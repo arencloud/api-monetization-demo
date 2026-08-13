@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -23,6 +24,28 @@ type Recorder struct {
 	client  *http.Client
 }
 
+type usageDetails struct {
+	BillableUnits int64
+	Attributes    map[string]any
+	Explicit      bool
+}
+
+type usageDetailsContextKey struct{}
+
+// SetBillableUsage replaces the default one-request billing unit for the
+// current request. It lets product handlers report a native unit such as LLM
+// tokens after the upstream response is known.
+func SetBillableUsage(req *http.Request, units int64, attributes map[string]any) bool {
+	details, ok := req.Context().Value(usageDetailsContextKey{}).(*usageDetails)
+	if !ok || units < 0 {
+		return false
+	}
+	details.BillableUnits = units
+	details.Attributes = attributes
+	details.Explicit = true
+	return true
+}
+
 func New(service string) *Recorder {
 	recorder := &Recorder{
 		service: service,
@@ -41,6 +64,8 @@ func New(service string) *Recorder {
 func (r *Recorder) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		started := time.Now()
+		details := &usageDetails{BillableUnits: 1}
+		req = req.WithContext(context.WithValue(req.Context(), usageDetailsContextKey{}, details))
 		requestID := req.Header.Get("x-request-id")
 		if requestID == "" {
 			requestID = fmt.Sprintf("local-%d", started.UnixNano())
@@ -49,6 +74,9 @@ func (r *Recorder) Middleware(next http.Handler) http.Handler {
 		wrapped := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(wrapped, req)
 		duration := time.Since(started)
+		if (wrapped.status < 200 || wrapped.status >= 300) && !details.Explicit {
+			details.BillableUnits = 0
+		}
 		product := productName(req.URL.Path)
 		plan := cleanLabel(req.Header.Get("x-monetization-plan"), "unknown")
 		customer := cleanLabel(req.Header.Get("x-monetization-customer"), "anonymous")
@@ -67,7 +95,10 @@ func (r *Recorder) Middleware(next http.Handler) http.Handler {
 				OccurredAt:    started.UTC(),
 				StatusCode:    wrapped.status,
 				DurationMS:    float64(duration.Microseconds()) / 1000,
+				RequestBytes:  max(req.ContentLength, 0),
 				ResponseBytes: wrapped.bytes,
+				BillableUnits: details.BillableUnits,
+				Attributes:    details.Attributes,
 			}
 			select {
 			case r.sink <- event:
@@ -90,15 +121,18 @@ func (r *Recorder) Middleware(next http.Handler) http.Handler {
 }
 
 type usageEvent struct {
-	RequestID     string    `json:"requestId"`
-	Customer      string    `json:"customer"`
-	Plan          string    `json:"plan"`
-	Product       string    `json:"product"`
-	Operation     string    `json:"operation"`
-	OccurredAt    time.Time `json:"occurredAt"`
-	StatusCode    int       `json:"statusCode"`
-	DurationMS    float64   `json:"durationMs"`
-	ResponseBytes int64     `json:"responseBytes"`
+	RequestID     string         `json:"requestId"`
+	Customer      string         `json:"customer"`
+	Plan          string         `json:"plan"`
+	Product       string         `json:"product"`
+	Operation     string         `json:"operation"`
+	OccurredAt    time.Time      `json:"occurredAt"`
+	StatusCode    int            `json:"statusCode"`
+	DurationMS    float64        `json:"durationMs"`
+	ResponseBytes int64          `json:"responseBytes"`
+	RequestBytes  int64          `json:"requestBytes"`
+	BillableUnits int64          `json:"billableUnits"`
+	Attributes    map[string]any `json:"attributes,omitempty"`
 }
 
 func (r *Recorder) exportUsage() {
@@ -169,6 +203,8 @@ func routeName(path string) string {
 		return "inventory"
 	case strings.HasPrefix(path, "/payments"):
 		return "payments"
+	case strings.HasPrefix(path, "/v1/chat/completions"):
+		return "chat-completions"
 	case strings.HasPrefix(path, "/api/subscriptions"):
 		return "subscriptions"
 	case strings.HasPrefix(path, "/api/plans"):
@@ -186,6 +222,8 @@ func productName(path string) string {
 		return "inventory"
 	case strings.HasPrefix(path, "/payments"):
 		return "payments"
+	case strings.HasPrefix(path, "/v1/chat/completions"):
+		return "ai-chat"
 	default:
 		return ""
 	}

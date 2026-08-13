@@ -82,6 +82,7 @@ rules:
     resourceNames:
       - inventory-api-openapi
       - payments-api-openapi
+      - ai-chat-api-openapi
     verbs:
       - get
       - patch
@@ -92,6 +93,7 @@ rules:
     resourceNames:
       - inventory-api
       - payments-api
+      - ai-chat-api
     verbs:
       - get
       - patch
@@ -385,8 +387,11 @@ spec:
               align_route "$jwt_hostname" inventory-jwt
               align_route "$api_hostname" payments-api-key
               align_route "$jwt_hostname" payments-jwt
+              align_route "$api_hostname" ai-chat-api-key
+              align_route "$jwt_hostname" ai-chat-jwt
               publish_openapi "$api_hostname" inventory
               publish_openapi "$api_hostname" payments
+              publish_openapi "$api_hostname" ai-chat
           resources:
             requests:
               cpu: 10m

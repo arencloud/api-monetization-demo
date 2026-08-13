@@ -58,6 +58,7 @@ delete_package() {
 }
 
 delete_package applications/control
+delete_package applications/ai-chat
 delete_package applications/inventory
 delete_package applications/payments
 delete_package platform/ai-model

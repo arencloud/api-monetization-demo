@@ -109,6 +109,8 @@ print_presentation_endpoints() {
   echo "JWT endpoint:     https://$jwt_hostname/inventory"
   echo "Payment API key:  https://$api_hostname/payments"
   echo "Payment JWT:      https://$jwt_hostname/payments"
+  echo "AI Chat API key:  https://$api_hostname/v1/chat/completions"
+  echo "AI Chat JWT:      https://$jwt_hostname/v1/chat/completions"
   echo "Keycloak:         https://$keycloak_hostname"
   echo "Tempo traces:     https://$tempo_hostname"
   echo
@@ -170,6 +172,9 @@ run_stage "Platform readiness and end-to-end verification" \
 
 run_stage "Independent Inventory and Payment subscriptions" \
   "$script_dir/multi-product-test.sh"
+
+run_stage "Token-metered AI Chat with API key and JWT" \
+  "$script_dir/ai-monetization-test.sh"
 
 run_stage "Reset shared subscription to Free" \
   "$script_dir/reset-demo.sh"

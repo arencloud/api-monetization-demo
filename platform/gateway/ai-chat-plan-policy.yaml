@@ -1,0 +1,23 @@
+apiVersion: extensions.kuadrant.io/v1alpha1
+kind: PlanPolicy
+metadata:
+  name: ai-chat-api-plans
+  namespace: api-monetization-apps
+  annotations: {argocd.argoproj.io/sync-wave: "30"}
+  labels: {app.kubernetes.io/part-of: api-monetization}
+spec:
+  targetRef: {group: gateway.networking.k8s.io, kind: HTTPRoute, name: ai-chat-api-key}
+  plans:
+    - {tier: enterprise, predicate: 'has(auth.metadata.subscription) && auth.metadata.subscription.plan == "enterprise"', limits: {}}
+    - tier: business
+      predicate: 'has(auth.metadata.subscription) && auth.metadata.subscription.plan == "business"'
+      limits: {monthly: 50000000, custom: [{limit: 10000, window: 1m}]}
+    - tier: developer
+      predicate: 'has(auth.metadata.subscription) && auth.metadata.subscription.plan == "developer"'
+      limits: {monthly: 1000000, custom: [{limit: 1000, window: 1m}]}
+    - tier: payg
+      predicate: 'has(auth.metadata.subscription) && auth.metadata.subscription.plan == "payg"'
+      limits: {monthly: 10000, custom: [{limit: 100, window: 1m}]}
+    - tier: free
+      predicate: 'has(auth.metadata.subscription) && auth.metadata.subscription.plan == "free"'
+      limits: {monthly: 1000, custom: [{limit: 10, window: 1m}]}

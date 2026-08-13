@@ -17,5 +17,10 @@ resources:
   - payments-plan-policy.yaml
   - payments-jwt-rate-limits.yaml
   - payments-api-product.yaml
+  - ai-chat-routes.yaml
+  - ai-chat-auth-policies.yaml
+  - ai-chat-plan-policy.yaml
+  - ai-chat-jwt-rate-limits.yaml
+  - ai-chat-api-product.yaml
   - demo-api-key.yaml
   - portal-rbac.yaml
