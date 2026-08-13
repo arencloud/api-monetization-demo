@@ -144,7 +144,9 @@ for demonstration rather than performance or production support claims.
 The model namespace is enrolled in the project Service Mesh revision. KServe
 injects an Istio proxy and rewrites health probes, while a mesh-aware ClusterIP
 Service, strict peer authentication, and an explicit `ISTIO_MUTUAL` destination
-rule secure calls from the AI facade to vLLM.
+rule secure calls from the AI facade to vLLM. The OpenShift edge Routes use the
+supported HAProxy timeout annotation with a 180-second budget so CPU inference
+can complete without weakening TLS or bypassing the gateway.
 
 After the model and monetization applications are healthy, validate the public
 product contract and token billing:

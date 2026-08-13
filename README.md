@@ -221,7 +221,8 @@ unchanged.
 
 `make ai-monetization-test` creates a dedicated Developer AI Chat subscription,
 proves API-key and Keycloak JWT inference through Connectivity Link, verifies
-that the billed units exactly match vLLM's `usage.total_tokens`, waits for the
+that the billed units exactly match vLLM's `usage.total_tokens`, proves both
+RHCL/Limitador token counters advance by those response tokens, waits for the
 asynchronous PostgreSQL attribution, and cancels its automation subscription.
 Deployment verification also requires both AI `TokenRateLimitPolicy` objects
 to be Enforced and the facade-to-KServe hop to use strict Service Mesh mTLS.

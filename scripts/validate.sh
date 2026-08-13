@@ -198,6 +198,14 @@ for policy in ai_auth_policies:
     }:
         raise SystemExit(f"{policy['metadata']['name']}: AuthPolicy must publish customer and plan metadata for RHCL token accounting")
 
+with open("platform/gateway/openshift-routes.yaml", encoding="utf-8") as stream:
+    gateway_routes = [resource for resource in yaml.safe_load_all(stream) if resource]
+for route in gateway_routes:
+    if route.get("metadata", {}).get("annotations", {}).get(
+        "haproxy.router.openshift.io/timeout"
+    ) != "180s":
+        raise SystemExit(f"{route['metadata']['name']}: OpenShift Route timeout must accommodate CPU model inference")
+
 with open("platform/gateway/ai-chat-plan-policy.yaml", encoding="utf-8") as stream:
     ai_plan_policy = yaml.safe_load(stream)
 for plan in ai_plan_policy["spec"]["plans"]:
