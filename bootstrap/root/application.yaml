@@ -12,7 +12,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/arencloud/api-monetization-demo.git
-    targetRevision: feature/automated-build-promotion
+    targetRevision: main
     path: gitops/applications
   destination:
     server: https://kubernetes.default.svc
