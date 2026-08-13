@@ -4,3 +4,4 @@ resources:
   - istio-cni.yaml
   - istio.yaml
   - peer-authentication.yaml
+  - ai-model-mtls.yaml

@@ -1,0 +1,13 @@
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: ai-chat-model-mtls
+  namespace: api-monetization-apps
+  labels:
+    app.kubernetes.io/name: ai-chat-model-mtls
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  host: ai-chat-model-mtls.api-monetization-ai.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL

@@ -66,9 +66,10 @@ independently governed route. AI Chat terminates at a small mesh-injected
 facade; the KServe predictor remains cluster-internal. The facade constrains
 non-streaming requests, invokes vLLM, and records its prompt plus completion
 token counts as the subscription's native billable units. The model namespace
-is included in Istio discovery without enabling sidecar injection, allowing the
-facade's proxy to discover the non-mesh KServe endpoint and select plaintext
-for that one internal hop.
+is enrolled in the same Red Hat OpenShift Service Mesh revision. Red Hat's
+documented KServe sidecar and probe-rewrite annotations inject the predictor,
+and an explicit `ISTIO_MUTUAL` destination rule plus namespace-wide `STRICT`
+peer authentication protect the facade-to-model hop.
 
 ## Request lifecycle
 
@@ -76,7 +77,10 @@ for that one internal hop.
 2. `AuthPolicy` verifies the credentials and enriches request context with a
    stable customer and plan identity.
 3. An authorization rule verifies API product, operation, and subscription.
-4. Rate-limit policy selects counters using authenticated identity/plan data.
+4. Request and token rate-limit policies select counters using authenticated
+   identity and plan data. Request limits protect inference capacity before the
+   call; RHCL extracts `usage.total_tokens` after a successful OpenAI-compatible
+   response and adds that cost to the customer's Limitador token counter.
 5. The gateway routes the accepted request to a mesh-protected backend.
 6. Metrics, structured access logs, and traces share request, customer, and API
    identifiers without exposing credential material.

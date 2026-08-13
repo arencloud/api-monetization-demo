@@ -149,6 +149,45 @@ if (
     or predictor_model.get("runtime") != ai_runtime["metadata"]["name"]
 ):
     raise SystemExit("OpenShift AI InferenceService deployment mode or runtime reference is invalid")
+ai_annotations = ai_service.get("metadata", {}).get("annotations", {})
+if (
+    ai_annotations.get("sidecar.istio.io/inject") != "true"
+    or ai_annotations.get("sidecar.istio.io/rewriteAppHTTPProbers") != "true"
+):
+    raise SystemExit("OpenShift AI InferenceService must use the documented Service Mesh sidecar annotations")
+
+with open("platform/gateway/ai-chat-token-rate-limits.yaml", encoding="utf-8") as stream:
+    token_policies = [resource for resource in yaml.safe_load_all(stream) if resource]
+expected_token_limits = {
+    "free": 1000,
+    "payg": 10000,
+    "developer": 1000000,
+    "business": 50000000,
+}
+expected_token_targets = {"ai-chat-api-key", "ai-chat-jwt"}
+actual_token_targets = set()
+for policy in token_policies:
+    if policy.get("apiVersion") != "kuadrant.io/v1alpha1" or policy.get("kind") != "TokenRateLimitPolicy":
+        raise SystemExit("AI token quota must use the RHCL TokenRateLimitPolicy API")
+    target = policy["spec"]["targetRef"]
+    actual_token_targets.add(target["name"])
+    limits = policy["spec"]["limits"]
+    for plan, expected_limit in expected_token_limits.items():
+        rates = limits.get(plan, {}).get("rates", [])
+        if rates != [{"limit": expected_limit, "window": "720h"}]:
+            raise SystemExit(f"{policy['metadata']['name']}: {plan} token quota does not match the commercial plan")
+if actual_token_targets != expected_token_targets:
+    raise SystemExit(f"AI token policies do not cover both credential routes: {actual_token_targets}")
+
+with open("platform/gateway/ai-chat-plan-policy.yaml", encoding="utf-8") as stream:
+    ai_plan_policy = yaml.safe_load(stream)
+for plan in ai_plan_policy["spec"]["plans"]:
+    if "monthly" in plan.get("limits", {}):
+        raise SystemExit("AI PlanPolicy must leave monthly enforcement to TokenRateLimitPolicy")
+with open("platform/gateway/ai-chat-jwt-rate-limits.yaml", encoding="utf-8") as stream:
+    ai_jwt_request_policy = yaml.safe_load(stream)
+if any(len(limit.get("rates", [])) != 1 for limit in ai_jwt_request_policy["spec"]["limits"].values()):
+    raise SystemExit("AI JWT RateLimitPolicy must enforce only request burst protection")
 
 promoted_applications = {
     "control": "monetization-control",

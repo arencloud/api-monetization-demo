@@ -3,4 +3,4 @@ kind: Kustomization
 resources:
   - serving-runtime.yaml
   - inference-service.yaml
-
+  - mesh-service.yaml

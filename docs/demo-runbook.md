@@ -174,10 +174,16 @@ make ai-monetization-test
 
 For AI Chat, the API-key and JWT routes both expose
 `POST /v1/chat/completions`. Connectivity Link enforces request authentication,
-entitlement, and request-rate limits before CPU inference. The response header
+entitlement, a requests-per-minute safety limit, and a plan-specific monthly
+token quota. RHCL `TokenRateLimitPolicy` extracts the OpenAI-compatible
+`usage.total_tokens` response field and updates Limitador after inference. The response header
 `X-Monetization-Billable-Units` equals vLLM's `usage.total_tokens`; the portal,
 invoice preview, Prometheus metrics, and Grafana dashboard use that stored token
 total rather than counting the completion as one request.
+
+The Gateway-to-facade and facade-to-KServe predictor hops both use strict Red
+Hat OpenShift Service Mesh mTLS. The predictor uses the KServe sidecar injection
+and application-probe rewrite annotations documented by Red Hat.
 
 Generate the current draft under **Billing and invoices**. The persisted draft
 shows the plan base charge, stored billable units, allowance, overage, and total

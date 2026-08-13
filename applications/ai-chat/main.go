@@ -32,7 +32,7 @@ type completionResponse struct {
 }
 
 func main() {
-	modelURL, err := url.Parse(env("MODEL_URL", "http://ai-chat-predictor.api-monetization-ai.svc.cluster.local:8080"))
+	modelURL, err := url.Parse(env("MODEL_URL", "http://ai-chat-model-mtls.api-monetization-ai.svc.cluster.local:8080"))
 	if err != nil || modelURL.Scheme != "http" || modelURL.Host == "" {
 		slog.Error("invalid model URL", "value", modelURL, "error", err)
 		os.Exit(1)

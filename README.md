@@ -140,7 +140,11 @@ The current development milestone adds an Operator-managed OpenShift AI 3.4
 foundation, KServe, and a pinned Qwen2.5 0.5B Instruct model served by Red Hat's
 vLLM CPU x86 runtime. A mesh-injected facade keeps the model internal, exposes
 its OpenAI-compatible chat operation through Connectivity Link, and stores the
-vLLM-reported prompt plus completion tokens as native billable units.
+vLLM-reported prompt plus completion tokens as native billable units. RHCL
+`TokenRateLimitPolicy` extracts the same OpenAI-compatible
+`usage.total_tokens` response field and enforces plan-specific monthly token
+quotas in Limitador; the ordinary request policy remains as a separate
+requests-per-minute abuse guard.
 
 The monetization portal is exposed through a portable OpenShift Route and uses
 Red Hat build of Keycloak Authorization Code flow with PKCE. Its subscription,
@@ -219,6 +223,8 @@ unchanged.
 proves API-key and Keycloak JWT inference through Connectivity Link, verifies
 that the billed units exactly match vLLM's `usage.total_tokens`, waits for the
 asynchronous PostgreSQL attribution, and cancels its automation subscription.
+Deployment verification also requires both AI `TokenRateLimitPolicy` objects
+to be Enforced and the facade-to-KServe hop to use strict Service Mesh mTLS.
 
 `make metered-demo` changes Demo Company to Pay as you go, sends five real
 accepted requests through the OpenShift Route and Connectivity Link, waits for

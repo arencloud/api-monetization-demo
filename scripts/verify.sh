@@ -210,10 +210,40 @@ if [[ $ai_discovery != enabled ]]; then
   echo "error: Service Mesh discovery must include the OpenShift AI model namespace" >&2
   exit 1
 fi
+ai_mesh_revision=$(oc get namespace api-monetization-ai \
+  -o jsonpath='{.metadata.labels.istio\.io/rev}')
+if [[ $ai_mesh_revision != default ]]; then
+  echo "error: OpenShift AI model namespace is not enrolled in the project Service Mesh revision" >&2
+  exit 1
+fi
 model_address=$(oc get inferenceservice.serving.kserve.io ai-chat \
   -n api-monetization-ai -o jsonpath='{.status.address.url}')
 if [[ $model_address != "http://ai-chat-predictor.api-monetization-ai.svc.cluster.local:8080" ]]; then
   echo "error: KServe did not publish the expected cluster-internal predictor address" >&2
+  exit 1
+fi
+model_pod=$(oc get pods -n api-monetization-ai \
+  -l serving.kserve.io/inferenceservice=ai-chat \
+  -o jsonpath='{.items[0].metadata.name}')
+if [[ -z $model_pod ]] || ! oc get pod "$model_pod" -n api-monetization-ai -o json | jq -e '
+  ([.spec.containers[].name] | index("istio-proxy")) != null and
+  ([.status.containerStatuses[] | select(.name == "istio-proxy" and .ready == true)] | length) == 1
+' >/dev/null; then
+  echo "error: OpenShift AI predictor does not have a ready Service Mesh sidecar" >&2
+  exit 1
+fi
+ai_model_mtls=$(oc get peerauthentication.security.istio.io default \
+  -n api-monetization-ai -o jsonpath='{.spec.mtls.mode}')
+destination_mtls=$(oc get destinationrule.networking.istio.io ai-chat-model-mtls \
+  -n api-monetization-apps -o jsonpath='{.spec.trafficPolicy.tls.mode}')
+if [[ $ai_model_mtls != STRICT || $destination_mtls != ISTIO_MUTUAL ]]; then
+  echo "error: AI facade-to-model traffic must use explicit STRICT/ISTIO_MUTUAL mTLS" >&2
+  exit 1
+fi
+model_url=$(oc get deployment ai-chat-api -n api-monetization-apps \
+  -o jsonpath='{.spec.template.spec.containers[?(@.name=="ai-chat-api")].env[?(@.name=="MODEL_URL")].value}')
+if [[ $model_url != "http://ai-chat-model-mtls.api-monetization-ai.svc.cluster.local:8080" ]]; then
+  echo "error: AI facade is not using the mesh-aware model Service" >&2
   exit 1
 fi
 for product in inventory payments ai-chat; do
@@ -304,6 +334,10 @@ oc wait --for=condition=Enforced planpolicies.extensions.kuadrant.io/payments-ap
 oc wait --for=condition=Enforced ratelimitpolicies.kuadrant.io/ai-chat-jwt-plans \
   -n api-monetization-apps --timeout=5m
 oc wait --for=condition=Enforced planpolicies.extensions.kuadrant.io/ai-chat-api-plans \
+  -n api-monetization-apps --timeout=5m
+oc wait --for=condition=Enforced tokenratelimitpolicies.kuadrant.io/ai-chat-api-key-tokens \
+  -n api-monetization-apps --timeout=5m
+oc wait --for=condition=Enforced tokenratelimitpolicies.kuadrant.io/ai-chat-jwt-tokens \
   -n api-monetization-apps --timeout=5m
 oc wait --for=condition=Approved apikeys.devportal.kuadrant.io/demo-inventory-key \
   -n api-monetization-apps --timeout=5m

@@ -11,13 +11,13 @@ spec:
     - {tier: enterprise, predicate: 'has(auth.metadata.subscription) && auth.metadata.subscription.plan == "enterprise"', limits: {}}
     - tier: business
       predicate: 'has(auth.metadata.subscription) && auth.metadata.subscription.plan == "business"'
-      limits: {monthly: 50000000, custom: [{limit: 10000, window: 1m}]}
+      limits: {custom: [{limit: 10000, window: 1m}]}
     - tier: developer
       predicate: 'has(auth.metadata.subscription) && auth.metadata.subscription.plan == "developer"'
-      limits: {monthly: 1000000, custom: [{limit: 1000, window: 1m}]}
+      limits: {custom: [{limit: 1000, window: 1m}]}
     - tier: payg
       predicate: 'has(auth.metadata.subscription) && auth.metadata.subscription.plan == "payg"'
-      limits: {monthly: 10000, custom: [{limit: 100, window: 1m}]}
+      limits: {custom: [{limit: 100, window: 1m}]}
     - tier: free
       predicate: 'has(auth.metadata.subscription) && auth.metadata.subscription.plan == "free"'
-      limits: {monthly: 1000, custom: [{limit: 10, window: 1m}]}
+      limits: {custom: [{limit: 10, window: 1m}]}

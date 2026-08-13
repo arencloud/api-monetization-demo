@@ -16,6 +16,7 @@ metadata:
     app.kubernetes.io/component: cpu-model-serving
     opendatahub.io/dashboard: "true"
     istio-discovery: enabled
+    istio.io/rev: default
 ---
 apiVersion: v1
 kind: Namespace

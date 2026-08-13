@@ -21,6 +21,7 @@ resources:
   - ai-chat-auth-policies.yaml
   - ai-chat-plan-policy.yaml
   - ai-chat-jwt-rate-limits.yaml
+  - ai-chat-token-rate-limits.yaml
   - ai-chat-api-product.yaml
   - demo-api-key.yaml
   - portal-rbac.yaml

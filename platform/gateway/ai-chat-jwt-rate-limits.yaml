@@ -9,18 +9,18 @@ spec:
   targetRef: {group: gateway.networking.k8s.io, kind: HTTPRoute, name: ai-chat-jwt}
   limits:
     free:
-      rates: [{limit: 10, window: 1m}, {limit: 1000, window: 720h}]
+      rates: [{limit: 10, window: 1m}]
       counters: [{expression: auth.kuadrant.customer}]
       when: [{predicate: 'auth.kuadrant.plan == "free"'}]
     payg:
-      rates: [{limit: 100, window: 1m}, {limit: 10000, window: 720h}]
+      rates: [{limit: 100, window: 1m}]
       counters: [{expression: auth.kuadrant.customer}]
       when: [{predicate: 'auth.kuadrant.plan == "payg"'}]
     developer:
-      rates: [{limit: 1000, window: 1m}, {limit: 1000000, window: 720h}]
+      rates: [{limit: 1000, window: 1m}]
       counters: [{expression: auth.kuadrant.customer}]
       when: [{predicate: 'auth.kuadrant.plan == "developer"'}]
     business:
-      rates: [{limit: 10000, window: 1m}, {limit: 50000000, window: 720h}]
+      rates: [{limit: 10000, window: 1m}]
       counters: [{expression: auth.kuadrant.customer}]
       when: [{predicate: 'auth.kuadrant.plan == "business"'}]

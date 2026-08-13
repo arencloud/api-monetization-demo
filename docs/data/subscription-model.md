@@ -38,9 +38,11 @@ use `request`.
 - Gateway telemetry is an input to `usage_events`, not an invoice by itself.
 - AI usage attributes retain the vLLM model, prompt-token, and
   completion-token breakdown; `billable_units` stores their total.
-- Connectivity Link limits AI request frequency before inference. Commercial
-  allowance and overage use post-response token counts; the request safety cap
-  is deliberately separate from token billing.
+- Connectivity Link limits AI request frequency before inference and uses
+  `TokenRateLimitPolicy` to add the post-response `usage.total_tokens` value to
+  a customer-and-plan Limitador counter. The monthly hard quota and commercial
+  allowance are therefore token-based; the request safety cap remains a
+  deliberately separate control.
 - Included allowance and hard quota are separate. Accepted usage above the
   allowance is billable overage until the hard quota is reached; rejected HTTP
   429 attempts do not reach the API and are not usage events.

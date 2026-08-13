@@ -8,6 +8,8 @@ metadata:
     serving.kserve.io/deploymentMode: Standard
     security.opendatahub.io/enable-auth: "false"
     openshift.io/display-name: API Monetization CPU Chat
+    sidecar.istio.io/inject: "true"
+    sidecar.istio.io/rewriteAppHTTPProbers: "true"
   labels:
     app.kubernetes.io/part-of: api-monetization
     app.kubernetes.io/component: cpu-model-serving

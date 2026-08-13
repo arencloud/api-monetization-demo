@@ -32,18 +32,21 @@ would also introduce its own RHCL governance layer, which would duplicate the
 monetization control plane demonstrated by this repository, so MaaS remains
 disabled.
 
-The OpenShift AI namespace participates in Istio service discovery but does not
-enable sidecar injection. This lets the facade sidecar identify KServe as a
-non-mesh endpoint and use plaintext on that internal hop while inbound facade
-traffic remains protected by strict mesh mTLS.
+The OpenShift AI namespace participates in the project Service Mesh revision.
+The KServe `InferenceService` uses Red Hat's documented Istio sidecar injection
+and HTTP-probe rewrite annotations. Namespace-wide strict peer authentication
+and an explicit `ISTIO_MUTUAL` destination rule provide workload-identity mTLS
+from the facade to the predictor without exposing the model publicly.
 
 ## Consequences
 
 - CPU inference has intentionally modest throughput and is suitable for a live
   demo, not performance benchmarking.
-- Connectivity Link enforces request-frequency limits before inference;
-  post-response token totals drive commercial allowance and overage. These are
-  deliberately distinct controls.
+- Connectivity Link `RateLimitPolicy`/`PlanPolicy` enforces request-frequency
+  limits before inference. `TokenRateLimitPolicy` extracts the actual
+  `usage.total_tokens` after inference and enforces the plan's monthly token
+  quota in Limitador. The same token total drives commercial allowance,
+  overage, and invoicing.
 - The vLLM CPU (x86) runtime is marked Technology Preview by OpenShift AI 3.4;
   it is acceptable for this demo profile but is not a production support claim.
 - One replica and an ephemeral model cache are sufficient; RWX storage is not
