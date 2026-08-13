@@ -72,6 +72,7 @@ The first profile follows the RHCL 1.4 support matrix:
 | cert-manager Operator for Red Hat OpenShift | 1.19 |
 | Red Hat build of Keycloak | 26.6 |
 | Red Hat OpenShift GitOps | 1.21 |
+| Red Hat OpenShift AI | 3.4 stable channel, 3.4.3 starting CSV |
 | External Secrets Operator for Red Hat OpenShift | 1.2 |
 | CloudNativePG certified Operator | 1.30 |
 | Red Hat build of OpenTelemetry Operator | stable, 0.152.0-2 starting CSV |
@@ -81,6 +82,10 @@ The first profile follows the RHCL 1.4 support matrix:
 
 The cluster must have subscriptions/entitlements for the Red Hat products. Run
 `make preflight` before making any cluster changes.
+
+The optional CPU AI milestone also requires outbound access to Hugging Face.
+Its pinned Qwen2.5 0.5B model is downloaded when the serving Pod starts. No GPU,
+GPU Operator, RWX volume, or LoadBalancer provider is required.
 
 ## Quick start
 
@@ -130,6 +135,12 @@ monetized Inventory and Payment APIs, a PostgreSQL-backed subscription
 control plane, live plan changes, Prometheus metrics, an operator-managed
 Grafana instance and dashboard, structured logs, and an OpenTelemetry-to-Tempo
 trace pipeline.
+
+The current development milestone adds an Operator-managed OpenShift AI 3.4
+foundation, KServe, and a pinned Qwen2.5 0.5B Instruct model served by Red Hat's
+vLLM CPU x86 runtime. The model is currently cluster-internal; run
+`make ai-model-test` to prove real chat inference. Publishing it as a third
+Connectivity Link-monetized product is the next slice.
 
 The monetization portal is exposed through a portable OpenShift Route and uses
 Red Hat build of Keycloak Authorization Code flow with PKCE. Its subscription,
@@ -181,6 +192,7 @@ presentations:
 ```bash
 make lifecycle-test
 make multi-product-test
+make ai-model-test
 make demo
 make metered-demo
 make observe

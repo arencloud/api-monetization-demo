@@ -4,7 +4,8 @@ metadata:
   name: ai-chat
   namespace: api-monetization-ai
   annotations:
-    serving.kserve.io/deploymentMode: RawDeployment
+    argocd.argoproj.io/sync-wave: "0"
+    serving.kserve.io/deploymentMode: Standard
     security.opendatahub.io/enable-auth: "false"
     openshift.io/display-name: API Monetization CPU Chat
   labels:
@@ -35,4 +36,3 @@ spec:
         limits:
           cpu: "4"
           memory: 5Gi
-

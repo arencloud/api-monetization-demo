@@ -4,6 +4,7 @@ metadata:
   name: vllm-cpu-x86-runtime
   namespace: api-monetization-ai
   annotations:
+    argocd.argoproj.io/sync-wave: "-1"
     opendatahub.io/runtime-version: v0.18.0
     openshift.io/display-name: vLLM CPU (x86) ServingRuntime for KServe
   labels:
@@ -36,4 +37,3 @@ spec:
   supportedModelFormats:
     - autoSelect: true
       name: vLLM
-

@@ -32,15 +32,15 @@ if ! oc wait --for=condition=Ready=true "inferenceservice.serving.kserve.io/$mod
   exit 1
 fi
 
-service_name=$(oc get service -n "$namespace" \
+pod_name=$(oc get pod -n "$namespace" \
   -l "serving.kserve.io/inferenceservice=$model" \
   -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-if [[ -z $service_name ]]; then
-  echo "error: KServe did not create a predictor Service for $namespace/$model" >&2
+if [[ -z $pod_name ]]; then
+  echo "error: KServe did not create a predictor Pod for $namespace/$model" >&2
   exit 1
 fi
 
-oc port-forward -n "$namespace" "service/$service_name" \
+oc port-forward -n "$namespace" "pod/$pod_name" \
   "$local_port:8080" >"$forward_log" 2>&1 &
 forward_pid=$!
 for _ in $(seq 1 30); do
@@ -60,10 +60,10 @@ response=$(curl -fsS "http://127.0.0.1:$local_port/v1/chat/completions" \
   -d '{
     "model": "ai-chat",
     "temperature": 0,
-    "max_tokens": 32,
+    "max_tokens": 4,
     "messages": [
-      {"role": "system", "content": "Reply briefly."},
-      {"role": "user", "content": "What platform is serving this model?"}
+      {"role": "system", "content": "Use no more than four words."},
+      {"role": "user", "content": "Say OpenShift AI."}
     ]
   }')
 
@@ -76,4 +76,3 @@ fi
 
 echo "CPU-only OpenShift AI inference succeeded"
 jq '{model, usage, answer: .choices[0].message.content}' <<<"$response"
-

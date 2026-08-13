@@ -101,6 +101,36 @@ for build_file in pathlib.Path("applications").glob("*/build.yaml"):
                 f"{build_file}: build Git source {actual} does not match root source {expected}"
             )
 
+with open("operators/openshift-ai/subscription.yaml", encoding="utf-8") as stream:
+    openshift_ai_subscription = yaml.safe_load(stream)
+openshift_ai_spec = openshift_ai_subscription.get("spec", {})
+if (
+    openshift_ai_spec.get("name") != "rhods-operator"
+    or openshift_ai_spec.get("channel") != "stable-3.x"
+    or openshift_ai_spec.get("source") != "redhat-operators"
+    or openshift_ai_spec.get("startingCSV") != "rhods-operator.3.4.3"
+):
+    raise SystemExit("OpenShift AI Operator subscription is not pinned to the tested 3.4.3 lane")
+
+with open("platform/ai-model/serving-runtime.yaml", encoding="utf-8") as stream:
+    ai_runtime = yaml.safe_load(stream)
+with open("platform/ai-model/inference-service.yaml", encoding="utf-8") as stream:
+    ai_service = yaml.safe_load(stream)
+runtime_image = ai_runtime["spec"]["containers"][0]["image"]
+predictor_model = ai_service["spec"]["predictor"]["model"]
+storage_uri = predictor_model.get("storageUri", "")
+if not runtime_image.startswith("registry.redhat.io/rhaii/vllm-cpu-rhel9@sha256:"):
+    raise SystemExit("OpenShift AI CPU serving image must be a digest-pinned Red Hat image")
+if not re.fullmatch(r"hf://Qwen/Qwen2\.5-0\.5B-Instruct:[0-9a-f]{40}", storage_uri):
+    raise SystemExit("OpenShift AI model must use the approved, revision-pinned Hugging Face URI")
+if (
+    ai_service.get("metadata", {}).get("annotations", {}).get(
+        "serving.kserve.io/deploymentMode"
+    ) != "Standard"
+    or predictor_model.get("runtime") != ai_runtime["metadata"]["name"]
+):
+    raise SystemExit("OpenShift AI InferenceService deployment mode or runtime reference is invalid")
+
 promoted_applications = {
     "control": "monetization-control",
     "inventory": "inventory-api",
