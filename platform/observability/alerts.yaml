@@ -11,15 +11,15 @@ spec:
       rules:
         - alert: MonetizedAPIHighErrorRate
           expr: >-
-            sum(rate(api_requests_total{service="inventory-api",status=~"5.."}[5m]))
+            sum(rate(api_requests_total{service=~"(inventory|payments)-api",status=~"5.."}[5m]))
             /
-            clamp_min(sum(rate(api_requests_total{service="inventory-api"}[5m])), 0.001)
+            clamp_min(sum(rate(api_requests_total{service=~"(inventory|payments)-api"}[5m])), 0.001)
             > 0.05
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: Inventory API error rate is above five percent
+            summary: Monetized product API error rate is above five percent
         - alert: MonetizationControlUnavailable
           expr: >-
             absent(up{namespace="api-monetization-data",pod=~"monetization-control-.*"} == 1)
@@ -30,11 +30,11 @@ spec:
             summary: Monetization control-plane metrics target is unavailable
         - alert: MonetizedAPIRateLimitDenialHigh
           expr: >-
-            sum(rate(limited_calls{limitador_namespace=~"api-monetization-apps/inventory-(api-key|jwt)"}[5m]))
+            sum(rate(limited_calls{limitador_namespace=~"api-monetization-apps/(inventory|payments)-(api-key|jwt)"}[5m]))
             /
             clamp_min(
-              sum(rate(limited_calls{limitador_namespace=~"api-monetization-apps/inventory-(api-key|jwt)"}[5m]))
-              + sum(rate(authorized_calls{limitador_namespace=~"api-monetization-apps/inventory-(api-key|jwt)"}[5m])),
+              sum(rate(limited_calls{limitador_namespace=~"api-monetization-apps/(inventory|payments)-(api-key|jwt)"}[5m]))
+              + sum(rate(authorized_calls{limitador_namespace=~"api-monetization-apps/(inventory|payments)-(api-key|jwt)"}[5m])),
               0.001
             ) > 0.25
           for: 5m

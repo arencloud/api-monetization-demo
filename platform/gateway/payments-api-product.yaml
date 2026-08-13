@@ -1,0 +1,22 @@
+apiVersion: devportal.kuadrant.io/v1alpha1
+kind: APIProduct
+metadata:
+  name: payments-api
+  namespace: api-monetization-apps
+  annotations:
+    argocd.argoproj.io/sync-wave: "40"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  displayName: Payment API
+  description: Payment authorization and settlement API used by the multi-product monetization demonstration.
+  version: v1
+  approvalMode: automatic
+  publishStatus: Published
+  targetRef: {group: gateway.networking.k8s.io, kind: HTTPRoute, name: payments-api-key}
+  tags: [payments, monetized, demo]
+  contact: {team: API Platform, email: api-platform@example.invalid}
+  documentation:
+    docsURL: https://github.com/arencloud/api-monetization-demo/blob/main/docs/demo-runbook.md
+    openAPISpecURL: http://payments-api.api-monetization-apps.svc.cluster.local:8082/openapi.yaml
+    gitRepository: https://github.com/arencloud/api-monetization-demo

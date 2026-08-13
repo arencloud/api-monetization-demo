@@ -1,0 +1,44 @@
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: payments-api
+  namespace: api-monetization-apps
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: payments-api
+  namespace: api-monetization-apps
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+  labels:
+    app.kubernetes.io/name: payments-api
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  runPolicy: SerialLatestOnly
+  source:
+    type: Git
+    git:
+      uri: https://github.com/arencloud/api-monetization-demo.git
+      ref: feature/multi-product
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: applications/payments/Containerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: payments-api:demo
+  successfulBuildsHistoryLimit: 3
+  failedBuildsHistoryLimit: 3
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi

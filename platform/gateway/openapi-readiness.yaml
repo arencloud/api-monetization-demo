@@ -33,24 +33,30 @@ spec:
             - pipefail
             - -c
             - |
-              url=http://inventory-api.api-monetization-apps.svc.cluster.local:8082/openapi.yaml
-              for attempt in $(seq 1 120); do
-                if document=$(curl --silent --show-error --fail \
-                    --connect-timeout 2 --max-time 5 "$url" 2>/dev/null) && \
-                  grep -Eq '^openapi: 3\.' <<<"$document" && \
-                  grep -q '^paths:' <<<"$document" && \
-                  grep -Eq '^  - url: https://' <<<"$document" && \
-                  ! grep -q '^  - url: https://api-monetization.invalid$' <<<"$document"; then
-                  echo "Inventory OpenAPI document is ready for APIProduct discovery"
-                  exit 0
+              for product in inventory payments; do
+                url="http://${product}-api.api-monetization-apps.svc.cluster.local:8082/openapi.yaml"
+                ready=false
+                for attempt in $(seq 1 120); do
+                  if document=$(curl --silent --show-error --fail \
+                      --connect-timeout 2 --max-time 5 "$url" 2>/dev/null) && \
+                    grep -Eq '^openapi: 3\.' <<<"$document" && \
+                    grep -q '^paths:' <<<"$document" && \
+                    grep -Eq '^  - url: https://' <<<"$document" && \
+                    ! grep -q '^  - url: https://api-monetization.invalid$' <<<"$document"; then
+                    echo "$product OpenAPI document is ready for APIProduct discovery"
+                    ready=true
+                    break
+                  fi
+                  if (( attempt % 12 == 0 )); then
+                    echo "waiting for $product OpenAPI document (attempt $attempt/120)"
+                  fi
+                  sleep 5
+                done
+                if [[ $ready != true ]]; then
+                  echo "$product OpenAPI document did not become available at $url" >&2
+                  exit 1
                 fi
-                if (( attempt % 12 == 0 )); then
-                  echo "waiting for Inventory OpenAPI document (attempt $attempt/120)"
-                fi
-                sleep 5
               done
-              echo "Inventory OpenAPI document did not become available at $url" >&2
-              exit 1
           resources:
             requests:
               cpu: 10m

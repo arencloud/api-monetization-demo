@@ -253,29 +253,28 @@ if (
 ):
     raise SystemExit("Grafana OAuth client secret is not mirrored from the identity namespace")
 
-with open("applications/inventory/openapi.yaml", encoding="utf-8") as stream:
-    openapi = yaml.safe_load(stream)
-if not str(openapi.get("openapi", "")).startswith("3.") or not openapi.get("paths"):
-    raise SystemExit("Inventory OpenAPI document is incomplete")
-if openapi.get("servers", [{}])[0].get("url") != "https://api-monetization.invalid":
-    raise SystemExit("Inventory OpenAPI document is missing its portable server placeholder")
+for product in ("inventory", "payments"):
+    with open(f"applications/{product}/openapi.yaml", encoding="utf-8") as stream:
+        openapi = yaml.safe_load(stream)
+    if not str(openapi.get("openapi", "")).startswith("3.") or not openapi.get("paths"):
+        raise SystemExit(f"{product}: OpenAPI document is incomplete")
+    if openapi.get("servers", [{}])[0].get("url") != "https://api-monetization.invalid":
+        raise SystemExit(f"{product}: OpenAPI document is missing its portable server placeholder")
 
-with open("applications/inventory/service.yaml", encoding="utf-8") as stream:
-    inventory_service = yaml.safe_load(stream)
-service_ports = {
-    port.get("name"): (port.get("port"), port.get("targetPort"))
-    for port in inventory_service.get("spec", {}).get("ports", [])
-}
-if service_ports.get("http-openapi") != (8082, "openapi"):
-    raise SystemExit("Inventory documentation-only Service port 8082 is missing")
+    with open(f"applications/{product}/service.yaml", encoding="utf-8") as stream:
+        product_service = yaml.safe_load(stream)
+    service_ports = {
+        port.get("name"): (port.get("port"), port.get("targetPort"))
+        for port in product_service.get("spec", {}).get("ports", [])
+    }
+    if service_ports.get("http-openapi") != (8082, "openapi"):
+        raise SystemExit(f"{product}: documentation-only Service port 8082 is missing")
 
-with open("platform/gateway/inventory-api-product.yaml", encoding="utf-8") as stream:
-    api_product = yaml.safe_load(stream)
-if (
-    api_product.get("spec", {}).get("documentation", {}).get("openAPISpecURL")
-    != "http://inventory-api.api-monetization-apps.svc.cluster.local:8082/openapi.yaml"
-):
-    raise SystemExit("APIProduct must fetch OpenAPI from the documentation-only port")
+    with open(f"platform/gateway/{product}-api-product.yaml", encoding="utf-8") as stream:
+        api_product = yaml.safe_load(stream)
+    expected_openapi_url = f"http://{product}-api.api-monetization-apps.svc.cluster.local:8082/openapi.yaml"
+    if api_product.get("spec", {}).get("documentation", {}).get("openAPISpecURL") != expected_openapi_url:
+        raise SystemExit(f"{product}: APIProduct must fetch OpenAPI from the documentation-only port")
 
 with open("platform/gateway/openapi-readiness.yaml", encoding="utf-8") as stream:
     openapi_readiness = yaml.safe_load(stream)
@@ -309,8 +308,10 @@ if kuadrant.get("spec", {}).get("mtls") != {
 }:
     raise SystemExit("RHCL mTLS must be enabled explicitly for Authorino and Limitador")
 
-with open("platform/gateway/inventory-auth-policies.yaml", encoding="utf-8") as stream:
-    auth_policies = list(yaml.safe_load_all(stream))
+auth_policies = []
+for product in ("inventory", "payments"):
+    with open(f"platform/gateway/{product}-auth-policies.yaml", encoding="utf-8") as stream:
+        auth_policies.extend(yaml.safe_load_all(stream))
 for policy in auth_policies:
     rules = policy.get("spec", {}).get("rules", {})
     active = rules.get("authorization", {}).get("active-subscription", {})
@@ -324,29 +325,30 @@ for policy in auth_policies:
         name = policy.get("metadata", {}).get("name", "unknown")
         raise SystemExit(f"{name}: active subscription authorization is missing")
 
-jwt_policy = next(
-    policy for policy in auth_policies if policy.get("metadata", {}).get("name") == "inventory-jwt"
-)
-jwt_rules = jwt_policy.get("spec", {}).get("rules", {})
-jwt_authentication = jwt_rules.get("authentication", {}).get("keycloak", {}).get("jwt", {})
-if jwt_authentication != {
-    "jwksUrl": "http://api-monetization-service.api-monetization-identity.svc.cluster.local:8080/realms/api-monetization/protocol/openid-connect/certs"
-}:
-    raise SystemExit("JWT verification must use the internal Keycloak JWKS endpoint")
-jwt_issuer_patterns = (
-    jwt_rules.get("authorization", {})
-    .get("keycloak-issuer", {})
-    .get("patternMatching", {})
-    .get("patterns", [])
-)
-if not any(
-    pattern.get("selector") == "auth.identity.iss"
-    and pattern.get("operator") == "matches"
-    and pattern.get("value")
-    == r"^https://keycloak-api-monetization[.]apps[.][^/]+/realms/api-monetization$"
-    for pattern in jwt_issuer_patterns
-):
-    raise SystemExit("JWT authorization must validate the portable external Keycloak issuer")
+for product in ("inventory", "payments"):
+    jwt_policy = next(
+        policy for policy in auth_policies if policy.get("metadata", {}).get("name") == f"{product}-jwt"
+    )
+    jwt_rules = jwt_policy.get("spec", {}).get("rules", {})
+    jwt_authentication = jwt_rules.get("authentication", {}).get("keycloak", {}).get("jwt", {})
+    if jwt_authentication != {
+        "jwksUrl": "http://api-monetization-service.api-monetization-identity.svc.cluster.local:8080/realms/api-monetization/protocol/openid-connect/certs"
+    }:
+        raise SystemExit(f"{product}: JWT verification must use the internal Keycloak JWKS endpoint")
+    jwt_issuer_patterns = (
+        jwt_rules.get("authorization", {})
+        .get("keycloak-issuer", {})
+        .get("patternMatching", {})
+        .get("patterns", [])
+    )
+    if not any(
+        pattern.get("selector") == "auth.identity.iss"
+        and pattern.get("operator") == "matches"
+        and pattern.get("value")
+        == r"^https://keycloak-api-monetization[.]apps[.][^/]+/realms/api-monetization$"
+        for pattern in jwt_issuer_patterns
+    ):
+        raise SystemExit(f"{product}: JWT authorization must validate the portable external Keycloak issuer")
 
 control_token_script = pathlib.Path("scripts/control-token.sh").read_text(encoding="utf-8")
 if not all(
@@ -383,32 +385,33 @@ if not portal_artifact_rule or set(portal_artifact_rule.get("verbs", [])) != {
 }:
     raise SystemExit("Credential cancellation needs least-privilege cleanup of RHCL request artifacts")
 
-with open("platform/gateway/inventory-plan-policy.yaml", encoding="utf-8") as stream:
-    plan_policy = yaml.safe_load(stream)
-plan_tiers = {plan["tier"]: plan for plan in plan_policy["spec"]["plans"]}
-payg = plan_tiers.get("payg", {}).get("limits", {})
-if payg.get("monthly") != 10000 or not any(
-    limit.get("limit") == 100 and limit.get("window") == "1m"
-    for limit in payg.get("custom", [])
-):
-    raise SystemExit("Pay-as-you-go API-key enforcement limits are incomplete")
-if plan_tiers.get("developer", {}).get("limits", {}).get("monthly") != 1000000:
-    raise SystemExit("Developer hard quota must remain above its included allowance")
+for product in ("inventory", "payments"):
+    with open(f"platform/gateway/{product}-plan-policy.yaml", encoding="utf-8") as stream:
+        plan_policy = yaml.safe_load(stream)
+    plan_tiers = {plan["tier"]: plan for plan in plan_policy["spec"]["plans"]}
+    payg = plan_tiers.get("payg", {}).get("limits", {})
+    if payg.get("monthly") != 10000 or not any(
+        limit.get("limit") == 100 and limit.get("window") == "1m"
+        for limit in payg.get("custom", [])
+    ):
+        raise SystemExit(f"{product}: Pay-as-you-go API-key enforcement limits are incomplete")
+    if plan_tiers.get("developer", {}).get("limits", {}).get("monthly") != 1000000:
+        raise SystemExit(f"{product}: Developer hard quota must remain above its included allowance")
 
-with open("platform/gateway/inventory-jwt-rate-limits.yaml", encoding="utf-8") as stream:
-    jwt_limits = yaml.safe_load(stream)["spec"]["limits"]
-if "payg" not in jwt_limits or not {
-    (rate.get("limit"), rate.get("window"))
-    for rate in jwt_limits["payg"].get("rates", [])
-}.issuperset({(100, "1m"), (10000, "720h")}):
-    raise SystemExit("Pay-as-you-go JWT enforcement limits are incomplete")
-expected_jwt_quotas = {"free": 1000, "developer": 1000000, "business": 50000000}
-for tier, quota in expected_jwt_quotas.items():
-    if (quota, "720h") not in {
+    with open(f"platform/gateway/{product}-jwt-rate-limits.yaml", encoding="utf-8") as stream:
+        jwt_limits = yaml.safe_load(stream)["spec"]["limits"]
+    if "payg" not in jwt_limits or not {
         (rate.get("limit"), rate.get("window"))
-        for rate in jwt_limits[tier].get("rates", [])
-    }:
-        raise SystemExit(f"{tier}: JWT hard quota is missing")
+        for rate in jwt_limits["payg"].get("rates", [])
+    }.issuperset({(100, "1m"), (10000, "720h")}):
+        raise SystemExit(f"{product}: Pay-as-you-go JWT enforcement limits are incomplete")
+    expected_jwt_quotas = {"free": 1000, "developer": 1000000, "business": 50000000}
+    for tier, quota in expected_jwt_quotas.items():
+        if (quota, "720h") not in {
+            (rate.get("limit"), rate.get("window"))
+            for rate in jwt_limits[tier].get("rates", [])
+        }:
+            raise SystemExit(f"{product}/{tier}: JWT hard quota is missing")
 
 with open("platform/identity/portal-identity.yaml", encoding="utf-8") as stream:
     identity_resources = [resource for resource in yaml.safe_load_all(stream) if resource]
@@ -485,19 +488,20 @@ with open("platform/service-mesh/peer-authentication.yaml", encoding="utf-8") as
 default_peer_authentication = next(
     resource for resource in peer_authentications if resource["metadata"]["name"] == "default"
 )
-inventory_peer_authentication = next(
-    resource for resource in peer_authentications if resource["metadata"]["name"] == "inventory-api"
-)
 if default_peer_authentication.get("spec", {}).get("mtls", {}).get("mode") != "STRICT":
     raise SystemExit("Application Service Mesh peer authentication must enforce STRICT mTLS")
-inventory_peer_spec = inventory_peer_authentication.get("spec", {})
-if (
-    inventory_peer_spec.get("selector", {}).get("matchLabels")
-    != {"app.kubernetes.io/name": "inventory-api"}
-    or inventory_peer_spec.get("mtls", {}).get("mode") != "STRICT"
-    or inventory_peer_spec.get("portLevelMtls") != {"8082": {"mode": "DISABLE"}}
-):
-    raise SystemExit("Only the Inventory documentation port may bypass application mTLS")
+for product in ("inventory", "payments"):
+    peer_authentication = next(
+        resource for resource in peer_authentications if resource["metadata"]["name"] == f"{product}-api"
+    )
+    peer_spec = peer_authentication.get("spec", {})
+    if (
+        peer_spec.get("selector", {}).get("matchLabels")
+        != {"app.kubernetes.io/name": f"{product}-api"}
+        or peer_spec.get("mtls", {}).get("mode") != "STRICT"
+        or peer_spec.get("portLevelMtls") != {"8082": {"mode": "DISABLE"}}
+    ):
+        raise SystemExit(f"{product}: only the documentation port may bypass application mTLS")
 PY
 
 if unformatted=$(gofmt -l applications internal); [[ -n $unformatted ]]; then

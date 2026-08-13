@@ -541,27 +541,32 @@ func (a *app) loadSubscriptionsByIdentityState(ctx context.Context, provider, su
 
 func (a *app) changePlan(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		Plan string `json:"plan"`
+		Plan    string `json:"plan"`
+		Product string `json:"product"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&input); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "body must contain a plan"})
 		return
 	}
 	input.Plan = strings.ToLower(strings.TrimSpace(input.Plan))
-	if !validIdentifier(input.Plan) {
+	input.Product = strings.ToLower(strings.TrimSpace(input.Product))
+	if input.Product == "" {
+		input.Product = "inventory"
+	}
+	if !validIdentifier(input.Plan) || !selfServiceProductAvailable(input.Product) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid plan"})
 		return
 	}
 	customer := r.PathValue("customer")
-	current, err := a.loadSubscriptions(r.Context(), customer, "inventory")
+	current, err := a.loadSubscriptions(r.Context(), customer, input.Product)
 	if err != nil || len(current) != 1 {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "active customer subscription not found"})
 		return
 	}
 	oldPlan := current[0].Plan
-	apiKeyName := a.apiKeyName
-	if customer != "demo-company" {
-		apiKeyName, _ = selfServiceResourceNames(customer, "inventory")
+	apiKeyName, _ := selfServiceResourceNames(customer, input.Product)
+	if customer == "demo-company" && input.Product == "inventory" {
+		apiKeyName = a.apiKeyName
 	}
 	if oldPlan == input.Plan {
 		if err = a.kube.changeAPIKeyPlan(r.Context(), a.apiKeyNS, apiKeyName, input.Plan); err != nil {
@@ -608,7 +613,7 @@ func (a *app) changePlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.upgradeCounter.Add(1)
-	updated, err := a.loadSubscriptions(r.Context(), customer, "inventory")
+	updated, err := a.loadSubscriptions(r.Context(), customer, input.Product)
 	if err != nil {
 		serverError(w, err)
 		return
@@ -622,18 +627,23 @@ func (a *app) changeSubscriptionStatus(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Status  string `json:"status"`
 		Version int64  `json:"version"`
+		Product string `json:"product"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&input); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "body must contain status and version"})
 		return
 	}
 	input.Status = strings.ToLower(strings.TrimSpace(input.Status))
-	if (input.Status != "active" && input.Status != "suspended") || input.Version < 1 {
+	input.Product = strings.ToLower(strings.TrimSpace(input.Product))
+	if input.Product == "" {
+		input.Product = "inventory"
+	}
+	if (input.Status != "active" && input.Status != "suspended") || input.Version < 1 || !selfServiceProductAvailable(input.Product) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "status must be active or suspended with the current version"})
 		return
 	}
 	customer := r.PathValue("customer")
-	current, err := a.loadManagedSubscriptions(r.Context(), customer, "inventory")
+	current, err := a.loadManagedSubscriptions(r.Context(), customer, input.Product)
 	if err != nil || len(current) != 1 {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "managed customer subscription not found"})
 		return
@@ -680,7 +690,7 @@ func (a *app) changeSubscriptionStatus(w http.ResponseWriter, r *http.Request) {
 		serverError(w, err)
 		return
 	}
-	updated, err := a.loadManagedSubscriptions(r.Context(), customer, "inventory")
+	updated, err := a.loadManagedSubscriptions(r.Context(), customer, input.Product)
 	if err != nil || len(updated) != 1 {
 		serverError(w, errors.New("updated subscription status was not found"))
 		return

@@ -65,7 +65,7 @@ for a manually paced presentation.
 
 ### 1. Establish the baseline
 
-Show the `Inventory API` under **Connectivity Link → API Products** in the
+Show the `Inventory API` and `Payment API` under **Connectivity Link → API Products** in the
 OpenShift console. Explain that `APIProduct`, `PlanPolicy`, and `APIKey` are
 operator-managed platform APIs rather than records hidden inside a monolithic
 API-management product.
@@ -88,7 +88,9 @@ oc get pods -n api-monetization-observability
 make demo
 ```
 
-The script demonstrates, in order:
+The showcase first proves simultaneous Inventory Free and Payment Developer
+subscriptions with independent API keys, limits, and usage attribution. Its
+Inventory-only live-upgrade stage then demonstrates, in order:
 
 1. The gateway Argo CD Application is Synced and the exact JWT authentication
    and rate-limit policy generations are Enforced.
@@ -148,7 +150,7 @@ make portal
 ```
 
 Run `make portal` to print both generated identities. Sign in as
-`demo-developer`, choose the Inventory API and a plan, and select **Subscribe and
+`demo-developer`, choose Inventory or Payment and a plan, and select **Subscribe and
 generate key**. External Secrets creates the key material and RHCL approves the
 APIKey. Select **Reveal API key once**, copy it, and call the displayed endpoint.
 The key is not displayed on a later login. Select **Regenerate API key** to
@@ -157,6 +159,15 @@ Select **Get Keycloak token** to display a short-lived JWT and call the separate
 JWT endpoint with `Authorization: Bearer`. Both credentials resolve this
 developer's subscription and current plan. Change the plan from **My
 subscription** and show that the new limit applies immediately.
+
+Switch the product selector and subscribe to the other API on a different plan.
+The portal retains both subscriptions and exposes a different API key while the
+same Keycloak identity works on both JWT paths. The following deterministic
+test proves this without changing the browser account:
+
+```bash
+make multi-product-test
+```
 
 Generate the current draft under **Billing and invoices**. The persisted draft
 shows the plan base charge, stored billable units, allowance, overage, and total

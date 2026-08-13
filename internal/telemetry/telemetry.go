@@ -49,6 +49,7 @@ func (r *Recorder) Middleware(next http.Handler) http.Handler {
 		wrapped := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(wrapped, req)
 		duration := time.Since(started)
+		product := productName(req.URL.Path)
 		plan := cleanLabel(req.Header.Get("x-monetization-plan"), "unknown")
 		customer := cleanLabel(req.Header.Get("x-monetization-customer"), "anonymous")
 		key := strings.Join([]string{req.Method, routeName(req.URL.Path), fmt.Sprint(wrapped.status), plan, customer}, "\x00")
@@ -56,12 +57,12 @@ func (r *Recorder) Middleware(next http.Handler) http.Handler {
 		r.counts[key]++
 		r.durMS[key] += float64(duration.Microseconds()) / 1000
 		r.mu.Unlock()
-		if r.sinkURL != "" && customer != "anonymous" && routeName(req.URL.Path) == "inventory" {
+		if r.sinkURL != "" && customer != "anonymous" && product != "" {
 			event := usageEvent{
 				RequestID:     requestID,
 				Customer:      customer,
 				Plan:          plan,
-				Product:       "inventory",
+				Product:       product,
 				Operation:     req.Method + " " + routeName(req.URL.Path),
 				OccurredAt:    started.UTC(),
 				StatusCode:    wrapped.status,
@@ -166,6 +167,8 @@ func routeName(path string) string {
 	switch {
 	case strings.HasPrefix(path, "/inventory"):
 		return "inventory"
+	case strings.HasPrefix(path, "/payments"):
+		return "payments"
 	case strings.HasPrefix(path, "/api/subscriptions"):
 		return "subscriptions"
 	case strings.HasPrefix(path, "/api/plans"):
@@ -174,6 +177,17 @@ func routeName(path string) string {
 		return "health"
 	default:
 		return "other"
+	}
+}
+
+func productName(path string) string {
+	switch {
+	case strings.HasPrefix(path, "/inventory"):
+		return "inventory"
+	case strings.HasPrefix(path, "/payments"):
+		return "payments"
+	default:
+		return ""
 	}
 }
 

@@ -53,7 +53,7 @@ trust boundaries.
 | `gitops/applications/` | App-of-apps definitions and reconciliation ordering |
 | `operators/` | OLM subscriptions and operator groups |
 | `platform/` | Operator-managed platform operands and shared namespaces |
-| `applications/` | Inventory API and monetization control-plane source/builds |
+| `applications/` | Inventory, Payment, and monetization control-plane source/builds |
 | `policies/` | Gateway, authentication, authorization, and limit policies |
 | `dashboards/` | Business and platform observability assets |
 | `environments/` | Environment-specific composition and configuration |
@@ -102,10 +102,11 @@ dedicated application controller the cluster access required to reconcile this
 cluster-configuration repository, and applies the root application. Argo CD
 owns everything below that root.
 
-The root application currently points to this repository's canonical GitHub
-URL and the `main` branch. Before bootstrapping a fork or another branch, change
-the source in `bootstrap/root/application.yaml` and the two source literals in
-`gitops/applications/kustomization.yaml`.
+The root application points to this repository's canonical GitHub URL and the
+selected delivery branch. Before bootstrapping another branch, align
+`bootstrap/root/application.yaml`, the generated source in
+`gitops/applications/kustomization.yaml`, and every application `BuildConfig`
+Git ref. Restore all of them to `main` before merging a feature branch.
 
 Detailed prerequisites, verification, and recovery steps are in
 [the deployment guide](docs/deployment.md).
@@ -117,8 +118,8 @@ GitOps bootstrap, integrated-registry readiness validation, OpenShift Routes,
 Service Mesh, Connectivity Link, the enabled GitOps and RHCL console plugins,
 the RHCL developer catalog,
 External Secrets-generated API keys, Keycloak JWT clients, Free/Developer/Business/
-Enterprise plan policies plus a real Pay-as-you-go metered tier, an Inventory
-API, a PostgreSQL-backed subscription
+Enterprise plan policies plus a real Pay-as-you-go metered tier, independently
+monetized Inventory and Payment APIs, a PostgreSQL-backed subscription
 control plane, live plan changes, Prometheus metrics, an operator-managed
 Grafana instance and dashboard, structured logs, and an OpenTelemetry-to-Tempo
 trace pipeline.
@@ -129,8 +130,9 @@ usage, and upgrade APIs require the `monetization-admin` realm role; internal
 entitlement and usage ingestion use a separate, non-routed service port.
 
 Developers authenticate with the separate `monetization-developer` role. They
-can browse the API catalog, choose a plan, create their own PostgreSQL customer
-and subscription, and request an API key or short-lived Keycloak JWT. The
+can browse the multi-product API catalog, choose an independent plan for each
+product, create their own PostgreSQL customer and subscriptions, and request
+product-scoped API keys or a short-lived Keycloak JWT. The
 control plane creates an External Secrets Password generator and ExternalSecret
 before submitting the RHCL `APIKey`; the raw credential is displayed once and
 only its digest is retained in the commercial datastore. Developers can rotate
@@ -158,7 +160,8 @@ make showcase
 ```
 
 `make showcase` is the complete presentation path. It verifies the deployed
-platform, establishes a clean Free-plan window, proves API-key and JWT rate
+platform, proves simultaneous Inventory and Payment subscriptions, establishes
+a clean Free-plan window, proves API-key and JWT rate
 limiting plus the live Developer upgrade, creates real Pay-as-you-go usage and
 a draft invoice, prints Prometheus evidence and all UI/API URLs, and restores
 Demo Company to a reusable Free state. It prints a stage-by-stage PASS/FAIL
@@ -170,6 +173,7 @@ presentations:
 
 ```bash
 make lifecycle-test
+make multi-product-test
 make demo
 make metered-demo
 make observe
@@ -183,6 +187,12 @@ active API-key and JWT access, administrative suspension and resume, developer
 cancellation, operator-resource cleanup, and clean resubscription. It leaves
 the browser `demo-developer` and the deterministic `demo-company` scenario
 unchanged and returns its own automation subscription to a cancelled state.
+
+`make multi-product-test` creates simultaneous Inventory Free and Payment
+Developer subscriptions for the automation identity, proves both API-key and
+JWT paths, confirms per-product usage attribution, and cancels its test
+subscriptions afterward. The browser developer and Demo Company remain
+unchanged.
 
 `make metered-demo` changes Demo Company to Pay as you go, sends five real
 accepted requests through the OpenShift Route and Connectivity Link, waits for

@@ -27,3 +27,18 @@ func TestMiddlewareRecordsPlanAndCustomer(t *testing.T) {
 		}
 	}
 }
+
+func TestProductName(t *testing.T) {
+	t.Parallel()
+	for path, want := range map[string]string{
+		"/inventory":          "inventory",
+		"/inventory/RHCL-001": "inventory",
+		"/payments":           "payments",
+		"/payments/pay-1001":  "payments",
+		"/healthz":            "",
+	} {
+		if got := productName(path); got != want {
+			t.Errorf("productName(%q)=%q, want %q", path, got, want)
+		}
+	}
+}

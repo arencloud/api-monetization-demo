@@ -100,7 +100,7 @@
   <section id="admin-dashboard" class="hidden" aria-label="Monetization administration dashboard">
     <div class="grid">
       <article class="card"><div class="card-label">Customer</div><div class="value" id="customer">—</div><div class="subvalue" id="customer-id">—</div></article>
-      <article class="card"><div class="card-label">API product</div><div class="value" id="product">—</div><div class="subvalue">Inventory and availability</div></article>
+      <article class="card"><div class="card-label">API product</div><div class="value" id="product">—</div><div class="subvalue" id="admin-product-description">—</div></article>
       <article class="card"><div class="card-label">Current plan</div><div class="value" id="plan">—</div><div class="subvalue" id="price">—</div></article>
       <article class="card"><div class="card-label">Rate limit</div><div class="value" id="limit">—</div><div class="subvalue">Enforced by Connectivity Link</div></article>
       <article class="card"><div class="card-label">Accepted this month</div><div class="value" id="usage">—</div><div class="subvalue" id="included">—</div></article>
@@ -142,7 +142,8 @@
   <section id="developer-dashboard" class="hidden" aria-label="Developer subscription portal">
     <div class="grid">
       <article class="card catalog-card">
-        <div class="eyebrow">Available now</div>
+        <div class="eyebrow">Product catalog</div>
+        <select id="developer-products" aria-label="API product"></select>
         <h2 id="developer-product">Inventory API</h2>
         <p id="developer-description" class="product-description">Product and stock inventory operations.</p>
         <div id="subscribe-controls" class="plan-row">
@@ -181,7 +182,7 @@
 
       <article class="card credential-card">
         <h2>Keycloak JWT</h2>
-        <p class="subvalue">Short-lived developer token for the same Inventory subscription and live plan limit.</p>
+        <p class="subvalue">Short-lived developer token for the selected product subscription and live plan limit.</p>
         <div id="jwt-state" class="status">Subscribe to enable JWT access.</div>
         <div id="jwt-endpoint" class="subvalue"></div>
         <code id="jwt-value" class="credential hidden"></code>
@@ -211,8 +212,8 @@
       </article>
 
       <aside class="card side">
-        <h2>Coming next</h2>
-        <p class="subvalue">Payment API and AI Chat API are visible in the product model and will be enabled after their Gateway routes and policies are deployed.</p>
+        <h2>Multi-product catalog</h2>
+        <p class="subvalue">Inventory and Payment are independently subscribable and metered. AI Chat remains visible as the next product candidate.</p>
       </aside>
     </div>
   </section>
@@ -221,7 +222,7 @@
 </main>
 <script>
 const storageKey = 'api-monetization-oidc';
-const state = { config: null, tokens: null, identity: null, subscription: null, adminSubscriptions: [], plans: [], catalog: null, credential: null, jwtToken: null, jwtEndpoint: null, billing: null, audit: [] };
+const state = { config: null, tokens: null, identity: null, subscription: null, subscriptions: [], selectedProduct: 'inventory', adminSubscriptions: [], plans: [], catalog: null, credential: null, jwtToken: null, apiBase: null, jwtBase: null, billing: null, audit: [] };
 const $ = selector => document.querySelector(selector);
 
 function encodeBase64URL(bytes) {
@@ -318,7 +319,7 @@ async function gatewayAccessToken() {
   if (hasAudience(token, 'api-monetization')) return token;
   if (!state.tokens?.refresh_token) throw new Error('Sign out and sign in again to enable JWT API access.');
   token = await exchange({grant_type: 'refresh_token', client_id: state.config.clientId, refresh_token: state.tokens.refresh_token});
-  if (!hasAudience(token, 'api-monetization')) throw new Error('Keycloak has not applied the Inventory API audience yet. Sign out and sign in again after GitOps finishes syncing.');
+  if (!hasAudience(token, 'api-monetization')) throw new Error('Keycloak has not applied the API gateway audience yet. Sign out and sign in again after GitOps finishes syncing.');
   return token;
 }
 
@@ -338,10 +339,22 @@ function clusterLinks() {
   if (marker < 0) return;
   const suffix = location.hostname.slice(marker);
   $('#catalog-link').href = `https://console-openshift-console${suffix}/api-catalog`;
-  $('#api-link').href = `https://api-monetization${suffix}/inventory`;
+  state.apiBase = `https://api-monetization${suffix}`;
+  state.jwtBase = `https://api-monetization-jwt${suffix}`;
   $('#grafana-link').href = `https://api-monetization-grafana-route-api-monetization-observability${suffix}/d/api-monetization`;
   $('#traces-link').href = `https://tempo-api-monetization-jaegerui-api-monetization-observability${suffix}`;
-  state.jwtEndpoint = `https://api-monetization-jwt${suffix}/inventory`;
+  updateProductLinks();
+}
+
+function productPath(product) {
+  return product === 'payments' ? '/payments' : '/inventory';
+}
+
+function updateProductLinks() {
+  const path = productPath(state.subscription?.product || state.selectedProduct);
+  if (state.apiBase) $('#api-link').href = state.apiBase + path;
+  $('#api-link').textContent = `${state.subscription?.product || state.selectedProduct} API endpoint ↗`;
+  $('#jwt-endpoint').textContent = state.jwtBase ? state.jwtBase + path : '';
 }
 
 function money(cents) {
@@ -470,6 +483,8 @@ async function refreshAdmin() {
   $('#customer').textContent = state.subscription.customer;
   $('#customer-id').textContent = state.subscription.customerId;
   $('#product').textContent = state.subscription.product;
+  $('#admin-product-description').textContent = state.subscription.product === 'payments' ? 'Authorization and settlement' : 'Inventory and availability';
+  updateProductLinks();
   $('#plan').textContent = state.subscription.planName;
   $('#price').textContent = money(state.subscription.monthlyPriceCents);
   $('#limit').textContent = state.subscription.rateLimitRequests ? `${state.subscription.rateLimitRequests.toLocaleString()} / ${state.subscription.rateLimitWindowSeconds}s` : 'Unlimited';
@@ -513,10 +528,21 @@ async function refreshDeveloper() {
   ]);
   state.catalog = catalog;
   state.plans = catalog.plans;
-  state.subscription = subscriptions.find(item => item.product === 'inventory') || null;
-  const product = catalog.products.find(item => item.id === 'inventory');
+  state.subscriptions = subscriptions;
+  const availableProducts = catalog.products.filter(item => item.available);
+  if (!availableProducts.some(item => item.id === state.selectedProduct)) state.selectedProduct = availableProducts[0]?.id || 'inventory';
+  $('#developer-products').replaceChildren(...availableProducts.map(item => {
+    const option = document.createElement('option');
+    option.value = item.id;
+    option.textContent = `${item.displayName}${subscriptions.some(subscription => subscription.product === item.id) ? ' · subscribed' : ''}`;
+    option.selected = item.id === state.selectedProduct;
+    return option;
+  }));
+  state.subscription = subscriptions.find(item => item.product === state.selectedProduct) || null;
+  const product = catalog.products.find(item => item.id === state.selectedProduct);
   $('#developer-product').textContent = product?.displayName || 'Inventory API';
   $('#developer-description').textContent = product?.description || 'Product and stock inventory operations';
+  updateProductLinks();
   planOptions($('#developer-plans'), state.plans, 'free');
   planOptions($('#developer-upgrade-plan'), state.plans, state.subscription?.plan);
   $('#subscribe-controls').classList.toggle('hidden', Boolean(state.subscription));
@@ -524,6 +550,7 @@ async function refreshDeveloper() {
   renderBilling(billing);
   renderAudit(audit);
   if (!state.subscription) {
+    state.credential = null;
     $('#developer-status').textContent = billing ? 'No active subscription. Billing history remains available below.' : 'Choose a commercial plan to create your subscription.';
     $('#credential-state').textContent = 'Subscribe to create a credential.';
     $('#reveal-credential').classList.add('hidden');
@@ -549,14 +576,14 @@ async function refreshDeveloper() {
     return;
   }
   $('#developer-upgrade').disabled = false;
-  const credential = await api('/api/me/credentials/inventory/status');
+  const credential = await api(`/api/me/credentials/${state.selectedProduct}/status`);
   state.credential = credential;
   $('#credential-state').textContent = credential.revealed ? 'API key is active and its value has already been revealed.' : credential.status === 'ready' ? 'Credential approved and ready to reveal.' : 'External Secrets and Connectivity Link are provisioning the credential.';
   $('#developer-endpoint').textContent = credential.endpoint || 'Provisioning';
   $('#reveal-credential').classList.toggle('hidden', credential.status !== 'ready' || credential.revealed);
   $('#rotate-credential').classList.toggle('hidden', credential.status === 'provisioning');
   $('#get-jwt').classList.remove('hidden');
-  $('#jwt-endpoint').textContent = state.jwtEndpoint || '';
+  $('#jwt-endpoint').textContent = state.jwtBase ? state.jwtBase + productPath(state.selectedProduct) : '';
   if (!state.jwtToken) $('#jwt-state').textContent = 'A short-lived Keycloak access token is ready on request.';
 }
 
@@ -586,7 +613,7 @@ async function applyPlan() {
     await api(`/api/subscriptions/${state.subscription.customerId}/plan`, {
       method: 'POST',
       headers: {'content-type': 'application/json'},
-      body: JSON.stringify({plan: $('#plans').value})
+      body: JSON.stringify({plan: $('#plans').value, product: state.subscription.product})
     });
     await refreshAdmin();
     status.className = 'status success';
@@ -608,7 +635,7 @@ async function changeAdminSubscriptionStatus() {
   try {
     await api(`/api/subscriptions/${state.subscription.customerId}/status`, {
       method: 'POST', headers: {'content-type': 'application/json'},
-      body: JSON.stringify({status: nextStatus, version: state.subscription.version})
+      body: JSON.stringify({status: nextStatus, version: state.subscription.version, product: state.subscription.product})
     });
     await refreshAdmin();
   } catch (error) {
@@ -625,7 +652,7 @@ async function subscribe() {
   try {
     await api('/api/me/subscriptions', {
       method: 'POST', headers: {'content-type': 'application/json'},
-      body: JSON.stringify({product: 'inventory', plan: $('#developer-plans').value})
+      body: JSON.stringify({product: state.selectedProduct, plan: $('#developer-plans').value})
     });
     status.className = 'status success';
     status.textContent = 'Subscription created. Waiting for credential approval…';
@@ -649,7 +676,7 @@ async function subscribe() {
 async function revealCredential() {
   $('#reveal-credential').disabled = true;
   try {
-    const credential = await api('/api/me/credentials/inventory/reveal', {method: 'POST'});
+    const credential = await api(`/api/me/credentials/${state.selectedProduct}/reveal`, {method: 'POST'});
     $('#credential-value').textContent = credential.apiKey;
     $('#credential-value').classList.remove('hidden');
     $('#copy-credential').classList.remove('hidden');
@@ -667,7 +694,7 @@ async function rotateCredential() {
   $('#rotate-credential').disabled = true;
   $('#credential-state').textContent = 'Revoking the previous key and generating a replacement…';
   try {
-    await api('/api/me/credentials/inventory/rotate', {method: 'POST'});
+    await api(`/api/me/credentials/${state.selectedProduct}/rotate`, {method: 'POST'});
     $('#credential-value').textContent = '';
     $('#credential-value').classList.add('hidden');
     $('#copy-credential').classList.add('hidden');
@@ -706,7 +733,7 @@ async function changeDeveloperPlan() {
   $('#developer-upgrade').disabled = true;
   status.textContent = 'Applying the new subscription plan…';
   try {
-    await api('/api/me/subscriptions/inventory/plan', {
+    await api(`/api/me/subscriptions/${state.selectedProduct}/plan`, {
       method: 'POST', headers: {'content-type': 'application/json'},
       body: JSON.stringify({plan: $('#developer-upgrade-plan').value})
     });
@@ -752,7 +779,7 @@ async function cancelSubscription() {
   const status = $('#developer-status');
   status.textContent = 'Cancelling entitlement and removing operator-managed credentials…';
   try {
-    const result = await api('/api/me/subscriptions/inventory/cancel', {
+    const result = await api(`/api/me/subscriptions/${state.selectedProduct}/cancel`, {
       method: 'POST', headers: {'content-type': 'application/json'},
       body: JSON.stringify({version: state.subscription.version})
     });
@@ -801,6 +828,17 @@ $('#admin-subscriptions').addEventListener('change', event => {
   refreshAdmin().catch(error => showNotice(error.message));
 });
 $('#admin-subscription-status').addEventListener('click', changeAdminSubscriptionStatus);
+$('#developer-products').addEventListener('change', event => {
+  state.selectedProduct = event.target.value;
+  state.jwtToken = null;
+  $('#credential-value').textContent = '';
+  $('#credential-value').classList.add('hidden');
+  $('#copy-credential').classList.add('hidden');
+  $('#jwt-value').textContent = '';
+  $('#jwt-value').classList.add('hidden');
+  $('#copy-jwt').classList.add('hidden');
+  refreshDeveloper().catch(error => showNotice(error.message));
+});
 $('#subscribe').addEventListener('click', subscribe);
 $('#reveal-credential').addEventListener('click', revealCredential);
 $('#rotate-credential').addEventListener('click', rotateCredential);

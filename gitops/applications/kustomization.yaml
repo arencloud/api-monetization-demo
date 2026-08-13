@@ -16,6 +16,7 @@ resources:
   - database.yaml
   - identity.yaml
   - inventory.yaml
+  - payments.yaml
   - control.yaml
   - gateway.yaml
   - observability.yaml

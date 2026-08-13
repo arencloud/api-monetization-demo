@@ -81,6 +81,7 @@ rules:
       - configmaps
     resourceNames:
       - inventory-api-openapi
+      - payments-api-openapi
     verbs:
       - get
       - patch
@@ -90,6 +91,7 @@ rules:
       - deployments
     resourceNames:
       - inventory-api
+      - payments-api
     verbs:
       - get
       - patch
@@ -307,6 +309,9 @@ spec:
 
               publish_openapi() {
                 local host=$1
+                local product=$2
+                local configmap="${product}-api-openapi"
+                local deployment="${product}-api"
                 local openapi_document=""
                 local current_url
                 local rollout_state
@@ -317,14 +322,14 @@ spec:
                 local available_replicas
 
                 for _ in $(seq 1 60); do
-                  openapi_document=$(api get configmap inventory-api-openapi \
+                  openapi_document=$(api get configmap "$configmap" \
                     -n api-monetization-apps \
                     -o go-template='{{index .data "openapi.yaml"}}' 2>/dev/null || true)
                   [[ -n $openapi_document ]] && break
                   sleep 5
                 done
                 if [[ -z $openapi_document ]]; then
-                  echo "ConfigMap inventory-api-openapi was not ready before the timeout" >&2
+                  echo "ConfigMap $configmap was not ready before the timeout" >&2
                   return 1
                 fi
 
@@ -347,15 +352,15 @@ spec:
                 } > /tmp/openapi-patch.yaml
 
                 echo "publishing OpenAPI server URL https://$host"
-                retry_api patch configmap inventory-api-openapi \
+                retry_api patch configmap "$configmap" \
                   -n api-monetization-apps \
                   --type=merge \
                   --patch-file=/tmp/openapi-patch.yaml
-                retry_api rollout restart deployment/inventory-api \
+                retry_api rollout restart deployment/"$deployment" \
                   -n api-monetization-apps
 
                 for _ in $(seq 1 60); do
-                  rollout_state=$(api get deployment inventory-api \
+                  rollout_state=$(api get deployment "$deployment" \
                     -n api-monetization-apps \
                     -o jsonpath='{.metadata.generation}{"|"}{.status.observedGeneration}{"|"}{.spec.replicas}{"|"}{.status.updatedReplicas}{"|"}{.status.availableReplicas}' \
                     2>/dev/null || true)
@@ -363,13 +368,13 @@ spec:
                   if [[ -n $generation && $observed_generation == "$generation" && \
                     $updated_replicas == "$desired_replicas" && \
                     $available_replicas == "$desired_replicas" ]]; then
-                    echo "Inventory API is serving the updated OpenAPI document"
+                    echo "$deployment is serving the updated OpenAPI document"
                     return 0
                   fi
                   sleep 5
                 done
 
-                echo "Inventory API rollout did not complete before the timeout" >&2
+                echo "$deployment rollout did not complete before the timeout" >&2
                 return 1
               }
 
@@ -378,7 +383,10 @@ spec:
               jwt_hostname=$(route_host api-monetization-jwt)
               align_route "$api_hostname" inventory-api-key
               align_route "$jwt_hostname" inventory-jwt
-              publish_openapi "$api_hostname"
+              align_route "$api_hostname" payments-api-key
+              align_route "$jwt_hostname" payments-jwt
+              publish_openapi "$api_hostname" inventory
+              publish_openapi "$api_hostname" payments
           resources:
             requests:
               cpu: 10m
