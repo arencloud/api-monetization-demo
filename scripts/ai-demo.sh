@@ -154,7 +154,8 @@ chat_request() {
 }
 
 verify_preflight() {
-  local hostname=$1 label=$2 headers="$work_dir/$label-preflight.headers"
+  local hostname=$1 label=$2
+  local headers="$work_dir/$label-preflight.headers"
   local status
   status=$(curl --silent --show-error --output /dev/null --dump-header "$headers" \
     --write-out '%{http_code}' --max-time 30 \
