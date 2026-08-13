@@ -172,24 +172,30 @@ for policy in token_policies:
     target = policy["spec"]["targetRef"]
     actual_token_targets.add(target["name"])
     limits = policy["spec"]["limits"]
+    metadata_root = (
+        "auth.identity" if target["name"] == "ai-chat-api-key" else "auth.kuadrant"
+    )
     for plan, expected_limit in expected_token_limits.items():
         plan_limit = limits.get(plan, {})
         rates = plan_limit.get("rates", [])
         if rates != [{"limit": expected_limit, "window": "720h"}]:
             raise SystemExit(f"{policy['metadata']['name']}: {plan} token quota does not match the commercial plan")
-        if plan_limit.get("counters") != [{"expression": "auth.kuadrant.customer"}]:
-            raise SystemExit(f"{policy['metadata']['name']}: {plan} token quota is not isolated by the Kuadrant customer metadata")
-        if plan_limit.get("when") != [{"predicate": f'auth.kuadrant.plan == "{plan}"'}]:
-            raise SystemExit(f"{policy['metadata']['name']}: {plan} token quota does not select the Kuadrant plan metadata")
+        if plan_limit.get("counters") != [{"expression": f"{metadata_root}.customer"}]:
+            raise SystemExit(f"{policy['metadata']['name']}: {plan} token quota is not isolated by the RHCL customer identity")
+        if plan_limit.get("when") != [{"predicate": f'{metadata_root}.plan == "{plan}"'}]:
+            raise SystemExit(f"{policy['metadata']['name']}: {plan} token quota does not select the RHCL plan metadata")
 if actual_token_targets != expected_token_targets:
     raise SystemExit(f"AI token policies do not cover both credential routes: {actual_token_targets}")
 
 with open("platform/gateway/ai-chat-auth-policies.yaml", encoding="utf-8") as stream:
     ai_auth_policies = [resource for resource in yaml.safe_load_all(stream) if resource]
 for policy in ai_auth_policies:
-    kuadrant_properties = (
+    expected_filter_name = (
+        "identity" if policy["metadata"]["name"] == "ai-chat-api-key" else "kuadrant"
+    )
+    response_properties = (
         policy.get("spec", {}).get("rules", {}).get("response", {})
-        .get("success", {}).get("filters", {}).get("kuadrant", {})
+        .get("success", {}).get("filters", {}).get(expected_filter_name, {})
         .get("json", {}).get("properties", {})
     )
     expected_customer_selector = (
@@ -197,7 +203,7 @@ for policy in ai_auth_policies:
         if policy["metadata"]["name"] == "ai-chat-api-key"
         else "auth.metadata.subscription.customerId"
     )
-    if kuadrant_properties != {
+    if response_properties != {
         "customer": {"selector": expected_customer_selector},
         "plan": {"selector": "auth.metadata.subscription.plan"},
     }:

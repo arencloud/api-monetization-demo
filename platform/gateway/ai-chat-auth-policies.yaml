@@ -31,7 +31,7 @@ spec:
     response:
       success:
         filters:
-          kuadrant:
+          identity:
             json:
               properties:
                 customer: {selector: auth.identity.metadata.annotations.secret\.kuadrant\.io/user-id}
