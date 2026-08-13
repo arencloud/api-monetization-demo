@@ -56,7 +56,7 @@ namespaces. It does not grant `cluster-admin` to users who log in to Argo CD.
 It does not directly apply any platform resource. Argo CD reconciles the child
 applications from Git.
 
-The Inventory API and monetization control application include generated
+The Inventory API, Payment API, and monetization control application include generated
 source-trigger ConfigMaps. Their content hash changes whenever local application
 source changes, making the Argo CD application OutOfSync and executing its
 OpenShift source-build hook. The resulting ImageStream update rolls the
@@ -76,6 +76,7 @@ oc get kuadrant -n kuadrant-system
 oc get istio -n api-monetization-mesh-system
 oc get istiocni -n api-monetization-istio-cni
 make verify
+make multi-product-test
 make demo
 make observe
 make grafana
@@ -96,6 +97,13 @@ It does not alter the `demo-developer` browser account or `demo-company` used by
 
 ```bash
 make lifecycle-test
+```
+
+Validate simultaneous Inventory and Payment subscriptions, product-scoped
+credentials, both JWT paths, and independent usage attribution with:
+
+```bash
+make multi-product-test
 ```
 
 Print the admitted portal URL and generated developer and administrator logins:
@@ -140,15 +148,16 @@ OpenShift Routes provide HTTPS externally and generate the API-key and JWT
 hostnames beneath the cluster ingress domain from the Route subdomains
 `api-monetization` and `api-monetization-jwt`. A GitOps sync hook copies the
 admitted Route hosts into the corresponding Gateway API `HTTPRoute` resources,
-and the Inventory API's published OpenAPI document, so edge routing, Gateway
-routing, and the APIProduct interactive documentation agree without hard-coded
+and both product APIs' published OpenAPI documents, so edge routing, Gateway
+routing, and APIProduct interactive documentation agree without hard-coded
 cluster DNS names.
 
 The Developer Portal controller does not run inside the application Service
-Mesh. It fetches the OpenAPI document from the Inventory workload's dedicated
-port 8082; mTLS is disabled only for that documentation port while API traffic
-on port 8080 remains `STRICT`. An earlier Gateway-application sync-wave hook
-waits for a valid OpenAPI response before allowing the APIProduct generation to reconcile.
+Mesh. It fetches each OpenAPI document from the corresponding workload's
+dedicated port 8082; mTLS is disabled only for each documentation port while
+API traffic on port 8080 remains `STRICT`. An earlier Gateway-application
+sync-wave hook waits for both valid OpenAPI responses before allowing the
+APIProduct generations to reconcile.
 `make verify` reads `OpenAPISpecReady` directly and reports `FetchFailed`
 messages immediately instead of waiting on an empty status field.
 

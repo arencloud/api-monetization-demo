@@ -102,6 +102,7 @@ for application_name in \
   api-monetization-database \
   api-monetization-identity \
   api-monetization-inventory \
+  api-monetization-payments \
   api-monetization-control \
   api-monetization-service-mesh \
   api-monetization-connectivity-link \
@@ -147,8 +148,10 @@ oc wait route/api-monetization-keycloak -n api-monetization-identity \
 echo "waiting for application builds and workloads"
 oc wait clusteroperator/image-registry --for=condition=Available --timeout=10m
 wait_for_image_stream_tag inventory-api:demo api-monetization-apps
+wait_for_image_stream_tag payments-api:demo api-monetization-apps
 wait_for_image_stream_tag monetization-control:demo api-monetization-data
 oc rollout status deployment/inventory-api -n api-monetization-apps --timeout=10m
+oc rollout status deployment/payments-api -n api-monetization-apps --timeout=10m
 oc rollout status deployment/monetization-control -n api-monetization-data --timeout=10m
 oc wait route/monetization-control -n api-monetization-data \
   --for=jsonpath='{.status.ingress[0].conditions[0].status}'=True --timeout=5m
@@ -192,12 +195,18 @@ if [[ $gateway_class != "istio" || $gateway_controller != "istio.io/gateway-cont
 fi
 peer_mtls=$(oc get peerauthentication.security.istio.io default \
   -n api-monetization-apps -o jsonpath='{.spec.mtls.mode}')
-openapi_mtls=$(oc get peerauthentication.security.istio.io inventory-api \
-  -n api-monetization-apps -o jsonpath='{.spec.portLevelMtls.8082.mode}')
-if [[ $peer_mtls != "STRICT" || $openapi_mtls != "DISABLE" ]]; then
-  echo "error: application API must enforce STRICT mTLS with only OpenAPI port 8082 disabled" >&2
+if [[ $peer_mtls != "STRICT" ]]; then
+  echo "error: application namespace must enforce STRICT mTLS" >&2
   exit 1
 fi
+for product in inventory payments; do
+  openapi_mtls=$(oc get peerauthentication.security.istio.io "$product-api" \
+    -n api-monetization-apps -o jsonpath='{.spec.portLevelMtls.8082.mode}')
+  if [[ $openapi_mtls != "DISABLE" ]]; then
+    echo "error: $product API must disable mTLS only for its OpenAPI documentation port" >&2
+    exit 1
+  fi
+done
 if oc get destinationrule.networking.istio.io/inventory-api-cross-mesh \
   -n api-monetization-gateway >/dev/null 2>&1; then
   echo "error: obsolete cross-mesh plaintext exception still exists" >&2
@@ -231,14 +240,20 @@ gateway_proxy=$(oc get pods -n api-monetization-gateway \
   -l gateway.networking.k8s.io/gateway-name=api-monetization \
   -o jsonpath='{range .items[*].spec.initContainers[*]}{.name}{"\n"}{end}{range .items[*].spec.containers[*]}{.name}{"\n"}{end}' \
   | grep -Fx istio-proxy | head -n 1 || true)
-inventory_proxy=$(oc get pods -n api-monetization-apps \
-  -l app.kubernetes.io/name=inventory-api \
-  -o jsonpath='{range .items[*].spec.initContainers[*]}{.name}{"\n"}{end}{range .items[*].spec.containers[*]}{.name}{"\n"}{end}' \
-  | grep -Fx istio-proxy | head -n 1 || true)
-if [[ $gateway_proxy != "istio-proxy" || $inventory_proxy != "istio-proxy" ]]; then
-  echo "error: Gateway or Inventory workload is missing its Service Mesh proxy" >&2
+if [[ $gateway_proxy != "istio-proxy" ]]; then
+  echo "error: Gateway workload is missing its Service Mesh proxy" >&2
   exit 1
 fi
+for product in inventory payments; do
+  product_proxy=$(oc get pods -n api-monetization-apps \
+    -l "app.kubernetes.io/name=$product-api" \
+    -o jsonpath='{range .items[*].spec.initContainers[*]}{.name}{"\n"}{end}{range .items[*].spec.containers[*]}{.name}{"\n"}{end}' \
+    | grep -Fx istio-proxy | head -n 1 || true)
+  if [[ $product_proxy != "istio-proxy" ]]; then
+    echo "error: $product workload is missing its Service Mesh proxy" >&2
+    exit 1
+  fi
+done
 oc wait route/api-monetization -n api-monetization-gateway \
   --for=jsonpath='{.status.ingress[0].conditions[0].status}'=True --timeout=5m
 oc wait route/api-monetization-jwt -n api-monetization-gateway \
@@ -253,13 +268,19 @@ for route_name in api-monetization api-monetization-jwt; do
 done
 wait_for_http_route inventory-api-key api-monetization-apps
 wait_for_http_route inventory-jwt api-monetization-apps
-for policy in inventory-api-key inventory-jwt; do
+wait_for_http_route payments-api-key api-monetization-apps
+wait_for_http_route payments-jwt api-monetization-apps
+for policy in inventory-api-key inventory-jwt payments-api-key payments-jwt; do
   oc wait --for=condition=Enforced "authpolicies.kuadrant.io/$policy" \
     -n api-monetization-apps --timeout=5m
 done
 oc wait --for=condition=Enforced ratelimitpolicies.kuadrant.io/inventory-jwt-plans \
   -n api-monetization-apps --timeout=5m
 oc wait --for=condition=Enforced planpolicies.extensions.kuadrant.io/inventory-api-plans \
+  -n api-monetization-apps --timeout=5m
+oc wait --for=condition=Enforced ratelimitpolicies.kuadrant.io/payments-jwt-plans \
+  -n api-monetization-apps --timeout=5m
+oc wait --for=condition=Enforced planpolicies.extensions.kuadrant.io/payments-api-plans \
   -n api-monetization-apps --timeout=5m
 oc wait --for=condition=Approved apikeys.devportal.kuadrant.io/demo-inventory-key \
   -n api-monetization-apps --timeout=5m
@@ -268,66 +289,61 @@ api_hostname=$(oc get route api-monetization -n api-monetization-gateway \
   -o jsonpath='{.status.ingress[0].host}')
 jwt_hostname=$(oc get route api-monetization-jwt -n api-monetization-gateway \
   -o jsonpath='{.status.ingress[0].host}')
-api_route_hostname=$(oc get httproute inventory-api-key -n api-monetization-apps \
-  -o jsonpath='{.spec.hostnames[0]}')
-jwt_route_hostname=$(oc get httproute inventory-jwt -n api-monetization-apps \
-  -o jsonpath='{.spec.hostnames[0]}')
-if [[ $api_hostname != "$api_route_hostname" || $jwt_hostname != "$jwt_route_hostname" ]]; then
-  echo "error: OpenShift Route and Gateway API HTTPRoute hostnames do not match" >&2
-  exit 1
-fi
+for product in inventory payments; do
+  api_route_hostname=$(oc get httproute "$product-api-key" -n api-monetization-apps \
+    -o jsonpath='{.spec.hostnames[0]}')
+  jwt_route_hostname=$(oc get httproute "$product-jwt" -n api-monetization-apps \
+    -o jsonpath='{.spec.hostnames[0]}')
+  if [[ $api_hostname != "$api_route_hostname" || $jwt_hostname != "$jwt_route_hostname" ]]; then
+    echo "error: $product OpenShift Route and Gateway API HTTPRoute hostnames do not match" >&2
+    exit 1
+  fi
+done
 
-echo "waiting for the APIProduct to publish the admitted API URL"
-api_product_ready=false
-for _ in $(seq 1 60); do
-  api_product=$(oc get apiproduct inventory-api -n api-monetization-apps \
-    -o json 2>/dev/null || true)
-  if [[ -n $api_product ]]; then
-    api_product_generation=$(jq -r '.metadata.generation // 0' <<<"$api_product")
-    api_product_observed_generation=$(jq -r '.status.observedGeneration // 0' <<<"$api_product")
-    api_product_openapi_status=$(jq -r '
-      [.status.conditions[]? | select(.type == "OpenAPISpecReady")][0].status // ""
-    ' <<<"$api_product")
-    api_product_openapi_reason=$(jq -r '
-      [.status.conditions[]? | select(.type == "OpenAPISpecReady")][0].reason // ""
-    ' <<<"$api_product")
-
-    if [[ $api_product_generation == "$api_product_observed_generation" ]]; then
-      if [[ $api_product_openapi_status == "True" ]]; then
-        api_product_server=$(jq -r '.status.openapi.raw // ""' <<<"$api_product" \
-          | sed -n 's/^  - url: //p' | head -n 1)
-        if [[ $api_product_server != "https://$api_hostname" ]]; then
-          echo "error: APIProduct OpenAPI server is ${api_product_server:-empty}; expected https://$api_hostname" >&2
+echo "waiting for APIProducts to publish the admitted API URL"
+for product in inventory payments; do
+  api_product_ready=false
+  api_product=""
+  for _ in $(seq 1 60); do
+    api_product=$(oc get apiproduct "$product-api" -n api-monetization-apps \
+      -o json 2>/dev/null || true)
+    if [[ -n $api_product ]]; then
+      api_product_generation=$(jq -r '.metadata.generation // 0' <<<"$api_product")
+      api_product_observed_generation=$(jq -r '.status.observedGeneration // 0' <<<"$api_product")
+      api_product_openapi_status=$(jq -r '[.status.conditions[]? | select(.type == "OpenAPISpecReady")][0].status // ""' <<<"$api_product")
+      api_product_openapi_reason=$(jq -r '[.status.conditions[]? | select(.type == "OpenAPISpecReady")][0].reason // ""' <<<"$api_product")
+      if [[ $api_product_generation == "$api_product_observed_generation" ]]; then
+        if [[ $api_product_openapi_status == "True" ]]; then
+          api_product_server=$(jq -r '.status.openapi.raw // ""' <<<"$api_product" \
+            | sed -n 's/^  - url: //p' | head -n 1)
+          if [[ $api_product_server != "https://$api_hostname" ]]; then
+            echo "error: $product APIProduct server is ${api_product_server:-empty}; expected https://$api_hostname" >&2
+            exit 1
+          fi
+          api_product_ready=true
+          break
+        fi
+        if [[ $api_product_openapi_status == "False" && $api_product_openapi_reason == "FetchFailed" ]]; then
+          api_product_openapi_message=$(jq -r '[.status.conditions[]? | select(.type == "OpenAPISpecReady")][0].message' <<<"$api_product")
+          echo "error: APIProduct controller could not fetch the $product OpenAPI document" >&2
+          echo "$api_product_openapi_message" >&2
           exit 1
         fi
-        api_product_ready=true
-        break
-      fi
-
-      if [[ $api_product_openapi_status == "False" && \
-        $api_product_openapi_reason == "FetchFailed" ]]; then
-        api_product_openapi_message=$(jq -r '
-          [.status.conditions[]? | select(.type == "OpenAPISpecReady")][0].message
-        ' <<<"$api_product")
-        echo "error: APIProduct controller could not fetch the Inventory OpenAPI document" >&2
-        echo "$api_product_openapi_message" >&2
-        echo "the controller does not retry this generation; verify the OpenAPI readiness hook and documentation port" >&2
-        exit 1
       fi
     fi
+    sleep 5
+  done
+  if [[ $api_product_ready != "true" ]]; then
+    echo "error: $product APIProduct did not publish a ready OpenAPI document within 5 minutes" >&2
+    [[ -n $api_product ]] && jq -r '.status.conditions[]? | "  \(.type)=\(.status) reason=\(.reason): \(.message)"' <<<"$api_product" >&2
+    exit 1
   fi
-  sleep 5
+  echo "$product APIProduct publishes https://$api_hostname"
 done
-if [[ $api_product_ready != "true" ]]; then
-  echo "error: APIProduct did not publish a ready OpenAPI document within 5 minutes" >&2
-  [[ -n ${api_product:-} ]] && jq -r '
-    .status.conditions[]? | "  \(.type)=\(.status) reason=\(.reason): \(.message)"
-  ' <<<"$api_product" >&2
-  exit 1
-fi
-echo "APIProduct OpenAPI document is ready and publishes https://$api_hostname"
 echo "API-key endpoint: https://$api_hostname/inventory"
 echo "JWT endpoint: https://$jwt_hostname/inventory"
+echo "Payment API-key endpoint: https://$api_hostname/payments"
+echo "Payment JWT endpoint: https://$jwt_hostname/payments"
 
 echo "validating authenticated traffic through the complete data path"
 router_hostname=$(oc get route api-monetization -n api-monetization-gateway \
@@ -372,6 +388,17 @@ if [[ $jwt_status != "401" ]]; then
   exit 1
 fi
 echo "JWT endpoint certificate is valid and unauthenticated traffic returned HTTP 401"
+payments_jwt_status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+  --connect-to "$jwt_hostname:443:$router_hostname:443" \
+  --header "Host: $jwt_hostname" \
+  "https://$jwt_hostname/payments")
+if [[ $payments_jwt_status != "401" ]]; then
+  echo "error: unauthenticated Payment JWT request returned HTTP $payments_jwt_status instead of 401" >&2
+  exit 1
+fi
+echo "Payment JWT path is protected and returned HTTP 401"
 
 echo "validating JWT identity-to-subscription resolution"
 keycloak_hostname=$(oc get route api-monetization-keycloak \
@@ -493,13 +520,16 @@ developer_catalog=$(curl --silent --show-error --fail \
   --connect-to "$portal_hostname:443:$portal_router_hostname:443" \
   --header "Authorization: Bearer $developer_token" \
   "https://$portal_hostname/api/catalog")
-if ! jq -e 'any(.products[]; .id == "inventory" and .available == true)' \
+if ! jq -e '
+  any(.products[]; .id == "inventory" and .available == true) and
+  any(.products[]; .id == "payments" and .available == true)
+' \
   <<<"$developer_catalog" >/dev/null; then
-  echo "error: developer catalog does not expose the Inventory API" >&2
+  echo "error: developer catalog does not expose both Inventory and Payment APIs" >&2
   exit 1
 fi
 echo "Portal: https://$portal_hostname (OIDC discovery, role boundary, and invoice API verified)"
-echo "Developer self-service identity and Inventory API catalog verified"
+echo "Developer self-service identity and multi-product catalog verified"
 
 echo "waiting for operator console plugins"
 for plugin in gitops-plugin kuadrant-console-plugin; do

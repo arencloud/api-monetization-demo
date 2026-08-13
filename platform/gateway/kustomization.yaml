@@ -12,5 +12,10 @@ resources:
   - inventory-jwt-rate-limits.yaml
   - openapi-readiness.yaml
   - inventory-api-product.yaml
+  - payments-routes.yaml
+  - payments-auth-policies.yaml
+  - payments-plan-policy.yaml
+  - payments-jwt-rate-limits.yaml
+  - payments-api-product.yaml
   - demo-api-key.yaml
   - portal-rbac.yaml

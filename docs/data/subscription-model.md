@@ -19,9 +19,10 @@ the first vertical slice.
 | `subscription_events` | Suspension, resumption, and cancellation audit events with actor metadata |
 | `schema_migrations` | Idempotent control-service schema migration history |
 
-The demo seed creates Free, Pay as you go, Developer, Business, and Enterprise plans; Inventory,
-Payment, and AI Chat products; and one Free Inventory subscription for Demo
-Company.
+The demo seed creates Free, Pay as you go, Developer, Business, and Enterprise
+plans; Inventory, Payment, and AI Chat products; and one Free Inventory
+subscription for Demo Company. Inventory and Payment are enabled end to end;
+AI Chat remains catalog metadata until a workload and policy bundle is added.
 
 ## Important boundaries
 

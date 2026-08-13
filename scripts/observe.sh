@@ -39,39 +39,39 @@ echo "commercial usage and revenue (current UTC month)"
 query 'monetization_billable_requests' | jq -r '
   if (.data.result | length) == 0 then "  no commercial metrics found"
   else .data.result[] |
-    "  \(.metric.customer) / \(.metric.plan): \(.value[1]) accepted billable requests"
+    "  \(.metric.customer) / \(.metric.product) / \(.metric.plan): \(.value[1]) accepted billable requests"
   end'
 query 'monetization_overage_requests' | jq -r '
   if (.data.result | length) == 0 then "  overage metric is not deployed yet"
   else .data.result[] |
-    "  \(.metric.customer) / \(.metric.plan): \(.value[1]) accepted overage requests"
+    "  \(.metric.customer) / \(.metric.product) / \(.metric.plan): \(.value[1]) accepted overage requests"
   end'
 query 'monetization_projected_revenue_euros' | jq -r '
   if (.data.result | length) == 0 then "  no projected revenue found"
   else .data.result[] |
-    "  \(.metric.customer) / \(.metric.plan): €\(.value[1]) projected revenue"
+    "  \(.metric.customer) / \(.metric.product) / \(.metric.plan): €\(.value[1]) projected revenue"
   end'
 
 echo
 echo "Connectivity Link decisions by credential (last hour)"
 for decision in authorized limited; do
   metric="${decision}_calls"
-  query "sum by (limitador_namespace) (increase(${metric}{limitador_namespace=~\"api-monetization-apps/inventory-(api-key|jwt)\"}[1h]))" \
+  query "sum by (limitador_namespace) (increase(${metric}{limitador_namespace=~\"api-monetization-apps/(inventory|payments)-(api-key|jwt)\"}[1h]))" \
     | jq -r --arg decision "$decision" '
       if (.data.result | length) == 0 then "  no \($decision) calls found"
       else .data.result[] |
-        (.metric.limitador_namespace | sub(".*/inventory-"; "")) as $credential |
-        "  \($credential): \(.value[1] | tonumber | round) \($decision)"
+        (.metric.limitador_namespace | sub(".*/"; "")) as $policy |
+        "  \($policy): \(.value[1] | tonumber | round) \($decision)"
       end'
 done
 
 echo
 echo "gateway responses by HTTP status (last hour)"
-query 'sum by (response_code) (increase(istio_requests_total{reporter="source",source_workload_namespace="api-monetization-gateway",source_workload="api-monetization-istio",destination_service_name="inventory-api",instance=~".*:15090"}[1h]))' \
+query 'sum by (destination_service_name, response_code) (increase(istio_requests_total{reporter="source",source_workload_namespace="api-monetization-gateway",source_workload="api-monetization-istio",destination_service_name=~"(inventory|payments)-api",instance=~".*:15090"}[1h]))' \
   | jq -r '
     if (.data.result | length) == 0 then "  no gateway traffic found"
     else .data.result | sort_by(.metric.response_code)[] |
-      "  HTTP \(.metric.response_code): \(.value[1] | tonumber | round)"
+      "  \(.metric.destination_service_name) HTTP \(.metric.response_code): \(.value[1] | tonumber | round)"
     end'
 
 echo

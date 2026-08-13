@@ -18,6 +18,16 @@ import (
 
 const selfServiceIdentityProvider = "keycloak-user"
 
+type productDefinition struct {
+	APIProduct string
+	Path       string
+}
+
+var selfServiceProducts = map[string]productDefinition{
+	"inventory": {APIProduct: "inventory-api", Path: "/inventory"},
+	"payments":  {APIProduct: "payments-api", Path: "/payments"},
+}
+
 type developerCustomer struct {
 	ID         string
 	ExternalID string
@@ -62,9 +72,10 @@ func (a *app) catalog(w http.ResponseWriter, r *http.Request) {
 			serverError(w, err)
 			return
 		}
+		_, available := selfServiceProducts[id]
 		result = append(result, map[string]any{
 			"id": id, "displayName": name, "description": description,
-			"unitName": unit, "available": id == "inventory",
+			"unitName": unit, "available": available,
 		})
 	}
 	if err = products.Err(); err != nil {
@@ -163,7 +174,7 @@ func (a *app) subscribe(w http.ResponseWriter, r *http.Request) {
 	}
 	input.Product = strings.ToLower(strings.TrimSpace(input.Product))
 	input.Plan = strings.ToLower(strings.TrimSpace(input.Plan))
-	if input.Product != "inventory" || !validIdentifier(input.Plan) {
+	if _, available := selfServiceProducts[input.Product]; !available || !validIdentifier(input.Plan) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "selected API product or plan is not available for self-service"})
 		return
 	}
@@ -226,7 +237,7 @@ func (a *app) subscribe(w http.ResponseWriter, r *http.Request) {
 func (a *app) changeMyPlan(w http.ResponseWriter, r *http.Request) {
 	claims, _ := authenticatedClaims(r.Context())
 	product := r.PathValue("product")
-	if claims.Subject == "" || product != "inventory" {
+	if claims.Subject == "" || !selfServiceProductAvailable(product) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid subscription"})
 		return
 	}
@@ -400,7 +411,7 @@ func (a *app) credentialStatus(w http.ResponseWriter, r *http.Request) {
 	if state.Approved && revealed {
 		status = "active"
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": status, "revealed": revealed, "endpoint": endpointFor(state.Hostname)})
+	writeJSON(w, http.StatusOK, map[string]any{"status": status, "revealed": revealed, "endpoint": endpointFor(state.Hostname, subscription.Product)})
 }
 
 func (a *app) revealCredential(w http.ResponseWriter, r *http.Request) {
@@ -453,7 +464,7 @@ func (a *app) revealCredential(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status": "active", "revealed": true, "apiKey": apiKey,
-		"prefix": prefix, "endpoint": endpointFor(state.Hostname),
+		"prefix": prefix, "endpoint": endpointFor(state.Hostname, subscription.Product),
 	})
 }
 
@@ -494,7 +505,7 @@ func (a *app) developerManagedSubscription(w http.ResponseWriter, r *http.Reques
 }
 
 func (a *app) developerSubscriptionByState(w http.ResponseWriter, r *http.Request, claims portalClaims, product string, includeSuspended bool) (developerCustomer, subscription, bool) {
-	if claims.Subject == "" || product != "inventory" {
+	if claims.Subject == "" || !selfServiceProductAvailable(product) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid developer subscription"})
 		return developerCustomer{}, subscription{}, false
 	}
@@ -590,11 +601,20 @@ func selfServiceResourceNames(customer, product string) (string, string) {
 	return base, base + "-key"
 }
 
-func endpointFor(hostname string) string {
+func selfServiceProductAvailable(product string) bool {
+	_, available := selfServiceProducts[product]
+	return available
+}
+
+func endpointFor(hostname, product string) string {
 	if hostname == "" {
 		return ""
 	}
-	return "https://" + hostname + "/inventory"
+	definition, available := selfServiceProducts[product]
+	if !available {
+		return ""
+	}
+	return "https://" + hostname + definition.Path
 }
 
 func (a *app) provisionDeveloperCredential(ctx context.Context, customer developerCustomer, item subscription) error {
@@ -621,11 +641,15 @@ func (a *app) provisionDeveloperCredential(ctx context.Context, customer develop
 			}}}},
 		},
 	}
+	definition, available := selfServiceProducts[item.Product]
+	if !available {
+		return fmt.Errorf("API product %q is not enabled for self-service", item.Product)
+	}
 	apiKey := map[string]any{
 		"apiVersion": "devportal.kuadrant.io/v1alpha1", "kind": "APIKey",
 		"metadata": map[string]any{"name": apiKeyName, "namespace": a.apiKeyNS, "labels": labels},
 		"spec": map[string]any{
-			"apiProductRef": map[string]string{"name": "inventory-api"},
+			"apiProductRef": map[string]string{"name": definition.APIProduct},
 			"planTier":      item.Plan,
 			"requestedBy":   map[string]string{"userId": customer.ExternalID, "email": customer.Email},
 			"secretRef":     map[string]string{"name": secretName},

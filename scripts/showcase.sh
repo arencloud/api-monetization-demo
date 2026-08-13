@@ -107,6 +107,8 @@ print_presentation_endpoints() {
 
   echo "API-key endpoint: https://$api_hostname/inventory"
   echo "JWT endpoint:     https://$jwt_hostname/inventory"
+  echo "Payment API key:  https://$api_hostname/payments"
+  echo "Payment JWT:      https://$jwt_hostname/payments"
   echo "Keycloak:         https://$keycloak_hostname"
   echo "Tempo traces:     https://$tempo_hostname"
   echo
@@ -165,6 +167,9 @@ print_rule
 
 run_stage "Platform readiness and end-to-end verification" \
   "$script_dir/verify.sh"
+
+run_stage "Independent Inventory and Payment subscriptions" \
+  "$script_dir/multi-product-test.sh"
 
 run_stage "Reset shared subscription to Free" \
   "$script_dir/reset-demo.sh"

@@ -25,6 +25,30 @@ func TestSelfServiceResourceNames(t *testing.T) {
 	}
 }
 
+func TestSelfServiceProducts(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		product    string
+		apiProduct string
+		endpoint   string
+	}{
+		{product: "inventory", apiProduct: "inventory-api", endpoint: "https://api.example/inventory"},
+		{product: "payments", apiProduct: "payments-api", endpoint: "https://api.example/payments"},
+	}
+	for _, test := range tests {
+		definition, available := selfServiceProducts[test.product]
+		if !available || definition.APIProduct != test.apiProduct {
+			t.Errorf("product %q definition=%+v available=%v", test.product, definition, available)
+		}
+		if got := endpointFor("api.example", test.product); got != test.endpoint {
+			t.Errorf("endpointFor product %q=%q, want %q", test.product, got, test.endpoint)
+		}
+	}
+	if selfServiceProductAvailable("ai-chat") {
+		t.Error("AI Chat must remain unavailable until its workload and policies exist")
+	}
+}
+
 func TestCurrentBillingPeriodUsesUTCMonth(t *testing.T) {
 	t.Parallel()
 	start, end := currentBillingPeriod(time.Date(2026, time.March, 31, 23, 30, 0, 0, time.FixedZone("UTC-2", -2*60*60)))

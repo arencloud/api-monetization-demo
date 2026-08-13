@@ -57,6 +57,11 @@ creates a namespaced External Secrets `Password` generator and `ExternalSecret`,
 then creates the RHCL `APIKey` referencing the generated Secret. RHCL approves
 and labels the credential for request-time authentication. The portal reveals
 the raw key once and PostgreSQL retains only its prefix and SHA-256 digest.
+Each credential references exactly one RHCL `APIProduct`. Inventory and Payment
+therefore have separate HTTPRoutes, authentication metadata lookups, rate-limit
+counters, usage records, and invoice lines even when the same Keycloak subject
+subscribes to both. The external API-key and JWT hostnames are shared; product
+paths (`/inventory` and `/payments`) select the independently governed route.
 
 ## Request lifecycle
 
@@ -172,10 +177,10 @@ if Kubernetes cleanup is temporarily delayed.
   external issuer claim and API audience on every JWT request.
 - Demo and lifecycle automation obtain tokens through the admitted HTTPS
   Keycloak Route, so test tokens carry the same issuer as real portal clients.
-- The Inventory API remains strict-mTLS on its runtime port. A separate
-  documentation-only port serves the OpenAPI document to the RHCL Developer
-  Portal controller, and an earlier Argo sync-wave hook proves that document is
-  reachable before reconciling the `APIProduct`.
+- Every product API remains strict-mTLS on its runtime port. A separate
+  documentation-only port serves each OpenAPI document to the RHCL Developer
+  Portal controller, and an earlier Argo sync-wave hook proves both documents
+  are reachable before reconciling their `APIProduct` resources.
 - The Gateway API data plane and application sidecars are managed by the same
   project Service Mesh control plane and trust root. Application namespaces
   enforce `STRICT` peer authentication, so accepted gateway-to-workload traffic
