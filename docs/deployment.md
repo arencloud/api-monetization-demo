@@ -59,9 +59,25 @@ applications from Git.
 The Inventory API, Payment API, and monetization control application include generated
 source-trigger ConfigMaps. Their content hash changes whenever local application
 source changes, making the Argo CD application OutOfSync and executing its
-OpenShift source-build hook. The resulting ImageStream update rolls the
-Deployment. This ensures source-only commits are built even when the static
-Deployment and BuildConfig YAML did not change.
+OpenShift source-build hook. Argo CD injects the exact reconciled 40-character
+commit into the hook. The hook builds that commit, fails the Argo sync if the
+OpenShift Build fails or resolves a different revision, and snapshots the output
+as an immutable `git-<12-character-commit>` ImageStreamTag. The `demo` delivery
+tag then rolls the Deployment to that digest.
+
+This supplies a verifiable provenance chain instead of merely proving that some
+image exists:
+
+```text
+Argo CD sync revision -> OpenShift Build commit -> immutable ImageStreamTag
+                      -> Deployment digest -> running Pod image ID
+```
+
+Run `make promotion-status` to inspect that chain. `make verify` treats any
+missing build, revision mismatch, mutable-only image, digest mismatch, or
+non-ready Pod as a failure. A failed source-build hook is retained by Argo CD,
+and the corresponding Application remains visibly failed until the next
+successful reconciliation.
 
 The identity application uses the same content-hash pattern for its Keycloak
 configuration Job. Argo CD excludes hook manifests from normal drift
@@ -72,6 +88,7 @@ or OIDC clients initiate a sync and rerun the idempotent identity hook.
 
 ```bash
 make status
+make promotion-status
 oc get kuadrant -n kuadrant-system
 oc get istio -n api-monetization-mesh-system
 oc get istiocni -n api-monetization-istio-cni

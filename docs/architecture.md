@@ -189,6 +189,22 @@ if Kubernetes cleanup is temporarily delayed.
   Service uses `ClusterIP`; it does not introduce another mesh control plane.
 - Portal and administration paths are isolated from public API listeners.
 
+## Build and promotion trust chain
+
+The workload Applications inject Argo CD's resolved commit into their build
+hooks. Each hook starts an OpenShift Build for that exact commit and accepts the
+output only when the Build records the same revision and publishes a digest.
+The digest is snapshotted under `git-<12-character-commit>` before the `demo`
+delivery tag rolls the workload. Existing immutable tags are reused on retries,
+so a repeated sync does not create a second build or silently replace the
+revision artifact.
+
+The promotion verifier independently follows the chain from the Application's
+sync revision through Build provenance and ImageStreamTag digest to the
+Deployment and every ready application container. The source-build hook is
+deleted only after success; failed hooks and Builds remain visible in Argo CD
+and OpenShift for diagnosis.
+
 ## Deployment ordering
 
 ```text

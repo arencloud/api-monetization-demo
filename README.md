@@ -94,6 +94,8 @@ make validate
 make test
 make preflight
 make bootstrap
+make verify
+make promotion-status
 ```
 
 `make bootstrap` is the only imperative installation step. It installs the
@@ -101,6 +103,11 @@ OpenShift GitOps Operator, waits for the default Argo CD instance, grants its
 dedicated application controller the cluster access required to reconcile this
 cluster-configuration repository, and applies the root application. Argo CD
 owns everything below that root.
+
+Application source is built inside OpenShift from the exact commit reconciled
+by Argo CD. Successful outputs receive immutable `git-<commit>` ImageStreamTags;
+`make promotion-status` verifies the Argo revision, OpenShift Build, delivery
+tag, Deployment digest, and running Pods agree.
 
 The root application points to this repository's canonical GitHub URL and the
 selected delivery branch. Before bootstrapping another branch, align

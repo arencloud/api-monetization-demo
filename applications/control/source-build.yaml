@@ -44,6 +44,21 @@ rules:
       - get
       - list
       - watch
+  - apiGroups:
+      - image.openshift.io
+    resources:
+      - imagestreams
+    resourceNames:
+      - monetization-control
+    verbs:
+      - get
+      - update
+  - apiGroups:
+      - image.openshift.io
+    resources:
+      - imagestreamtags
+    verbs:
+      - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -93,14 +108,50 @@ spec:
         - name: build
           image: registry.redhat.io/openshift4/ose-cli-rhel9:v4.22
           imagePullPolicy: IfNotPresent
+          env:
+            - name: SOURCE_REVISION
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['api-monetization.demo/source-revision']
           command:
             - /bin/bash
             - -Eeuo
             - pipefail
             - -c
             - |
-              echo "building monetization-control from the configured Git revision"
-              oc start-build monetization-control --wait
+              app=monetization-control
+              if [[ ! $SOURCE_REVISION =~ ^[0-9a-f]{40}$ ]]; then
+                echo "error: Argo CD did not inject a full Git commit into SOURCE_REVISION" >&2
+                exit 1
+              fi
+              immutable_tag="git-${SOURCE_REVISION:0:12}"
+              if oc get "imagestreamtag/$app:$immutable_tag" >/dev/null 2>&1; then
+                oc tag "$app:$immutable_tag" "$app:demo"
+                echo "reused immutable promotion $app:$immutable_tag for $SOURCE_REVISION"
+                exit 0
+              fi
+              echo "building $app from exact revision $SOURCE_REVISION"
+              build_name=$(oc start-build "$app" --commit="$SOURCE_REVISION" -o name)
+              while true; do
+                phase=$(oc get "$build_name" -o jsonpath='{.status.phase}')
+                case "$phase" in
+                  Complete) break ;;
+                  Failed|Error|Cancelled)
+                    oc logs "$build_name" || true
+                    echo "error: $build_name ended in phase $phase" >&2
+                    exit 1
+                    ;;
+                esac
+                sleep 5
+              done
+              actual_revision=$(oc get "$build_name" -o jsonpath='{.spec.revision.git.commit}')
+              digest=$(oc get "$build_name" -o jsonpath='{.status.output.to.imageDigest}')
+              if [[ "$actual_revision" != "$SOURCE_REVISION" || "$digest" != sha256:* ]]; then
+                echo "error: build provenance is incomplete or does not match $SOURCE_REVISION" >&2
+                exit 1
+              fi
+              oc tag "$app@$digest" "$app:$immutable_tag"
+              echo "promoted $app revision $SOURCE_REVISION as $app:$immutable_tag ($digest)"
           resources:
             requests:
               cpu: 10m

@@ -101,6 +101,85 @@ for build_file in pathlib.Path("applications").glob("*/build.yaml"):
                 f"{build_file}: build Git source {actual} does not match root source {expected}"
             )
 
+promoted_applications = {
+    "control": "monetization-control",
+    "inventory": "inventory-api",
+    "payments": "payments-api",
+}
+for application_directory, workload_name in promoted_applications.items():
+    with open(f"gitops/applications/{application_directory}.yaml", encoding="utf-8") as stream:
+        application = yaml.safe_load(stream)
+    kustomize = application.get("spec", {}).get("source", {}).get("kustomize", {})
+    if (
+        kustomize.get("commonAnnotationsEnvsubst") is not True
+        or kustomize.get("commonAnnotations", {}).get(
+            "api-monetization.demo/source-revision"
+        ) != "${ARGOCD_APP_REVISION}"
+    ):
+        raise SystemExit(
+            f"{application_directory}: Argo CD must inject the reconciled Git commit into build resources"
+        )
+
+    with open(f"applications/{application_directory}/source-build.yaml", encoding="utf-8") as stream:
+        resources = [resource for resource in yaml.safe_load_all(stream) if resource]
+    role = next(resource for resource in resources if resource.get("kind") == "Role")
+    job = next(resource for resource in resources if resource.get("kind") == "Job")
+    hook_delete_policy = job.get("metadata", {}).get("annotations", {}).get(
+        "argocd.argoproj.io/hook-delete-policy", ""
+    )
+    container = job["spec"]["template"]["spec"]["containers"][0]
+    env = {item["name"]: item for item in container.get("env", [])}
+    source_revision_field = (
+        env.get("SOURCE_REVISION", {})
+        .get("valueFrom", {})
+        .get("fieldRef", {})
+        .get("fieldPath")
+    )
+    command = "\n".join(container.get("command", []) + container.get("args", []))
+    if source_revision_field != "metadata.annotations['api-monetization.demo/source-revision']":
+        raise SystemExit(f"{application_directory}: source build does not consume the Argo CD revision")
+    if "HookSucceeded" not in hook_delete_policy or "HookFailed" in hook_delete_policy:
+        raise SystemExit(
+            f"{application_directory}: failed promotion hooks must remain visible for diagnosis"
+        )
+    for required_fragment in (
+        '--commit="$SOURCE_REVISION"',
+        'Failed|Error|Cancelled',
+        'status.output.to.imageDigest',
+        'immutable_tag="git-${SOURCE_REVISION:0:12}"',
+        'oc tag "$app@$digest" "$app:$immutable_tag"',
+    ):
+        if required_fragment not in command:
+            raise SystemExit(
+                f"{application_directory}: source build is missing promotion behavior {required_fragment}"
+            )
+    image_rules = [
+        rule for rule in role.get("rules", [])
+        if "image.openshift.io" in rule.get("apiGroups", [])
+    ]
+    if not any(
+        "imagestreams" in rule.get("resources", [])
+        and "update" in rule.get("verbs", [])
+        and workload_name in rule.get("resourceNames", [])
+        for rule in image_rules
+    ) or not any(
+        "imagestreamtags" in rule.get("resources", [])
+        and "get" in rule.get("verbs", [])
+        for rule in image_rules
+    ):
+        raise SystemExit(f"{application_directory}: build promotion RBAC is incomplete")
+
+promotion_status_script = pathlib.Path("scripts/build-promotion-status.sh").read_text(encoding="utf-8")
+for required_fragment in (
+    ".status.sync.revision",
+    ".spec.revision.git.commit",
+    ".status.output.to.imageDigest",
+    "imagestreamtag/$build_config:$immutable_tag",
+    "all running application images have verified immutable Git provenance",
+):
+    if required_fragment not in promotion_status_script:
+        raise SystemExit(f"build promotion verification is missing {required_fragment}")
+
 with open("platform/observability/api-monetization.json", encoding="utf-8") as stream:
     dashboard = json.load(stream)
 if dashboard.get("uid") != "api-monetization" or not dashboard.get("panels"):
