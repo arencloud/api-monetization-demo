@@ -210,6 +210,12 @@ if [[ $ai_discovery != enabled ]]; then
   echo "error: Service Mesh discovery must include the OpenShift AI model namespace" >&2
   exit 1
 fi
+model_address=$(oc get inferenceservice.serving.kserve.io ai-chat \
+  -n api-monetization-ai -o jsonpath='{.status.address.url}')
+if [[ $model_address != "http://ai-chat-predictor.api-monetization-ai.svc.cluster.local:8080" ]]; then
+  echo "error: KServe did not publish the expected cluster-internal predictor address" >&2
+  exit 1
+fi
 for product in inventory payments ai-chat; do
   openapi_mtls=$(oc get peerauthentication.security.istio.io "$product-api" \
     -n api-monetization-apps -o jsonpath='{.spec.portLevelMtls.8082.mode}')
