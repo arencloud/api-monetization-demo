@@ -6,9 +6,8 @@ metadata:
   labels:
     app.kubernetes.io/part-of: api-monetization
 spec:
-  channel: gitops-1.21
+  channel: latest
   installPlanApproval: Automatic
   name: openshift-gitops-operator
   source: redhat-operators
   sourceNamespace: openshift-marketplace
-  startingCSV: openshift-gitops-operator.v1.21.2

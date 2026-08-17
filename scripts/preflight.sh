@@ -196,6 +196,7 @@ check_package_channel() {
   local package_name=$1
   local required_channel=$2
   local channels
+  local current_csv
 
   if ! channels=$(oc get packagemanifest "$package_name" -n openshift-marketplace \
     -o jsonpath='{range .status.channels[*]}{.name}{"\n"}{end}' 2>/dev/null); then
@@ -204,13 +205,16 @@ check_package_channel() {
   fi
 
   if grep -Fxq "$required_channel" <<<"$channels"; then
-    pass "$package_name provides channel $required_channel"
+    current_csv=$(oc get packagemanifest "$package_name" -n openshift-marketplace \
+      -o json 2>/dev/null | jq -r --arg channel "$required_channel" \
+      '.status.channels[] | select(.name == $channel) | .currentCSV' | head -n1)
+    pass "$package_name provides channel $required_channel (current CSV: ${current_csv:-unknown})"
   else
     fail "$package_name does not provide required channel $required_channel"
   fi
 }
 
-check_package_channel openshift-gitops-operator gitops-1.21
+check_package_channel openshift-gitops-operator latest
 check_package_channel openshift-cert-manager-operator stable-v1.19
 check_package_channel servicemeshoperator3 stable-3.4
 check_package_channel rhbk-operator stable-v26.6
@@ -241,7 +245,6 @@ check_existing_subscription() {
   done <<<"$records"
 }
 
-check_existing_subscription openshift-gitops-operator gitops-1.21
 check_existing_subscription openshift-cert-manager-operator stable-v1.19
 check_existing_subscription servicemeshoperator3 stable-3.4
 check_existing_subscription rhbk-operator stable-v26.6
@@ -252,6 +255,24 @@ check_existing_subscription opentelemetry-product stable
 check_existing_subscription tempo-product stable
 check_existing_subscription grafana-operator v5
 check_existing_subscription rhods-operator stable-3.x
+
+existing_gitops_starting_csv=$(oc get subscription openshift-gitops-operator \
+  -n openshift-gitops-operator -o jsonpath='{.spec.startingCSV}' 2>/dev/null || true)
+if [[ -n $existing_gitops_starting_csv ]]; then
+  warn "existing OpenShift GitOps Subscription pins startingCSV $existing_gitops_starting_csv; bootstrap will remove the pin and track the latest channel head"
+fi
+
+existing_gitops_channel=$(oc get subscription openshift-gitops-operator \
+  -n openshift-gitops-operator -o jsonpath='{.spec.channel}' 2>/dev/null || true)
+if [[ -n $existing_gitops_channel && $existing_gitops_channel != "latest" ]]; then
+  warn "existing OpenShift GitOps Subscription uses $existing_gitops_channel; bootstrap will move it to the latest channel"
+fi
+
+existing_gitops_approval=$(oc get subscription openshift-gitops-operator \
+  -n openshift-gitops-operator -o jsonpath='{.spec.installPlanApproval}' 2>/dev/null || true)
+if [[ -n $existing_gitops_approval && $existing_gitops_approval != "Automatic" ]]; then
+  warn "existing OpenShift GitOps Subscription uses $existing_gitops_approval approval; bootstrap will restore Automatic upgrades"
+fi
 
 if ((failures > 0)); then
   echo "preflight failed with $failures issue(s); no cluster changes were made" >&2

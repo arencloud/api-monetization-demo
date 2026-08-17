@@ -145,8 +145,10 @@ make bootstrap
 The script performs only these mutations:
 
 1. Applies the OpenShift GitOps namespace, OperatorGroup, and Subscription.
-2. Waits for the subscription to report an installed CSV.
-3. Waits for the default Argo CD application controller.
+2. Removes any legacy `startingCSV` pin and waits for the current
+   `latest` catalog head CSV to reach `Succeeded`.
+3. Waits for superseded GitOps CSVs to be removed and for the default Argo CD
+   custom resource and server to become available.
 4. Grants `cluster-admin` to the dedicated OpenShift GitOps application
    controller service account.
 5. Applies the root `Application`.
@@ -157,6 +159,14 @@ namespaces. It does not grant `cluster-admin` to users who log in to Argo CD.
 
 It does not directly apply any platform resource. Argo CD reconciles the child
 applications from Git.
+
+The GitOps Subscription uses automatic InstallPlans and intentionally omits
+`startingCSV`. A fresh cluster therefore installs the newest CSV currently
+published in the catalog's `latest` channel instead of first installing an
+older CSV and immediately entering an avoidable replacement. Future updates in
+that channel are installed automatically. `Replacing` can appear briefly during
+a normal upgrade; bootstrap completes only after the catalog head is
+`Succeeded`, and reports OLM resolution or InstallPlan failures directly.
 
 The Inventory API, Payment API, and monetization control application include generated
 source-trigger ConfigMaps. Their content hash changes whenever local application

@@ -71,7 +71,7 @@ The first profile follows the RHCL 1.4 support matrix:
 | Red Hat OpenShift Service Mesh | 3.4 |
 | cert-manager Operator for Red Hat OpenShift | 1.19 |
 | Red Hat build of Keycloak | 26.6 |
-| Red Hat OpenShift GitOps | 1.21 |
+| Red Hat OpenShift GitOps | Latest catalog channel, automatic upgrades |
 | Red Hat OpenShift AI | 3.4 stable channel, 3.4.3 starting CSV |
 | External Secrets Operator for Red Hat OpenShift | 1.2 |
 | CloudNativePG certified Operator | 1.30 |

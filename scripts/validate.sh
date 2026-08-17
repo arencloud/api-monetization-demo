@@ -71,6 +71,21 @@ expected = (
     root["spec"]["source"]["targetRevision"],
 )
 
+with open("bootstrap/openshift-gitops/subscription.yaml", encoding="utf-8") as stream:
+    gitops_subscription = yaml.safe_load(stream)
+gitops_spec = gitops_subscription.get("spec", {})
+if (
+    gitops_spec.get("name") != "openshift-gitops-operator"
+    or gitops_spec.get("channel") != "latest"
+    or gitops_spec.get("source") != "redhat-operators"
+    or gitops_spec.get("sourceNamespace") != "openshift-marketplace"
+    or gitops_spec.get("installPlanApproval") != "Automatic"
+    or "startingCSV" in gitops_spec
+):
+    raise SystemExit(
+        "OpenShift GitOps must automatically track the latest channel head without startingCSV"
+    )
+
 rendered = subprocess.check_output(
     ["oc", "kustomize", "gitops/applications"], text=True
 )
