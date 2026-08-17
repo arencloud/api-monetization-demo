@@ -40,7 +40,9 @@ use `request`.
   completion-token breakdown; `billable_units` stores their total.
 - Connectivity Link limits AI request frequency before inference and uses
   `TokenRateLimitPolicy` to add the post-response `usage.total_tokens` value to
-  a customer-and-plan Limitador counter. The monthly hard quota and commercial
+  a subscription-and-plan Limitador counter. The immutable subscription UUID
+  keeps a live plan change on the same counter while a later resubscription
+  starts a clean commercial lifecycle. The monthly hard quota and commercial
   allowance are therefore token-based; the request safety cap remains a
   deliberately separate control.
 - Included allowance and hard quota are separate. Accepted usage above the

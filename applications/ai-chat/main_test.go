@@ -49,3 +49,29 @@ func TestChatCompletionRejectsStreaming(t *testing.T) {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 }
+
+func TestChatPreflightIsPortableAndDoesNotAllowCookies(t *testing.T) {
+	handler := corsHeaders(http.HandlerFunc(chatPreflight))
+	request := httptest.NewRequest(http.MethodOptions, "/v1/chat/completions", nil)
+	request.Header.Set("Origin", "https://monetization-control.apps.example.test")
+	request.Header.Set("Access-Control-Request-Headers", "authorization,content-type")
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status=%d, want %d", response.Code, http.StatusNoContent)
+	}
+	if got := response.Header().Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Fatalf("allow origin=%q, want wildcard portable origin", got)
+	}
+	if got := response.Header().Get("Access-Control-Allow-Credentials"); got != "" {
+		t.Fatalf("credentialed CORS must remain disabled, got %q", got)
+	}
+	if got := response.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(got, "Authorization") {
+		t.Fatalf("authorization header is not allowed: %q", got)
+	}
+	if got := response.Header().Get("Access-Control-Expose-Headers"); !strings.Contains(got, "X-Monetization-Billable-Units") {
+		t.Fatalf("billing header is not exposed: %q", got)
+	}
+}

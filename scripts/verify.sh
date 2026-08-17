@@ -320,7 +320,13 @@ wait_for_http_route payments-api-key api-monetization-apps
 wait_for_http_route payments-jwt api-monetization-apps
 wait_for_http_route ai-chat-api-key api-monetization-apps
 wait_for_http_route ai-chat-jwt api-monetization-apps
+wait_for_http_route ai-chat-api-key-preflight api-monetization-apps
+wait_for_http_route ai-chat-jwt-preflight api-monetization-apps
 for policy in inventory-api-key inventory-jwt payments-api-key payments-jwt ai-chat-api-key ai-chat-jwt; do
+  oc wait --for=condition=Enforced "authpolicies.kuadrant.io/$policy" \
+    -n api-monetization-apps --timeout=5m
+done
+for policy in ai-chat-api-key-preflight ai-chat-jwt-preflight; do
   oc wait --for=condition=Enforced "authpolicies.kuadrant.io/$policy" \
     -n api-monetization-apps --timeout=5m
 done
@@ -357,6 +363,14 @@ for product in inventory payments ai-chat; do
     exit 1
   fi
 done
+api_preflight_hostname=$(oc get httproute ai-chat-api-key-preflight \
+  -n api-monetization-apps -o jsonpath='{.spec.hostnames[0]}')
+jwt_preflight_hostname=$(oc get httproute ai-chat-jwt-preflight \
+  -n api-monetization-apps -o jsonpath='{.spec.hostnames[0]}')
+if [[ $api_hostname != "$api_preflight_hostname" || $jwt_hostname != "$jwt_preflight_hostname" ]]; then
+  echo "error: AI Chat browser preflight Routes do not match the admitted API hosts" >&2
+  exit 1
+fi
 
 echo "waiting for APIProducts to publish the admitted API URL"
 for product in inventory payments ai-chat; do
@@ -518,6 +532,34 @@ portal_hostname=$(oc get route monetization-control -n api-monetization-data \
   -o jsonpath='{.status.ingress[0].host}')
 portal_router_hostname=$(oc get route monetization-control -n api-monetization-data \
   -o jsonpath='{.status.ingress[0].routerCanonicalHostname}')
+for cors_hostname in "$api_hostname" "$jwt_hostname"; do
+  cors_headers=$(curl --silent --show-error --output /dev/null --dump-header - \
+    --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+      -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+    --connect-to "$cors_hostname:443:$router_hostname:443" \
+    --request OPTIONS \
+    --header "Origin: https://$portal_hostname" \
+    --header 'Access-Control-Request-Method: POST' \
+    --header 'Access-Control-Request-Headers: authorization,content-type' \
+    "https://$cors_hostname/v1/chat/completions")
+  cors_status=$(awk 'NR == 1 {print $2}' <<<"$cors_headers")
+  if [[ $cors_status != 204 ]] || \
+    ! grep -Eiq '^access-control-allow-origin:[[:space:]]*\*' <<<"$cors_headers" || \
+    ! grep -Eiq '^access-control-allow-headers:.*authorization' <<<"$cors_headers"; then
+    echo "error: AI Chat browser preflight failed for $cors_hostname (HTTP $cors_status)" >&2
+    exit 1
+  fi
+done
+portal_page=$(curl --silent --show-error --fail \
+  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+  --connect-to "$portal_hostname:443:$portal_router_hostname:443" \
+  "https://$portal_hostname/")
+if [[ $portal_page != *"AI Chat playground"* || $portal_page != *"Demonstrate Free HTTP 429"* ]]; then
+  echo "error: deployed developer portal does not contain the AI Chat playground" >&2
+  exit 1
+fi
+echo "AI Chat browser playground and portable CORS preflight verified"
 portal_config=$(curl --silent --show-error --fail \
   --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
     -o go-template='{{index .data "tls.crt"}}' | base64 -d) \

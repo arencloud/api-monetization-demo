@@ -51,6 +51,27 @@ func TestSelfServiceProducts(t *testing.T) {
 	}
 }
 
+func TestPortalPublishesAIChatPlayground(t *testing.T) {
+	t.Parallel()
+	content, err := web.ReadFile("web/index.html")
+	if err != nil {
+		t.Fatalf("read embedded portal: %v", err)
+	}
+	page := string(content)
+	for _, expected := range []string{
+		"AI Chat playground",
+		"playground-auth",
+		"response-prompt-tokens",
+		"ai-remaining-tokens",
+		"Demonstrate Free HTTP 429",
+		"X-Monetization-Billable-Units",
+	} {
+		if !strings.Contains(page, expected) {
+			t.Errorf("portal is missing %q", expected)
+		}
+	}
+}
+
 func TestCurrentBillingPeriodUsesUTCMonth(t *testing.T) {
 	t.Parallel()
 	start, end := currentBillingPeriod(time.Date(2026, time.March, 31, 23, 30, 0, 0, time.FixedZone("UTC-2", -2*60*60)))

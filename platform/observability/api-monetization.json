@@ -124,13 +124,40 @@
       "gridPos": {"h": 8, "w": 24, "x": 0, "y": 33}
     },
     {
+      "type": "bargauge",
+      "title": "AI Chat tokens consumed and remaining",
+      "description": "PostgreSQL-backed accepted token usage compared with the current RHCL token quota. Remaining is clamped at zero because post-response accounting can record the final response beyond the boundary.",
+      "targets": [
+        {"expr": "sum by (customer, plan) (monetization_billable_units{product=\"ai-chat\"})", "legendFormat": "{{customer}} / {{plan}} / consumed", "instant": true, "refId": "A"},
+        {"expr": "clamp_min(sum by (customer, plan) (monetization_monthly_quota_requests{product=\"ai-chat\"}) - sum by (customer, plan) (monetization_billable_units{product=\"ai-chat\"}), 0)", "legendFormat": "{{customer}} / {{plan}} / remaining", "instant": true, "refId": "B"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []},
+      "gridPos": {"h": 7, "w": 12, "x": 0, "y": 41}
+    },
+    {
+      "type": "stat",
+      "title": "AI Chat rejected requests",
+      "description": "Connectivity Link token-quota or request-guard denials across the API-key and JWT AI routes in the selected range.",
+      "targets": [{"expr": "sum(increase(limited_calls{limitador_namespace=~\"api-monetization-apps/ai-chat-(api-key|jwt)\"}[$__range]))", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "fixedColor", "fixedColor": "orange"}}, "overrides": []},
+      "gridPos": {"h": 7, "w": 6, "x": 12, "y": 41}
+    },
+    {
+      "type": "stat",
+      "title": "Projected AI revenue (EUR)",
+      "description": "Current-month base fees and accepted token overage for AI Chat subscriptions only.",
+      "targets": [{"expr": "sum(monetization_projected_revenue_euros{product=\"ai-chat\"})", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "currencyEUR"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 6, "x": 18, "y": 41}
+    },
+    {
       "type": "text",
       "title": "How to read this dashboard",
       "options": {
         "mode": "markdown",
         "content": "**Accepted/billable units** are requests for Inventory and Payment and vLLM-reported tokens for AI Chat. **Overage** is accepted usage above the plan allowance. **Rate-limited** requests were denied by Connectivity Link with HTTP 429 before the backend and are observable, but never billed. API-key and JWT policy decisions are isolated per product."
       },
-      "gridPos": {"h": 5, "w": 24, "x": 0, "y": 41}
+      "gridPos": {"h": 5, "w": 24, "x": 0, "y": 48}
     }
   ],
   "refresh": "15s",
@@ -141,5 +168,5 @@
   "timezone": "browser",
   "title": "API Monetization: Traffic, Limits, and Revenue",
   "uid": "api-monetization",
-  "version": 4
+  "version": 5
 }

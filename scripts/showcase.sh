@@ -173,8 +173,8 @@ run_stage "Platform readiness and end-to-end verification" \
 run_stage "Independent Inventory and Payment subscriptions" \
   "$script_dir/multi-product-test.sh"
 
-run_stage "Token-metered AI Chat with API key and JWT" \
-  "$script_dir/ai-monetization-test.sh"
+run_stage "AI Chat Free token quota and live Developer upgrade" \
+  "$script_dir/ai-demo.sh"
 
 run_stage "Reset shared subscription to Free" \
   "$script_dir/reset-demo.sh"

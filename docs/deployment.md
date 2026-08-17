@@ -198,6 +198,7 @@ make verify
 make multi-product-test
 make ai-model-test
 make ai-monetization-test
+make ai-demo
 make demo
 make observe
 make grafana
@@ -254,6 +255,19 @@ product contract and token billing:
 ```bash
 make ai-monetization-test
 ```
+
+Run the complete repeatable AI business scenario—including the Free token
+quota, HTTP 429, live Developer upgrade, both credential paths, stored usage,
+and cleanup—with:
+
+```bash
+make ai-demo
+```
+
+This command discovers the current cluster's admitted hosts, router targets,
+and ingress certificate. It creates and later cancels a dedicated automation
+subscription, so it does not depend on a fixed hostname or modify a human
+developer's portal state.
 
 Print the admitted portal URL and generated developer and administrator logins:
 

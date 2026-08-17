@@ -41,4 +41,7 @@ paths:
               description: Prompt plus completion tokens recorded for billing.
               schema: {type: integer}
         "400": {description: Invalid or streaming request}
+        "401": {description: API key or Keycloak JWT is missing or invalid}
+        "403": {description: The credential has no active AI Chat subscription}
+        "429": {description: Connectivity Link request or token quota exceeded}
         "502": {description: Model unavailable or invalid model response}

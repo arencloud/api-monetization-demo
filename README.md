@@ -162,6 +162,16 @@ Red Hat build of Keycloak Authorization Code flow with PKCE. Its subscription,
 usage, and upgrade APIs require the `monetization-admin` realm role; internal
 entitlement and usage ingestion use a separate, non-routed service port.
 
+For AI Chat, the developer portal includes a browser playground that calls the
+cluster-admitted Gateway API endpoints directly. A developer can select the
+one-time-revealed API key or their existing Keycloak access token, submit a
+prompt, inspect the model response and exact prompt/completion/total-token
+counts, and compare consumed, remaining, overage, and projected-revenue data.
+Only the `OPTIONS` preflight routes permit anonymous access. Actual inference
+remains protected by RHCL authentication, entitlement, request limits, and
+token limits. Portable CORS rules do not use cookies and therefore require no
+cluster-specific portal hostname.
+
 Developers authenticate with the separate `monetization-developer` role. They
 can browse the multi-product API catalog, choose an independent plan for each
 product, create their own PostgreSQL customer and subscriptions, and request
@@ -210,6 +220,7 @@ make lifecycle-test
 make multi-product-test
 make ai-model-test
 make ai-monetization-test
+make ai-demo
 make demo
 make metered-demo
 make observe
@@ -238,6 +249,17 @@ request-guard hit, waits for the asynchronous PostgreSQL attribution, and
 cancels its automation subscription.
 Deployment verification also requires both AI `TokenRateLimitPolicy` objects
 to be Enforced and the facade-to-KServe hop to use strict Service Mesh mTLS.
+
+`make ai-demo` is the deterministic AI business presentation. It creates a new
+Free AI Chat subscription, proves browser preflight, sends a model request whose
+reported token cost crosses the Free allowance, observes HTTP 429 on the next
+request for both API-key and already-issued JWT paths, upgrades that same
+subscription to Developer, and immediately continues with both credentials.
+It then waits for PostgreSQL attribution and prints consumed tokens, remaining
+Developer allowance, and projected revenue. Its automation identity is
+cancelled on success or interruption. Token counters use the immutable
+subscription UUID, so the next run starts with a new counter without requiring
+privileged Limitador cleanup or relying on a fixed cluster hostname.
 
 `make metered-demo` changes Demo Company to Pay as you go, sends five real
 accepted requests through the OpenShift Route and Connectivity Link, waits for

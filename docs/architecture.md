@@ -71,6 +71,15 @@ documented KServe sidecar and probe-rewrite annotations inject the predictor,
 and an explicit `ISTIO_MUTUAL` destination rule plus namespace-wide `STRICT`
 peer authentication protect the facade-to-model hop.
 
+The AI Chat playground runs in the existing developer portal but sends
+inference directly to the cluster-admitted API-key or JWT Gateway hostname.
+Dedicated method-specific `OPTIONS` HTTPRoutes use anonymous AuthPolicies only
+for browser preflight. `POST` remains on the authenticated routes and all
+responses, including RHCL denials, receive non-credentialed portable CORS
+headers. API keys are retained only in the current browser memory after their
+one-time reveal; the playground neither persists them nor sends browser
+cookies to an API route.
+
 ## Request lifecycle
 
 1. The client presents an API key, JWT, or both to a Gateway API endpoint.
@@ -78,9 +87,12 @@ peer authentication protect the facade-to-model hop.
    stable customer and plan identity.
 3. An authorization rule verifies API product, operation, and subscription.
 4. Request and token rate-limit policies select counters using authenticated
-   identity and plan data. Request limits protect inference capacity before the
+   identity and plan data. AI token counters use the immutable subscription UUID,
+   which keeps API usage attributable to a commercial lifecycle and gives a new
+   subscription a clean counter without deleting shared Limitador state.
+   Request limits protect inference capacity before the
    call; RHCL extracts `usage.total_tokens` after a successful OpenAI-compatible
-   response and adds that cost to the customer's Limitador token counter.
+   response and adds that cost to the subscription's Limitador token counter.
 5. The gateway routes the accepted request to a mesh-protected backend.
 6. Metrics, structured access logs, and traces share request, customer, and API
    identifiers without exposing credential material.

@@ -101,7 +101,8 @@ hostname_ignores = {
 }
 required_hostname_ignores = {
     "inventory-api-key", "inventory-jwt", "payments-api-key", "payments-jwt",
-    "ai-chat-api-key", "ai-chat-jwt",
+    "ai-chat-api-key", "ai-chat-jwt", "ai-chat-api-key-preflight",
+    "ai-chat-jwt-preflight",
 }
 if not required_hostname_ignores.issubset(hostname_ignores):
     raise SystemExit(
@@ -173,9 +174,9 @@ for policy in token_policies:
     actual_token_targets.add(target["name"])
     limits = policy["spec"]["limits"]
     counter_expression = (
-        "auth.identity.userid"
+        "auth.identity.subscription"
         if target["name"] == "ai-chat-api-key"
-        else "auth.kuadrant.customer"
+        else "auth.kuadrant.subscription"
     )
     for plan, expected_limit in expected_token_limits.items():
         plan_limit = limits.get(plan, {})
@@ -183,7 +184,7 @@ for policy in token_policies:
         if rates != [{"limit": expected_limit, "window": "720h"}]:
             raise SystemExit(f"{policy['metadata']['name']}: {plan} token quota does not match the commercial plan")
         if plan_limit.get("counters") != [{"expression": counter_expression}]:
-            raise SystemExit(f"{policy['metadata']['name']}: {plan} token quota is not isolated by the RHCL customer identity")
+            raise SystemExit(f"{policy['metadata']['name']}: {plan} token quota is not isolated by subscription identity")
         if plan_limit.get("when") != [{"predicate": f'auth.kuadrant.plan == "{plan}"'}]:
             raise SystemExit(f"{policy['metadata']['name']}: {plan} token quota does not select the RHCL plan metadata")
 if actual_token_targets != expected_token_targets:
@@ -192,6 +193,8 @@ if actual_token_targets != expected_token_targets:
 with open("platform/gateway/ai-chat-auth-policies.yaml", encoding="utf-8") as stream:
     ai_auth_policies = [resource for resource in yaml.safe_load_all(stream) if resource]
 for policy in ai_auth_policies:
+    if policy.get("metadata", {}).get("name") not in {"ai-chat-api-key", "ai-chat-jwt"}:
+        continue
     expected_filter_name = (
         "identity" if policy["metadata"]["name"] == "ai-chat-api-key" else "kuadrant"
     )
@@ -201,15 +204,57 @@ for policy in ai_auth_policies:
         .get("json", {}).get("properties", {})
     )
     expected_properties = (
-        {"userid": {"expression": 'auth.identity.metadata.annotations["secret.kuadrant.io/user-id"]'}}
+        {
+            "userid": {"expression": 'auth.identity.metadata.annotations["secret.kuadrant.io/user-id"]'},
+            "subscription": {"selector": "auth.metadata.subscription.id"},
+        }
         if policy["metadata"]["name"] == "ai-chat-api-key"
         else {
             "customer": {"selector": "auth.metadata.subscription.customerId"},
             "plan": {"selector": "auth.metadata.subscription.plan"},
+            "subscription": {"selector": "auth.metadata.subscription.id"},
         }
     )
     if response_properties != expected_properties:
-        raise SystemExit(f"{policy['metadata']['name']}: AuthPolicy must publish customer and plan metadata for RHCL token accounting")
+        raise SystemExit(f"{policy['metadata']['name']}: AuthPolicy must publish customer, plan, and subscription metadata for RHCL token accounting")
+
+with open("platform/gateway/ai-chat-routes.yaml", encoding="utf-8") as stream:
+    ai_routes = [resource for resource in yaml.safe_load_all(stream) if resource]
+preflight_route_names = {"ai-chat-api-key-preflight", "ai-chat-jwt-preflight"}
+for route in ai_routes:
+    route_name = route.get("metadata", {}).get("name")
+    rules = route.get("spec", {}).get("rules", [])
+    if route_name in preflight_route_names:
+        matches = [match for rule in rules for match in rule.get("matches", [])]
+        filters = [item for rule in rules for item in rule.get("filters", [])]
+        if not any(
+            match.get("method") == "OPTIONS"
+            and match.get("path", {}).get("value") == "/v1/chat/completions"
+            for match in matches
+        ):
+            raise SystemExit(f"{route_name}: portable browser preflight route is missing")
+        header_sets = {
+            header.get("name", "").lower(): header.get("value")
+            for item in filters
+            for header in item.get("responseHeaderModifier", {}).get("set", [])
+        }
+        if (
+            header_sets.get("access-control-allow-origin") != "*"
+            or "Authorization" not in header_sets.get("access-control-allow-headers", "")
+        ):
+            raise SystemExit(f"{route_name}: portable non-cookie CORS headers are incomplete")
+
+preflight_policies = {
+    policy.get("metadata", {}).get("name"): policy
+    for policy in ai_auth_policies
+    if policy.get("metadata", {}).get("name") in preflight_route_names
+}
+if set(preflight_policies) != preflight_route_names:
+    raise SystemExit("Both AI Chat credential routes require an explicit preflight AuthPolicy")
+for name, policy in preflight_policies.items():
+    authentication = policy.get("spec", {}).get("rules", {}).get("authentication", {})
+    if authentication != {"browser-preflight": {"anonymous": {}}}:
+        raise SystemExit(f"{name}: only browser OPTIONS preflight may be anonymous")
 
 with open("platform/gateway/openshift-routes.yaml", encoding="utf-8") as stream:
     gateway_routes = [resource for resource in yaml.safe_load_all(stream) if resource]
@@ -323,6 +368,9 @@ required_panels = {
     "Usage, allowance, and hard quota",
     "Revenue by customer and plan",
     "AI Chat token attribution",
+    "AI Chat tokens consumed and remaining",
+    "AI Chat rejected requests",
+    "Projected AI revenue (EUR)",
 }
 if not required_panels.issubset(panel_titles):
     raise SystemExit(f"Grafana dashboard is missing panels: {required_panels - panel_titles}")
@@ -347,6 +395,18 @@ for metric in (
         raise SystemExit(f"Grafana dashboard does not query {metric}")
 if 'instance=~".*:15090"' not in dashboard_queries:
     raise SystemExit("Grafana gateway query must select the Envoy metrics port to avoid duplicate scrapes")
+
+ai_demo_script = pathlib.Path("scripts/ai-demo.sh").read_text(encoding="utf-8")
+for required_fragment in (
+    "subscription_id",
+    "tokenratelimitpolicy.kuadrant.io",
+    "Free token quota (HTTP 429)",
+    '"plan":"developer"',
+    "already-issued JWT",
+    "cancel_if_present",
+):
+    if required_fragment not in ai_demo_script:
+        raise SystemExit(f"AI demo automation is missing {required_fragment}")
 
 with open("operators/grafana/subscription.yaml", encoding="utf-8") as stream:
     grafana_subscription = yaml.safe_load(stream)
