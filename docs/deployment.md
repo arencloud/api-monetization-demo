@@ -70,7 +70,7 @@ follows:
 | Integrated OpenShift registry | 50 GiB persistent volume, one replica | Required before bootstrap; infrastructure-owned and intentionally not managed by this repository |
 | Subscription PostgreSQL | 2 GiB RWO PVC | Demo data, subscriptions, usage, invoices, and audit history |
 | Keycloak PostgreSQL | 2 GiB RWO PVC | Identity and realm state |
-| Developer Hub PostgreSQL | 5 GiB RWO PVC | RHDH catalog, authentication, and plugin schemas |
+| Developer Hub PostgreSQL | 5 GiB RWO PVC | RHDH catalog, authentication, and plugin schemas; PostgreSQL 17 is digest-pinned because RHDH 1.10 supports PostgreSQL 14–17 while newer CloudNativePG releases default to 18 |
 | AI model and container layers | Node-local ephemeral storage | Approximately 1 GiB pinned model plus the Red Hat serving image and build layers; retain at least 30 GiB free per candidate worker |
 | Tempo | Memory-backed 1 GiB volume | Demo-only trace retention; no persistent volume |
 

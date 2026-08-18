@@ -77,6 +77,7 @@ The first profile follows the RHCL 1.4 support matrix:
 | Red Hat OpenShift AI | 3.4 stable channel, 3.4.3 starting CSV |
 | External Secrets Operator for Red Hat OpenShift | 1.2 |
 | CloudNativePG certified Operator | 1.30 |
+| Developer Hub database | PostgreSQL 17.11, multi-architecture digest pin |
 | Red Hat build of OpenTelemetry Operator | stable, 0.152.0-2 starting CSV |
 | Tempo Operator | stable, 0.21.0-3 starting CSV |
 | Grafana Operator | v5, 5.24.0 starting CSV |
