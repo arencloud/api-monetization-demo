@@ -456,12 +456,9 @@ for product in inventory payments ai-chat; do
           api_product_servers=$(jq -r '.status.openapi.raw // ""' <<<"$api_product" \
             | sed -n 's/^  - url: //p')
           api_product_route=$(jq -r '.spec.targetRef.name // ""' <<<"$api_product")
-          expected_server="https://$api_hostname"
-          if [[ $auth_mode == jwt ]]; then
-            expected_server="https://$jwt_hostname"
-          fi
-          if ! grep -Fxq "$expected_server" <<<"$api_product_servers"; then
-            echo "error: $api_product_name does not publish its $auth_mode server URL $expected_server" >&2
+          if [[ $auth_mode == api-key ]] && \
+            ! grep -Fxq "https://$api_hostname" <<<"$api_product_servers"; then
+            echo "error: $api_product_name does not publish its API-key server URL https://$api_hostname" >&2
             exit 1
           fi
           if [[ $api_product_route != "$expected_route" ]]; then

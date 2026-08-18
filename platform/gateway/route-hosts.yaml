@@ -98,6 +98,15 @@ rules:
       - get
       - patch
   - apiGroups:
+      - ""
+    resources:
+      - secrets
+    resourceNames:
+      - demo-inventory-api-key
+    verbs:
+      - get
+      - patch
+  - apiGroups:
       - apps
     resources:
       - deployments
@@ -427,6 +436,18 @@ spec:
                 done
               }
 
+              align_demo_api_key_metadata() {
+                echo "aligning the reproducible API key Secret with its APIProduct identity"
+                retry_api label secret demo-inventory-api-key \
+                  -n api-monetization-apps \
+                  devportal.kuadrant.io/apiproduct=inventory-api \
+                  --overwrite
+                retry_api annotate secret demo-inventory-api-key \
+                  -n api-monetization-apps \
+                  secret.kuadrant.io/user-id=demo-company \
+                  --overwrite
+              }
+
               publish_openapi() {
                 local api_host=$1
                 local jwt_host=$2
@@ -514,6 +535,7 @@ spec:
               jwt_hostname=$(route_host api-monetization-jwt)
               keycloak_hostname=$(route_host api-monetization-keycloak api-monetization-identity)
               align_oidc_issuer "https://$keycloak_hostname/realms/api-monetization"
+              align_demo_api_key_metadata
               align_route "$api_hostname" inventory-api-key
               align_route "$jwt_hostname" inventory-jwt
               align_route "$api_hostname" payments-api-key

@@ -663,6 +663,19 @@ if kuadrant.get("spec", {}).get("mtls") != {
 }:
     raise SystemExit("RHCL mTLS must be enabled explicitly for Authorino and Limitador")
 
+with open("platform/secrets/demo/inventory-api-key.yaml", encoding="utf-8") as stream:
+    demo_secret_resources = [resource for resource in yaml.safe_load_all(stream) if resource]
+demo_external_secret = next(
+    resource for resource in demo_secret_resources if resource.get("kind") == "ExternalSecret"
+)
+demo_secret_metadata = (
+    demo_external_secret.get("spec", {}).get("target", {}).get("template", {}).get("metadata", {})
+)
+if demo_secret_metadata.get("labels", {}).get("devportal.kuadrant.io/apiproduct") != "inventory-api":
+    raise SystemExit("The reproducible API key Secret must retain its Kuadrant APIProduct label")
+if demo_secret_metadata.get("annotations", {}).get("secret.kuadrant.io/user-id") != "demo-company":
+    raise SystemExit("The reproducible API key Secret must retain its Kuadrant consumer identity")
+
 auth_policies = []
 for product in ("inventory", "payments", "ai-chat"):
     with open(f"platform/gateway/{product}-auth-policies.yaml", encoding="utf-8") as stream:
