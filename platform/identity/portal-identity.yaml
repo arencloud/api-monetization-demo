@@ -172,7 +172,9 @@ metadata:
     app.kubernetes.io/name: api-monetization-portal-identity
     app.kubernetes.io/part-of: api-monetization
 spec:
-  activeDeadlineSeconds: 3600
+  # The RHBK admin CLI starts a JVM for each idempotent reconciliation call.
+  # Keep the hook bounded while allowing enough time for a fresh realm import.
+  activeDeadlineSeconds: 900
   backoffLimit: 2
   template:
     metadata:
@@ -270,7 +272,7 @@ spec:
                 # The Java admin client has no useful default request deadline.
                 # Fail the hook and let its bounded Job retry instead of leaving
                 # Argo CD in Syncing forever on a stalled Keycloak request.
-                timeout --signal=TERM 30s "$kcadm" "$@"
+                timeout --signal=TERM --kill-after=5s 30s "$kcadm" "$@"
               }
               server=http://api-monetization-service:8080
               realm=api-monetization
@@ -644,10 +646,10 @@ spec:
               echo "Keycloak portal, Grafana, and Developer Hub identities are configured"
           resources:
             requests:
-              cpu: 50m
+              cpu: 250m
               memory: 128Mi
             limits:
-              cpu: 500m
+              cpu: "2"
               memory: 512Mi
           securityContext:
             allowPrivilegeEscalation: false
