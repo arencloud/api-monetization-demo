@@ -15,10 +15,10 @@ wait_for_application() {
 
   for _ in $(seq 1 270); do
     state=$(oc get application "$application_name" -n openshift-gitops \
-      -o jsonpath='{.status.sync.status}{"|"}{.status.health.status}' \
+      -o jsonpath='{.status.sync.status}{"|"}{.status.health.status}{"|"}{.status.operationState.phase}' \
       2>/dev/null || true)
-    if [[ $state == "Synced|Healthy" ]]; then
-      echo "$application_name is Synced and Healthy"
+    if [[ $state == "Synced|Healthy|Succeeded" ]]; then
+      echo "$application_name is Synced, Healthy, and finished reconciling"
       return 0
     fi
     sleep 10
@@ -531,14 +531,21 @@ jwt_token=$(curl --silent --show-error --fail \
   --data 'grant_type=client_credentials' \
   "https://$keycloak_hostname/realms/api-monetization/protocol/openid-connect/token" \
   | jq -er '.access_token')
-jwt_authenticated_status=$(curl --silent --show-error --output /dev/null \
-  --write-out '%{http_code}' \
-  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
-    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
-  --connect-to "$jwt_hostname:443:$router_hostname:443" \
-  --header "Host: $jwt_hostname" \
-  --header "Authorization: Bearer $jwt_token" \
-  "https://$jwt_hostname/inventory")
+jwt_authenticated_status=""
+for _ in $(seq 1 6); do
+  jwt_authenticated_status=$(curl --silent --show-error --output /dev/null \
+    --write-out '%{http_code}' \
+    --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+      -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+    --connect-to "$jwt_hostname:443:$router_hostname:443" \
+    --header "Host: $jwt_hostname" \
+    --header "Authorization: Bearer $jwt_token" \
+    "https://$jwt_hostname/inventory")
+  if [[ $jwt_authenticated_status == "200" || $jwt_authenticated_status == "429" ]]; then
+    break
+  fi
+  sleep 5
+done
 case "$jwt_authenticated_status" in
   200)
     echo "JWT identity resolved to the active PostgreSQL subscription"
