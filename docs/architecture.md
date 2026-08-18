@@ -63,7 +63,9 @@ both authentication paths, so catalogue visibility never implies entitlement.
 For consumers, production rows without an active entitlement are greyed and
 their detail links are disabled; the Billing subscription action remains
 available. Both authentication rows unlock as soon as the shared subscription
-becomes active.
+becomes active. Frontend releases use a new versioned dynamic-plugin artifact
+path so existing RHDH clients cannot retain an earlier module-federation bundle
+under the same package URL.
 
 Each governed HTTPRoute has its own `APIProduct` presentation in RHDH. The
 three API-key routes advertise API-key authentication and participate in the
