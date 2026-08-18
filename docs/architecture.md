@@ -74,6 +74,10 @@ the dedicated RHDH service account and the
 `api-monetization.tokenratelimitpolicy.list` permission. Billing has distinct
 `read.own` and `read.all` permissions; Keycloak performs the matching developer
 or administrator role check again at the control-plane boundary.
+The frontend extension explicitly registers RHDH's generic `auth.oidc` API
+factory. This reuses the signed-in Keycloak session to obtain the short-lived
+provider access token; no token or customer identifier is stored in browser
+configuration.
 
 The browser portal is a public PKCE client in Keycloak. Human administrators
 receive the `monetization-admin` realm role and developers receive the separate

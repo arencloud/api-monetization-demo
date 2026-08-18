@@ -188,13 +188,21 @@ frontend_plugin = plugin_by_package.get(frontend_plugin_package, {})
 if (
     frontend_plugin.get("disabled") is not False
     or frontend_plugin.get("integrity")
-    != "sha512-5jMs/HF9GCfXmbJmuf08YAoWLXsQXCm1i/8OzsQU6IK4CN0Bs8UUApqX+OoKA0oUk5j4IJ77yUB/qOcM39KTOQ=="
+    != "sha512-+J+1tOCtKYw+Dg3bayu6Ja/g7aF7Bjr6lUVV4JM7X7SGFTbQwipjTpai9S4/orWXZtsrPH+Mz2pV/Gf9WZzREw=="
 ):
     raise SystemExit("effective-policy RHDH plugin is not checksum-pinned")
+frontend_config = (
+    frontend_plugin.get("pluginConfig", {})
+    .get("dynamicPlugins", {})
+    .get("frontend", {})
+    .get("arencloud.rhdh-policy-catalog", {})
+)
+if frontend_config.get("apiFactories") != [{"importName": "oidcAuthApiFactory"}]:
+    raise SystemExit("RHDH monetization UI must register its generic OIDC API factory")
 if not frontend_plugin_path.is_file() or frontend_plugin_path.stat().st_size >= 250_000:
     raise SystemExit("effective-policy plugin artifact is missing or too large for its ConfigMap")
 if hashlib.sha256(frontend_plugin_path.read_bytes()).hexdigest() != (
-    "d96521c8f46ce4f03a80f843162b56b9bc2c678d359281a75a1027c1e2fcc5b5"
+    "1b093f93a85e4a30bfa66b263faf9b0c4b5b66d93756e360bf509ba91608f541"
 ):
     raise SystemExit("effective-policy plugin artifact checksum changed; rebuild and review it")
 

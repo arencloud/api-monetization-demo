@@ -1,9 +1,7 @@
 import React, { useMemo } from 'react';
 import {
-  createApiRef,
   discoveryApiRef,
   fetchApiRef,
-  OAuthApi,
   useApi,
 } from '@backstage/core-plugin-api';
 import {
@@ -28,8 +26,7 @@ import {
   Subscription,
   UsageSummary,
 } from '../types';
-
-const oidcAuthApiRef = createApiRef<OAuthApi>({ id: 'auth.oidc' });
+import { oidcAuthApiRef } from '../apis';
 
 interface MonetizationView {
   identity: PortalIdentity;
