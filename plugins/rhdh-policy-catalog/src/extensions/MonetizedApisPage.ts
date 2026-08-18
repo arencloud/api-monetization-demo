@@ -1,0 +1,1 @@
+export { MonetizedApisPage } from '../plugin';

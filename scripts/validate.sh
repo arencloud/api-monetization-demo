@@ -178,17 +178,17 @@ for package, integrity in expected_kuadrant_plugins.items():
         raise SystemExit(f"{package}: Kuadrant plugin version or integrity is not reproducibly pinned")
 
 frontend_plugin_path = pathlib.Path(
-    "platform/developer-hub/arencloud-rhdh-policy-catalog-dynamic-0.1.1.tgz"
+    "platform/developer-hub/arencloud-rhdh-policy-catalog-dynamic-0.1.2.tgz"
 )
 frontend_plugin_package = (
     "/opt/app-root/src/local-plugins/"
-    "arencloud-rhdh-policy-catalog-dynamic-0.1.1.tgz"
+    "arencloud-rhdh-policy-catalog-dynamic-0.1.2.tgz"
 )
 frontend_plugin = plugin_by_package.get(frontend_plugin_package, {})
 if (
     frontend_plugin.get("disabled") is not False
     or frontend_plugin.get("integrity")
-    != "sha512-8PYkiNsNUBzeGRy3JuHWrNCrxFXw0IWxl0bNjZ/WNQuqG4cLBHOfXiCH+Pq/hgz3tOZ1/ycXNhRI/iRmmqXdRg=="
+    != "sha512-emntgK8JUGuXdM9EOVmWypmVywdkCw36Fu/Ni/riJzh4SVjQozUoochqT8Y3IPeoWfVQflGppQLvxb9dch2j6g=="
 ):
     raise SystemExit("effective-policy RHDH plugin is not checksum-pinned")
 frontend_config = (
@@ -202,7 +202,7 @@ if frontend_config.get("apiFactories") != [{"importName": "oidcAuthApiFactory"}]
 if not frontend_plugin_path.is_file() or frontend_plugin_path.stat().st_size >= 250_000:
     raise SystemExit("effective-policy plugin artifact is missing or too large for its ConfigMap")
 if hashlib.sha256(frontend_plugin_path.read_bytes()).hexdigest() != (
-    "a29ccd6263b276d2923b0a6bfc09be873b92cf3e9168db4481538d019f84f1fb"
+    "eaa5431aa1289cdec92eb4b431b63ba794b9027c8e955577d28343aaeade8d9a"
 ):
     raise SystemExit("effective-policy plugin artifact checksum changed; rebuild and review it")
 
@@ -244,6 +244,8 @@ if configured_routes.count("/kuadrant/api-products") != 1:
     raise SystemExit("exactly one frontend plugin must own /kuadrant/api-products")
 if configured_routes.count("/billing") != 1:
     raise SystemExit("exactly one frontend plugin must own /billing")
+if configured_routes.count("/api-docs") != 1:
+    raise SystemExit("exactly one frontend plugin must own /api-docs")
 
 with open("platform/developer-hub/app-config.yaml", encoding="utf-8") as stream:
     rhdh_config = yaml.safe_load(stream)

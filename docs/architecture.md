@@ -60,10 +60,11 @@ create, update, or delete Kuadrant `APIKey` resources through RHDH; they first
 create a subscription. The control plane then provisions the operator-native
 credential. At request time Authorino resolves the same active subscription for
 both authentication paths, so catalogue visibility never implies entitlement.
-For consumers, production rows without an active entitlement are greyed and
-their detail links are disabled; the Billing subscription action remains
-available. Both authentication rows unlock as soon as the shared subscription
-becomes active. Frontend releases use a new versioned dynamic-plugin artifact
+For consumers, production rows without an active entitlement are greyed in
+both the Kuadrant product view and the Developer Hub APIs explorer, and their
+detail links are disabled; the Billing subscription action remains available.
+Both authentication rows unlock as soon as the shared subscription becomes
+active. Frontend releases use a new versioned dynamic-plugin artifact
 path so existing RHDH clients cannot retain an earlier module-federation bundle
 under the same package URL.
 

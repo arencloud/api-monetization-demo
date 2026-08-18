@@ -31,7 +31,8 @@ invoices, revenue, and AI token accounting from the existing PostgreSQL-backed
 monetization service. It does not become a second billing system. Published
 APIProducts are production APIs and require an active subscription; a source
 annotation pairs API-key and JWT catalogue entries with one logical commercial
-product.
+product. The same entitlement-aware lock is applied in both the Kuadrant
+product list and Developer Hub's top-level APIs explorer.
 
 The existing portal remains deployed until the custom plugin reaches feature
 parity. This gives the migration an explicit rollback and avoids duplicating

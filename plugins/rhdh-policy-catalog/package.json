@@ -1,6 +1,6 @@
 {
   "name": "@arencloud/rhdh-policy-catalog",
-  "version": "0.1.1",
+    "version": "0.1.2",
   "private": true,
   "license": "Apache-2.0",
   "main": "src/index.ts",
@@ -17,7 +17,8 @@
     "exposedModules": {
       "PluginRoot": "./src/index.ts",
       "ApiProductsPage": "./src/extensions/ApiProductsPage.ts",
-      "MonetizationPage": "./src/extensions/MonetizationPage.ts"
+      "MonetizationPage": "./src/extensions/MonetizationPage.ts",
+      "MonetizedApisPage": "./src/extensions/MonetizedApisPage.ts"
     }
   },
   "sideEffects": false,

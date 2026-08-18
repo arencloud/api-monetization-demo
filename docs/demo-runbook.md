@@ -135,10 +135,14 @@ an `APIKey`: obtain a short-lived bearer token from Keycloak instead. Published
 entries show **Production** and **Subscription required** until this developer
 subscribes to the logical product. The locked rows are greyed and their product
 detail links remain unavailable, while the subscription action stays active.
+Open the top-level **APIs** page and confirm the same production entries are
+greyed and cannot open their catalog details before subscription. This view is
+subject-scoped too; it is not only a visual copy of the shared catalog.
 Open **Billing**, subscribe to a plan, wait
 for the operator-backed credential to become ready, and reveal it once. Return
 to **API Products** and confirm both the API-key and JWT presentations show
-**Subscribed**, return to their normal styling, and expose their detail links.
+**Subscribed**, return to their normal styling, and expose their detail links
+in both **API Products** and **APIs**.
 Cancellation immediately restores the grey subscription-required state and
 denies both credential forms. **My API Keys** contains only the
 consumer-owned credentials provisioned from these subscriptions.

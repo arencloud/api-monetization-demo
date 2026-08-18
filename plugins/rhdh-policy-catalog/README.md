@@ -1,9 +1,11 @@
 # RHDH effective-policy catalog
 
-This frontend dynamic plugin replaces only the Kuadrant API-product list route.
-It keeps the upstream Kuadrant backend, detail, approval, and API-key pages, but
-resolves the traffic-policy column against both `PlanPolicy` and
-`RateLimitPolicy`.
+This frontend dynamic plugin owns the Kuadrant API-product list, billing, and
+Developer Hub API explorer routes. It keeps the upstream Kuadrant backend,
+detail, approval, and API-key pages, resolves effective traffic policies, and
+locks production catalog entries until the signed-in developer subscribes to
+their commercial product. One subscription unlocks both API-key and Keycloak
+JWT variants of that product.
 
 JWT products intentionally use direct `RateLimitPolicy` resources because the
 demo requires explicit subscription/customer counters. Creating a decorative

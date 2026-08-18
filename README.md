@@ -170,8 +170,9 @@ Keycloak groups map to the Kuadrant consumer, owner, and administrator roles.
 The source-controlled RHDH extension resolves effective `PlanPolicy`, direct
 `RateLimitPolicy`, and `TokenRateLimitPolicy` resources and adds a Billing view
 for subscriptions, accepted request/token usage, projected revenue, and
-invoices. Published products are treated as production APIs and show whether
-the signed-in consumer has an active subscription. The Billing page provides
+invoices. Both the Kuadrant API Products view and Developer Hub's APIs explorer
+treat published products as production APIs and show whether the signed-in
+consumer has an active subscription. The Billing page provides
 consumer-scoped subscribe, plan-change, cancellation, and one-time API-key
 reveal/rotation workflows. Its backend applies RHDH permissions before
 forwarding the signed-in user's Keycloak token, while the existing control

@@ -8,9 +8,17 @@ const monetizationRouteRef = createRouteRef({
   id: 'api-monetization-overview',
 });
 
+const monetizedApisRouteRef = createRouteRef({
+  id: 'api-monetization-apis',
+});
+
 export const policyCatalogPlugin = createPlugin({
   id: 'api-monetization-policy-catalog',
-  routes: { root: rootRouteRef, monetization: monetizationRouteRef },
+  routes: {
+    root: rootRouteRef,
+    monetization: monetizationRouteRef,
+    monetizedApis: monetizedApisRouteRef,
+  },
 });
 
 export const ApiProductsPage = policyCatalogPlugin.provide(
@@ -28,5 +36,14 @@ export const MonetizationPage = policyCatalogPlugin.provide(
     component: () =>
       import('./components/MonetizationPage').then(module => module.MonetizationPage),
     mountPoint: monetizationRouteRef,
+  }),
+);
+
+export const MonetizedApisPage = policyCatalogPlugin.provide(
+  createRoutableExtension({
+    name: 'MonetizedApisPage',
+    component: () =>
+      import('./components/MonetizedApisPage').then(module => module.MonetizedApisPage),
+    mountPoint: monetizedApisRouteRef,
   }),
 );
