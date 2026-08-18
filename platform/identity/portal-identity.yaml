@@ -266,13 +266,19 @@ spec:
             - -c
             - |
               kcadm=/opt/keycloak/bin/kcadm.sh
+              run_kcadm() {
+                # The Java admin client has no useful default request deadline.
+                # Fail the hook and let its bounded Job retry instead of leaving
+                # Argo CD in Syncing forever on a stalled Keycloak request.
+                timeout --signal=TERM 30s "$kcadm" "$@"
+              }
               server=http://api-monetization-service:8080
               realm=api-monetization
               admin_role=monetization-admin
               developer_role=monetization-developer
 
               for attempt in $(seq 1 60); do
-                if "$kcadm" config credentials --config /tmp/kcadm.config \
+                if run_kcadm config credentials --config /tmp/kcadm.config \
                   --server "$server" --realm master \
                   --user "$KEYCLOAK_ADMIN" --password "$KEYCLOAK_ADMIN_PASSWORD"; then
                   break
@@ -285,7 +291,7 @@ spec:
               done
 
               for attempt in $(seq 1 60); do
-                if "$kcadm" get "realms/$realm" --config /tmp/kcadm.config >/dev/null 2>&1; then
+                if run_kcadm get "realms/$realm" --config /tmp/kcadm.config >/dev/null 2>&1; then
                   break
                 fi
                 if (( attempt == 60 )); then
@@ -299,15 +305,15 @@ spec:
                 sed -n 's/.*"id" *: *"\([^"]*\)".*/\1/p' | head -n 1
               }
 
-              if ! "$kcadm" get "roles/$admin_role" -r "$realm" \
+              if ! run_kcadm get "roles/$admin_role" -r "$realm" \
                 --config /tmp/kcadm.config >/dev/null 2>&1; then
-                "$kcadm" create roles -r "$realm" --config /tmp/kcadm.config \
+                run_kcadm create roles -r "$realm" --config /tmp/kcadm.config \
                   -s name="$admin_role" \
                   -s description='Administrator of API subscriptions and plans'
               fi
-              if ! "$kcadm" get "roles/$developer_role" -r "$realm" \
+              if ! run_kcadm get "roles/$developer_role" -r "$realm" \
                 --config /tmp/kcadm.config >/dev/null 2>&1; then
-                "$kcadm" create roles -r "$realm" --config /tmp/kcadm.config \
+                run_kcadm create roles -r "$realm" --config /tmp/kcadm.config \
                   -s name="$developer_role" \
                   -s description='Developer who can subscribe to API products and manage credentials'
               fi
@@ -499,16 +505,16 @@ spec:
                 local client_id=$1
                 local definition=$2
                 local client_uuid
-                client_uuid=$("$kcadm" get clients -r "$realm" \
+                client_uuid=$(run_kcadm get clients -r "$realm" \
                   --config /tmp/kcadm.config -q clientId="$client_id" --fields id | json_id)
                 if [[ -z $client_uuid ]]; then
-                  "$kcadm" create clients -r "$realm" --config /tmp/kcadm.config \
+                  run_kcadm create clients -r "$realm" --config /tmp/kcadm.config \
                     -f "$definition" >/dev/null
                 else
-                  "$kcadm" update "clients/$client_uuid" -r "$realm" \
+                  run_kcadm update "clients/$client_uuid" -r "$realm" \
                     --config /tmp/kcadm.config -f "$definition"
                 fi
-                "$kcadm" get clients -r "$realm" --config /tmp/kcadm.config \
+                run_kcadm get clients -r "$realm" --config /tmp/kcadm.config \
                   -q clientId="$client_id" --fields id | json_id
               }
 
@@ -527,12 +533,12 @@ spec:
               ensure_group() {
                 local group_name=$1
                 local group_id
-                group_id=$("$kcadm" get groups -r "$realm" --config /tmp/kcadm.config \
+                group_id=$(run_kcadm get groups -r "$realm" --config /tmp/kcadm.config \
                   -q search="$group_name" --fields id,name | json_id)
                 if [[ -z $group_id ]]; then
-                  "$kcadm" create groups -r "$realm" --config /tmp/kcadm.config \
+                  run_kcadm create groups -r "$realm" --config /tmp/kcadm.config \
                     -s name="$group_name" >/dev/null
-                  group_id=$("$kcadm" get groups -r "$realm" --config /tmp/kcadm.config \
+                  group_id=$(run_kcadm get groups -r "$realm" --config /tmp/kcadm.config \
                     -q search="$group_name" --fields id,name | json_id)
                 fi
                 if [[ -z $group_id ]]; then
@@ -545,93 +551,93 @@ spec:
               consumer_group_id=$(ensure_group api-consumers)
               owner_group_id=$(ensure_group api-owners)
               admin_group_id=$(ensure_group api-admins)
-              "$kcadm" update "realms/$realm" --config /tmp/kcadm.config \
+              run_kcadm update "realms/$realm" --config /tmp/kcadm.config \
                 -s registrationAllowed=true \
                 -s 'defaultGroups=["/api-consumers"]'
 
               echo "Configuring portal administrator"
-              admin_user_id=$("$kcadm" get users -r "$realm" --config /tmp/kcadm.config \
+              admin_user_id=$(run_kcadm get users -r "$realm" --config /tmp/kcadm.config \
                 -q username=demo-admin -q exact=true --fields id | json_id)
               if [[ -z $admin_user_id ]]; then
-                "$kcadm" create users -r "$realm" --config /tmp/kcadm.config \
+                run_kcadm create users -r "$realm" --config /tmp/kcadm.config \
                   -s username=demo-admin -s enabled=true \
                   -s email=demo-admin@example.invalid -s emailVerified=true \
                   -s firstName=Demo -s lastName=Administrator >/dev/null
               else
-                "$kcadm" update "users/$admin_user_id" -r "$realm" \
+                run_kcadm update "users/$admin_user_id" -r "$realm" \
                   --config /tmp/kcadm.config -s enabled=true \
                   -s email=demo-admin@example.invalid -s emailVerified=true \
                   -s firstName=Demo -s lastName=Administrator
               fi
-              admin_user_id=$("$kcadm" get users -r "$realm" --config /tmp/kcadm.config \
+              admin_user_id=$(run_kcadm get users -r "$realm" --config /tmp/kcadm.config \
                 -q username=demo-admin -q exact=true --fields id | json_id)
               if [[ -z $admin_user_id ]]; then
                 echo "Portal administrator was not created" >&2
                 exit 1
               fi
-              "$kcadm" set-password -r "$realm" --config /tmp/kcadm.config \
+              run_kcadm set-password -r "$realm" --config /tmp/kcadm.config \
                 --userid "$admin_user_id" --new-password "$PORTAL_ADMIN_PASSWORD"
-              "$kcadm" add-roles -r "$realm" --config /tmp/kcadm.config \
+              run_kcadm add-roles -r "$realm" --config /tmp/kcadm.config \
                 --uid "$admin_user_id" --rolename "$admin_role"
-              "$kcadm" update "users/$admin_user_id/groups/$owner_group_id" \
+              run_kcadm update "users/$admin_user_id/groups/$owner_group_id" \
                 -r "$realm" --config /tmp/kcadm.config -n
-              "$kcadm" update "users/$admin_user_id/groups/$admin_group_id" \
+              run_kcadm update "users/$admin_user_id/groups/$admin_group_id" \
                 -r "$realm" --config /tmp/kcadm.config -n
 
               echo "Configuring portal developer"
               # Keycloak username searches are partial by default. The exact
               # filter prevents demo-developer from matching the existing
               # service-account-demo-developer-client identity.
-              developer_user_id=$("$kcadm" get users -r "$realm" --config /tmp/kcadm.config \
+              developer_user_id=$(run_kcadm get users -r "$realm" --config /tmp/kcadm.config \
                 -q username=demo-developer -q exact=true --fields id | json_id)
               if [[ -z $developer_user_id ]]; then
-                "$kcadm" create users -r "$realm" --config /tmp/kcadm.config \
+                run_kcadm create users -r "$realm" --config /tmp/kcadm.config \
                   -s username=demo-developer -s enabled=true \
                   -s email=portal-demo-developer@example.invalid -s emailVerified=true \
                   -s firstName=Demo -s lastName=Developer >/dev/null
               else
-                "$kcadm" update "users/$developer_user_id" -r "$realm" \
+                run_kcadm update "users/$developer_user_id" -r "$realm" \
                   --config /tmp/kcadm.config -s enabled=true \
                   -s email=portal-demo-developer@example.invalid -s emailVerified=true \
                   -s firstName=Demo -s lastName=Developer
               fi
-              developer_user_id=$("$kcadm" get users -r "$realm" --config /tmp/kcadm.config \
+              developer_user_id=$(run_kcadm get users -r "$realm" --config /tmp/kcadm.config \
                 -q username=demo-developer -q exact=true --fields id | json_id)
               if [[ -z $developer_user_id ]]; then
                 echo "Portal developer was not created" >&2
                 exit 1
               fi
-              "$kcadm" set-password -r "$realm" --config /tmp/kcadm.config \
+              run_kcadm set-password -r "$realm" --config /tmp/kcadm.config \
                 --userid "$developer_user_id" --new-password "$PORTAL_DEVELOPER_PASSWORD"
-              "$kcadm" add-roles -r "$realm" --config /tmp/kcadm.config \
+              run_kcadm add-roles -r "$realm" --config /tmp/kcadm.config \
                 --uid "$developer_user_id" --rolename "$developer_role"
-              "$kcadm" update "users/$developer_user_id/groups/$consumer_group_id" \
+              run_kcadm update "users/$developer_user_id/groups/$consumer_group_id" \
                 -r "$realm" --config /tmp/kcadm.config -n
 
-              service_user_id=$("$kcadm" get "clients/$automation_client_uuid/service-account-user" \
+              service_user_id=$(run_kcadm get "clients/$automation_client_uuid/service-account-user" \
                 -r "$realm" --config /tmp/kcadm.config --fields id | json_id)
               if [[ -z $service_user_id ]]; then
                 echo "Automation service account was not created" >&2
                 exit 1
               fi
-              "$kcadm" add-roles -r "$realm" --config /tmp/kcadm.config \
+              run_kcadm add-roles -r "$realm" --config /tmp/kcadm.config \
                 --uid "$service_user_id" --rolename "$admin_role"
-              developer_service_user_id=$("$kcadm" get "clients/$developer_automation_client_uuid/service-account-user" \
+              developer_service_user_id=$(run_kcadm get "clients/$developer_automation_client_uuid/service-account-user" \
                 -r "$realm" --config /tmp/kcadm.config --fields id | json_id)
               if [[ -z $developer_service_user_id ]]; then
                 echo "Developer automation service account was not created" >&2
                 exit 1
               fi
-              "$kcadm" add-roles -r "$realm" --config /tmp/kcadm.config \
+              run_kcadm add-roles -r "$realm" --config /tmp/kcadm.config \
                 --uid "$developer_service_user_id" --rolename "$developer_role"
-              rhdh_service_user_id=$("$kcadm" get "clients/$rhdh_client_uuid/service-account-user" \
+              rhdh_service_user_id=$(run_kcadm get "clients/$rhdh_client_uuid/service-account-user" \
                 -r "$realm" --config /tmp/kcadm.config --fields id | json_id)
               if [[ -z $rhdh_service_user_id ]]; then
                 echo "Developer Hub service account was not created" >&2
                 exit 1
               fi
               for management_role in view-users query-users query-groups; do
-                "$kcadm" add-roles -r "$realm" --config /tmp/kcadm.config \
+                run_kcadm add-roles -r "$realm" --config /tmp/kcadm.config \
                   --uid "$rhdh_service_user_id" --cclientid realm-management \
                   --rolename "$management_role"
               done

@@ -822,7 +822,15 @@ if ! jq -e --arg callback "$rhdh_callback" '
   .[0].standardFlowEnabled == true and
   .[0].serviceAccountsEnabled == true and
   .[0].directAccessGrantsEnabled == false and
-  (.[0].redirectUris | index($callback) != null)
+  (.[0].redirectUris | index($callback) != null) and
+  ([.[0].protocolMappers[]? |
+    select(.protocolMapper == "oidc-audience-mapper") |
+    .config["included.custom.audience"]] |
+    index("monetization-control") != null) and
+  ([.[0].protocolMappers[]? |
+    select(.protocolMapper == "oidc-audience-mapper") |
+    .config["included.custom.audience"]] |
+    index("api-monetization") != null)
 ' <<<"$rhdh_client" >/dev/null; then
   echo "error: Keycloak Developer Hub OIDC/catalog client is incomplete" >&2
   exit 1
