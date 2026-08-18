@@ -6,6 +6,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "40"
     backstage.io/owner: group:default/api-owners
+    monetization.arencloud.com/product: ai-chat
   labels: {app.kubernetes.io/part-of: api-monetization}
 spec:
   displayName: AI Chat API

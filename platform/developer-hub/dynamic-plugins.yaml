@@ -64,10 +64,10 @@ plugins:
                   layout: {gridColumn: "1 / -1"}
                   if: {allOf: [{isKind: api}]}
   - package: /opt/app-root/src/local-plugins/arencloud-rhdh-monetization-backend-dynamic-0.1.0.tgz
-    integrity: sha512-Cn0X5vZRkJuhJ9Qu8TmlyeM6ok4WGRfCWEpMAwEV4+LDbNpKNxSW8KBOKmlRD5xtOEE3MKNkpQ3aVnuV0p6VDw==
+    integrity: sha512-W+mm0icsCnBcOhuw9Y+SRz6XRhKryFzWHtH1yqRxhpBp1zLjnEwMnpxjabvuDcc2qiJqesBeKA4kmScSoy9wyA==
     disabled: false
   - package: /opt/app-root/src/local-plugins/arencloud-rhdh-policy-catalog-dynamic-0.1.0.tgz
-    integrity: sha512-+J+1tOCtKYw+Dg3bayu6Ja/g7aF7Bjr6lUVV4JM7X7SGFTbQwipjTpai9S4/orWXZtsrPH+Mz2pV/Gf9WZzREw==
+    integrity: sha512-7y/dzlCrLC3eCE2try6TmOKqgIkU9ZD4H8NV301kMRKqPcmC6dFfWo87lZgr7niFzq7OUE1gwuV14bQKkxwClA==
     disabled: false
     pluginConfig:
       dynamicPlugins:

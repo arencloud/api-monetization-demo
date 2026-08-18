@@ -15,8 +15,26 @@ export const billingReadAllPermission = createPermission({
   attributes: { action: 'read' },
 });
 
+export const subscriptionCreateOwnPermission = createPermission({
+  name: 'api-monetization.subscription.create.own',
+  attributes: { action: 'create' },
+});
+
+export const subscriptionUpdateOwnPermission = createPermission({
+  name: 'api-monetization.subscription.update.own',
+  attributes: { action: 'update' },
+});
+
+export const subscriptionDeleteOwnPermission = createPermission({
+  name: 'api-monetization.subscription.delete.own',
+  attributes: { action: 'delete' },
+});
+
 export const apiMonetizationPermissions = [
   tokenRateLimitPolicyListPermission,
   billingReadOwnPermission,
   billingReadAllPermission,
+  subscriptionCreateOwnPermission,
+  subscriptionUpdateOwnPermission,
+  subscriptionDeleteOwnPermission,
 ];

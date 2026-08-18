@@ -170,12 +170,14 @@ Keycloak groups map to the Kuadrant consumer, owner, and administrator roles.
 The source-controlled RHDH extension resolves effective `PlanPolicy`, direct
 `RateLimitPolicy`, and `TokenRateLimitPolicy` resources and adds a Billing view
 for subscriptions, accepted request/token usage, projected revenue, and
-invoices. Its backend applies RHDH permissions before forwarding the signed-in
-user's Keycloak token, while the existing control plane applies the independent
-role and customer-scope check. PostgreSQL remains the sole commercial system of
-record. The existing portal remains deployed for subscription mutations, API
-key reveal/rotation, invoice generation, and the AI playground while those
-interactive workflows are migrated incrementally.
+invoices. Published products are treated as production APIs and show whether
+the signed-in consumer has an active subscription. The Billing page provides
+consumer-scoped subscribe, plan-change, cancellation, and one-time API-key
+reveal/rotation workflows. Its backend applies RHDH permissions before
+forwarding the signed-in user's Keycloak token, while the existing control
+plane independently checks the role and maps the token subject to exactly one
+customer. PostgreSQL remains the sole commercial system of record. The
+existing portal remains deployed as a rollback path and for the AI playground.
 
 The current development milestone adds an Operator-managed OpenShift AI 3.4
 foundation, KServe, and a pinned Qwen2.5 0.5B Instruct model served by Red Hat's
@@ -203,9 +205,12 @@ token limits. Portable CORS rules do not use cookies and therefore require no
 cluster-specific portal hostname.
 
 Developers authenticate with the separate `monetization-developer` role. They
-can browse the multi-product API catalog, choose an independent plan for each
-product, create their own PostgreSQL customer and subscriptions, and request
-product-scoped API keys or a short-lived Keycloak JWT. The
+can browse the multi-product API catalog, but a production API rejects their
+API-key and JWT requests until they subscribe to its logical commercial
+product. Both authentication presentations share that subscription. Developers
+choose an independent plan for each product, create their own PostgreSQL
+customer and subscriptions in RHDH, and request product-scoped API keys or a
+short-lived Keycloak JWT. The
 control plane creates an External Secrets Password generator and ExternalSecret
 before submitting the RHCL `APIKey`; the raw credential is displayed once and
 only its digest is retained in the commercial datastore. Developers can rotate

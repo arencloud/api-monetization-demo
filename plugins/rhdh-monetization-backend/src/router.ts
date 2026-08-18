@@ -8,16 +8,28 @@ import { AuthorizeResult, BasicPermission } from '@backstage/plugin-permission-c
 import express from 'express';
 import Router from 'express-promise-router';
 import {
-  isAllowedControlResource,
+  ControlAccess,
   normalizeControlResource,
   parseForwardedBearer,
+  resolveControlAccess,
 } from './access';
 import { listTokenRateLimitPolicies } from './kubernetes';
 import {
   billingReadAllPermission,
   billingReadOwnPermission,
+  subscriptionCreateOwnPermission,
+  subscriptionDeleteOwnPermission,
+  subscriptionUpdateOwnPermission,
   tokenRateLimitPolicyListPermission,
 } from './permissions';
+
+const permissionByAccess: Record<ControlAccess, BasicPermission> = {
+  'read-own': billingReadOwnPermission,
+  'create-own': subscriptionCreateOwnPermission,
+  'update-own': subscriptionUpdateOwnPermission,
+  'delete-own': subscriptionDeleteOwnPermission,
+  'read-all': billingReadAllPermission,
+};
 
 async function requirePermission(
   req: express.Request,
@@ -47,12 +59,14 @@ async function proxyControl(
   path: string,
 ) {
   const response = await fetch(`${controlBaseUrl}/api/${path}`, {
-    method: 'GET',
+    method: req.method,
     headers: {
       Accept: 'application/json',
       Authorization: keycloakAuthorization(req),
+      ...(req.method === 'GET' ? {} : { 'Content-Type': 'application/json' }),
     },
-    signal: AbortSignal.timeout(15_000),
+    body: req.method === 'GET' ? undefined : JSON.stringify(req.body || {}),
+    signal: AbortSignal.timeout(req.method === 'GET' ? 15_000 : 60_000),
   });
   const body = await response.text();
   res.status(response.status);
@@ -81,19 +95,20 @@ export async function createRouter({
     res.json(await listTokenRateLimitPolicies());
   });
 
-  router.get('/control/user/:resource(*)', async (req, res) => {
-    await requirePermission(req, httpAuth, permissions, billingReadOwnPermission);
+  router.all('/control/user/:resource(*)', async (req, res) => {
     const resource = normalizeControlResource(req.params.resource);
-    if (!isAllowedControlResource('user', resource)) {
-      throw new NotAllowedError('control-plane resource is not available through the user API');
+    const access = resolveControlAccess('user', req.method, resource);
+    if (!access) {
+      throw new NotAllowedError('control-plane operation is not available through the user API');
     }
+    await requirePermission(req, httpAuth, permissions, permissionByAccess[access]);
     await proxyControl(req, res, controlBaseUrl, resource);
   });
 
   router.get('/control/admin/:resource(*)', async (req, res) => {
     await requirePermission(req, httpAuth, permissions, billingReadAllPermission);
     const resource = normalizeControlResource(req.params.resource);
-    if (!isAllowedControlResource('admin', resource)) {
+    if (!resolveControlAccess('admin', req.method, resource)) {
       throw new NotAllowedError('control-plane resource is not available through the administrator API');
     }
     await proxyControl(req, res, controlBaseUrl, resource);

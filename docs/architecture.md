@@ -46,11 +46,20 @@ Red Hat Developer Hub is the unified presentation layer, not a replacement for
 the request-time enforcement or billing engines. The Kuadrant plugins own the
 operator-native catalog and credential workflows. The custom monetization
 frontend presents subscriptions, accepted request/token usage, projected
-revenue, and invoices. Its backend is the only browser-facing bridge: RHDH RBAC
-authorizes the operation, then the monetization control plane verifies the
-forwarded Keycloak token and resolves the subject to its PostgreSQL customer.
-No browser-supplied customer identifier is trusted. The existing portal remains
-available for lifecycle mutations and the AI playground during migration.
+revenue, and invoices, and provides subscription, plan, cancellation, and
+credential lifecycle actions. Its backend is the only browser-facing bridge:
+RHDH RBAC authorizes each read or mutation, then the monetization control plane
+verifies the forwarded Keycloak token and resolves the subject to its
+PostgreSQL customer. No browser-supplied customer identifier is trusted. The
+existing portal remains available as a rollback path and for the AI playground.
+
+Every published `APIProduct` is presented as a production API. Its
+`monetization.arencloud.com/product` annotation maps the API-key and OIDC/JWT
+presentations to one logical commercial product. Consumers cannot directly
+create, update, or delete Kuadrant `APIKey` resources through RHDH; they first
+create a subscription. The control plane then provisions the operator-native
+credential. At request time Authorino resolves the same active subscription for
+both authentication paths, so catalogue visibility never implies entitlement.
 
 Each governed HTTPRoute has its own `APIProduct` presentation in RHDH. The
 three API-key routes advertise API-key authentication and participate in the
@@ -72,8 +81,10 @@ registered developers enter the consumer group by default.
 the tested Kuadrant 0.4.0 backend does not expose that CRD. The endpoint uses
 the dedicated RHDH service account and the
 `api-monetization.tokenratelimitpolicy.list` permission. Billing has distinct
-`read.own` and `read.all` permissions; Keycloak performs the matching developer
-or administrator role check again at the control-plane boundary.
+`read.own` and `read.all` permissions. Consumer lifecycle actions additionally
+require `subscription.create.own`, `subscription.update.own`, or
+`subscription.delete.own`; Keycloak performs the matching developer or
+administrator role check again at the control-plane boundary.
 The frontend extension explicitly registers RHDH's generic `auth.oidc` API
 factory. This reuses the signed-in Keycloak session to obtain the short-lived
 provider access token; no token or customer identifier is stored in browser

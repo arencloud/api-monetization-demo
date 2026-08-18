@@ -131,11 +131,17 @@ six entries were synchronized from the live `APIProduct` resources. Inventory,
 Payment, and AI Chat each have an **API Key** entry and a **Keycloak JWT** entry
 whose Authentication column is **OIDC**. Open a JWT entry and confirm its OIDC
 tab publishes the cluster's Keycloak token endpoint. JWT entries do not create
-an `APIKey`: obtain a short-lived bearer token from Keycloak instead. **My API
-Keys** contains the consumer-owned credentials for the three API-key entries.
+an `APIKey`: obtain a short-lived bearer token from Keycloak instead. Published
+entries show **Production** and **Subscription required** until this developer
+subscribes to the logical product. Open **Billing**, subscribe to a plan, wait
+for the operator-backed credential to become ready, and reveal it once. Return
+to **API Products** and confirm both the API-key and JWT presentations show
+**Subscribed**. Cancellation immediately restores the subscription-required
+state and denies both credential forms. **My API Keys** contains only the
+consumer-owned credentials provisioned from these subscriptions.
 Sign in as `demo-admin` to use the approval and owner views. The custom portal
-remains available for lifecycle mutations and the AI playground. Open
-**Billing** in RHDH to show the permission-scoped subscription, accepted usage,
+remains available as a rollback path and for the AI playground. Open **Billing**
+in RHDH to show the permission-scoped subscription, accepted usage,
 AI token totals, projected revenue, and persisted invoices. A developer sees
 only the PostgreSQL customer mapped to their Keycloak subject; `demo-admin`
 sees the cross-customer view. In **Kuadrant → API Products**, AI Chat entries

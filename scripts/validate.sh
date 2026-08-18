@@ -188,7 +188,7 @@ frontend_plugin = plugin_by_package.get(frontend_plugin_package, {})
 if (
     frontend_plugin.get("disabled") is not False
     or frontend_plugin.get("integrity")
-    != "sha512-+J+1tOCtKYw+Dg3bayu6Ja/g7aF7Bjr6lUVV4JM7X7SGFTbQwipjTpai9S4/orWXZtsrPH+Mz2pV/Gf9WZzREw=="
+    != "sha512-7y/dzlCrLC3eCE2try6TmOKqgIkU9ZD4H8NV301kMRKqPcmC6dFfWo87lZgr7niFzq7OUE1gwuV14bQKkxwClA=="
 ):
     raise SystemExit("effective-policy RHDH plugin is not checksum-pinned")
 frontend_config = (
@@ -202,7 +202,7 @@ if frontend_config.get("apiFactories") != [{"importName": "oidcAuthApiFactory"}]
 if not frontend_plugin_path.is_file() or frontend_plugin_path.stat().st_size >= 250_000:
     raise SystemExit("effective-policy plugin artifact is missing or too large for its ConfigMap")
 if hashlib.sha256(frontend_plugin_path.read_bytes()).hexdigest() != (
-    "1b093f93a85e4a30bfa66b263faf9b0c4b5b66d93756e360bf509ba91608f541"
+    "c36f9fa5acc9e95f8b093165d2c59da71dae4e29405a91617bb742a80c27b127"
 ):
     raise SystemExit("effective-policy plugin artifact checksum changed; rebuild and review it")
 
@@ -217,13 +217,13 @@ backend_plugin = plugin_by_package.get(backend_plugin_package, {})
 if (
     backend_plugin.get("disabled") is not False
     or backend_plugin.get("integrity")
-    != "sha512-Cn0X5vZRkJuhJ9Qu8TmlyeM6ok4WGRfCWEpMAwEV4+LDbNpKNxSW8KBOKmlRD5xtOEE3MKNkpQ3aVnuV0p6VDw=="
+    != "sha512-W+mm0icsCnBcOhuw9Y+SRz6XRhKryFzWHtH1yqRxhpBp1zLjnEwMnpxjabvuDcc2qiJqesBeKA4kmScSoy9wyA=="
 ):
     raise SystemExit("monetization RHDH backend plugin is not checksum-pinned")
 if not backend_plugin_path.is_file() or backend_plugin_path.stat().st_size >= 700_000:
     raise SystemExit("monetization backend artifact is missing or too large for its ConfigMap")
 if hashlib.sha256(backend_plugin_path.read_bytes()).hexdigest() != (
-    "baeda0b15525f2b8f561c584cd15b6a1f58d3171d947c0693ee49703c3aa8a64"
+    "1707fe3185d23f6d7206974072abefa0c835b7b84ab29384fc65697cf393bc7e"
 ):
     raise SystemExit("monetization backend artifact checksum changed; rebuild and review it")
 if frontend_plugin_path.stat().st_size + backend_plugin_path.stat().st_size >= 1_000_000:
@@ -257,6 +257,23 @@ if resolvers != [{"resolver": "oidcSubClaimMatchingKeycloakUserId"}]:
     raise SystemExit("RHDH must use the non-bypass Keycloak user-ID sign-in resolver")
 if not rhdh_config.get("permission", {}).get("enabled"):
     raise SystemExit("RHDH permission framework must be enabled for Kuadrant RBAC")
+
+rhdh_rbac = pathlib.Path("platform/developer-hub/rbac-policy.csv").read_text()
+for permission, action in (
+    ("api-monetization.subscription.create.own", "create"),
+    ("api-monetization.subscription.update.own", "update"),
+    ("api-monetization.subscription.delete.own", "delete"),
+):
+    expected = f"p, role:default/api-consumer, {permission}, {action}, allow"
+    if expected not in rhdh_rbac:
+        raise SystemExit(f"RHDH consumers are missing {permission}")
+for forbidden in (
+    "p, role:default/api-consumer, kuadrant.apikey.create",
+    "p, role:default/api-consumer, kuadrant.apikey.update",
+    "p, role:default/api-consumer, kuadrant.apikey.delete",
+):
+    if forbidden in rhdh_rbac:
+        raise SystemExit("RHDH consumers must subscribe instead of directly mutating APIKey resources")
 
 with open("platform/developer-hub/backstage.yaml", encoding="utf-8") as stream:
     backstage = yaml.safe_load(stream)
@@ -305,11 +322,23 @@ extra_envs = backstage.get("spec", {}).get("application", {}).get("extraEnvs", {
 if {"name": "NODE_EXTRA_CA_CERTS", "value": "/opt/app-root/etc/router-ca.crt"} not in extra_envs:
     raise SystemExit("RHDH must trust the discovered OpenShift router CA for Keycloak OIDC")
 
+expected_commercial_products = {
+    "inventory-api-product.yaml": "inventory",
+    "inventory-jwt-api-product.yaml": "inventory",
+    "payments-api-product.yaml": "payments",
+    "payments-jwt-api-product.yaml": "payments",
+    "ai-chat-api-product.yaml": "ai-chat",
+    "ai-chat-jwt-api-product.yaml": "ai-chat",
+}
 for product_file in pathlib.Path("platform/gateway").glob("*-api-product.yaml"):
     product = yaml.safe_load(product_file.read_text())
-    owner = product.get("metadata", {}).get("annotations", {}).get("backstage.io/owner")
+    annotations = product.get("metadata", {}).get("annotations", {})
+    owner = annotations.get("backstage.io/owner")
     if owner != "group:default/api-owners":
         raise SystemExit(f"{product_file}: APIProduct must declare its RHDH catalog owner")
+    expected_product = expected_commercial_products.get(product_file.name)
+    if expected_product and annotations.get("monetization.arencloud.com/product") != expected_product:
+        raise SystemExit(f"{product_file}: APIProduct is not linked to its commercial subscription")
 
 with open("platform/ai-model/serving-runtime.yaml", encoding="utf-8") as stream:
     ai_runtime = yaml.safe_load(stream)

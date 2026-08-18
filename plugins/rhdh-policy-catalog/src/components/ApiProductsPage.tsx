@@ -22,6 +22,7 @@ import LockIcon from '@material-ui/icons/Lock';
 import VpnKeyIcon from '@material-ui/icons/VpnKey';
 import { Link as RouterLink } from 'react-router-dom';
 import useAsync from 'react-use/lib/useAsync';
+import { oidcAuthApiRef } from '../apis';
 import {
   getAuthentication,
   resolveEffectivePolicies,
@@ -30,18 +31,23 @@ import {
 import {
   APIProduct,
   EffectivePolicy,
+  PortalIdentity,
   ResourceList,
+  Subscription,
   TrafficPolicy,
 } from '../types';
 
 interface ProductRow extends APIProduct {
   effectivePolicies: EffectivePolicy[];
   authentication: string[];
+  commercialProduct?: string;
+  subscriptionStatus?: string;
 }
 
 export const ApiProductsPage = () => {
   const discoveryApi = useApi(discoveryApiRef);
   const fetchApi = useApi(fetchApiRef);
+  const oidcAuthApi = useApi(oidcAuthApiRef);
 
   const state = useAsync(async () => {
     const baseUrl = await discoveryApi.getBaseUrl('kuadrant');
@@ -56,7 +62,19 @@ export const ApiProductsPage = () => {
       return response.json() as Promise<ResourceList<T>>;
     };
 
-    const [products, plans, rateLimits, tokenRateLimits] = await Promise.all([
+    const accessToken = await oidcAuthApi.getAccessToken(['openid', 'profile', 'email']);
+    const controlRequest = async <T,>(path: string): Promise<T> => {
+      const response = await fetchApi.fetch(`${monetizationBaseUrl}/control/user/${path}`, {
+        headers: { 'X-API-Monetization-Authorization': `Bearer ${accessToken}` },
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body.error || `Monetization request failed: HTTP ${response.status}`);
+      }
+      return body as T;
+    };
+
+    const [products, plans, rateLimits, tokenRateLimits, identity] = await Promise.all([
       fetchResource<APIProduct>('apiproducts'),
       fetchResource<TrafficPolicy>('planpolicies'),
       fetchResource<TrafficPolicy>('ratelimitpolicies'),
@@ -66,19 +84,33 @@ export const ApiProductsPage = () => {
         }
         return response.json() as Promise<ResourceList<TrafficPolicy>>;
       }),
+      controlRequest<PortalIdentity>('me'),
     ]);
+    const subscriptions = identity.developer && !identity.admin
+      ? await controlRequest<Subscription[]>('me/subscriptions')
+      : [];
 
-    return products.items.map<ProductRow>(product => ({
-      ...product,
-      effectivePolicies: [
-        ...resolveEffectivePolicies(product, plans.items, rateLimits.items),
-        ...resolveTokenPolicies(product, tokenRateLimits.items),
-      ],
-      authentication: getAuthentication(product),
-    }));
-  }, [discoveryApi, fetchApi]);
+    return {
+      identity,
+      rows: products.items.map<ProductRow>(product => {
+        const commercialProduct = product.metadata.annotations?.['monetization.arencloud.com/product'];
+        return {
+          ...product,
+          effectivePolicies: [
+            ...resolveEffectivePolicies(product, plans.items, rateLimits.items),
+            ...resolveTokenPolicies(product, tokenRateLimits.items),
+          ],
+          authentication: getAuthentication(product),
+          commercialProduct,
+          subscriptionStatus: subscriptions.find(
+            subscription => subscription.product === commercialProduct,
+          )?.status,
+        };
+      }),
+    };
+  }, [discoveryApi, fetchApi, oidcAuthApi]);
 
-  const rows = useMemo(() => state.value || [], [state.value]);
+  const rows = useMemo(() => state.value?.rows || [], [state.value]);
 
   return (
     <Box p={3}>
@@ -111,6 +143,8 @@ export const ApiProductsPage = () => {
                 <TableCell>Effective traffic policy</TableCell>
                 <TableCell>Authentication</TableCell>
                 <TableCell>Status</TableCell>
+                <TableCell>Lifecycle</TableCell>
+                <TableCell>Access</TableCell>
                 <TableCell>Namespace</TableCell>
               </TableRow>
             </TableHead>
@@ -168,6 +202,28 @@ export const ApiProductsPage = () => {
                     </Box>
                   </TableCell>
                   <TableCell>{row.spec?.publishStatus || 'Draft'}</TableCell>
+                  <TableCell>
+                    <Chip
+                      size="small"
+                      label={row.spec?.publishStatus === 'Published' ? 'Production' : 'Development'}
+                      color={row.spec?.publishStatus === 'Published' ? 'primary' : 'default'}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    {state.value?.identity.admin ? (
+                      <MaterialLink component={RouterLink} to="/billing">Manage subscriptions</MaterialLink>
+                    ) : row.spec?.publishStatus !== 'Published' ? (
+                      <Typography variant="body2" color="textSecondary">No subscription required</Typography>
+                    ) : row.subscriptionStatus === 'active' ? (
+                      <MaterialLink component={RouterLink} to={`/billing?product=${encodeURIComponent(row.commercialProduct || '')}`}>
+                        <Chip size="small" color="primary" label="Subscribed" clickable />
+                      </MaterialLink>
+                    ) : (
+                      <MaterialLink component={RouterLink} to={`/billing?product=${encodeURIComponent(row.commercialProduct || '')}`}>
+                        <Chip size="small" color="secondary" variant="outlined" label="Subscription required" clickable />
+                      </MaterialLink>
+                    )}
+                  </TableCell>
                   <TableCell>{row.metadata.namespace}</TableCell>
                 </TableRow>
               ))}

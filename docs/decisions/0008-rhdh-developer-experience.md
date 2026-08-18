@@ -25,10 +25,13 @@ only its product list so the effective policy is resolved from either
 `PlanPolicy` or direct `RateLimitPolicy`. JWT products deliberately retain direct
 policies because their per-customer counters cannot be represented by the
 current `PlanPolicy` API. The extension also resolves `TokenRateLimitPolicy`
-through a permission-controlled custom backend and presents read-only
-subscriptions, accepted usage, pricing, invoices, revenue, and AI token
-accounting from the existing PostgreSQL-backed monetization service. It does
-not become a second billing system.
+through a permission-controlled custom backend and presents consumer-scoped
+subscription lifecycle, API-key reveal/rotation, accepted usage, pricing,
+invoices, revenue, and AI token accounting from the existing PostgreSQL-backed
+monetization service. It does not become a second billing system. Published
+APIProducts are production APIs and require an active subscription; a source
+annotation pairs API-key and JWT catalogue entries with one logical commercial
+product.
 
 The existing portal remains deployed until the custom plugin reaches feature
 parity. This gives the migration an explicit rollback and avoids duplicating
@@ -48,6 +51,8 @@ commercial authority across two backends.
 - The demo mounts checksum-pinned custom frontend and backend TGZs from a ConfigMap so
   fresh-cluster installation has no private-registry prerequisite. Production
   packaging should publish the same export as a digest-pinned OCI artifact.
-- Read-only monetization data is now unified in RHDH. Lifecycle mutations and
-  the AI playground remain the next incremental migration; request-time
-  enforcement remains entirely in RHCL.
+- Monetization data and consumer lifecycle actions are unified in RHDH. The AI
+  playground remains in the existing portal; request-time enforcement remains
+  entirely in RHCL.
+- Consumer RBAC deliberately excludes direct APIKey mutation. Subscription
+  creation is the only self-service credential provisioning path.

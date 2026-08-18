@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   discoveryApiRef,
   fetchApiRef,
@@ -6,10 +6,15 @@ import {
 } from '@backstage/core-plugin-api';
 import {
   Box,
+  Button,
   Chip,
   CircularProgress,
+  FormControl,
   Grid,
+  InputLabel,
+  MenuItem,
   Paper,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -21,8 +26,10 @@ import {
 import useAsync from 'react-use/lib/useAsync';
 import {
   BillingSummary,
+  CredentialState,
   Invoice,
   PortalIdentity,
+  ProductCatalog,
   Subscription,
   UsageSummary,
 } from '../types';
@@ -34,6 +41,8 @@ interface MonetizationView {
   usage: UsageSummary[];
   invoices: Invoice[];
   preview?: Invoice;
+  catalog?: ProductCatalog;
+  credentials: Record<string, CredentialState>;
 }
 
 const currency = (cents: number | undefined, code = 'EUR') =>
@@ -45,25 +54,38 @@ export const MonetizationPage = () => {
   const discoveryApi = useApi(discoveryApiRef);
   const fetchApi = useApi(fetchApiRef);
   const oidcAuthApi = useApi(oidcAuthApiRef);
+  const [refresh, setRefresh] = useState(0);
+  const [planSelections, setPlanSelections] = useState<Record<string, string>>({});
+  const [revealedKeys, setRevealedKeys] = useState<Record<string, string>>({});
+  const [pending, setPending] = useState<string>();
+  const [notice, setNotice] = useState<{ message: string; error: boolean }>();
 
-  const state = useAsync(async (): Promise<MonetizationView> => {
+  const request = useCallback(async <T,>(
+    scope: 'user' | 'admin',
+    path: string,
+    options: { method?: string; body?: unknown } = {},
+  ): Promise<T> => {
     const [baseUrl, accessToken] = await Promise.all([
       discoveryApi.getBaseUrl('api-monetization'),
       oidcAuthApi.getAccessToken(['openid', 'profile', 'email']),
     ]);
-    const request = async <T,>(scope: 'user' | 'admin', path: string): Promise<T> => {
-      const response = await fetchApi.fetch(`${baseUrl}/control/${scope}/${path}`, {
-        headers: {
-          'X-API-Monetization-Authorization': `Bearer ${accessToken}`,
-        },
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(body.error || `Monetization request failed: HTTP ${response.status}`);
-      }
-      return body as T;
-    };
+    const response = await fetchApi.fetch(`${baseUrl}/control/${scope}/${path}`, {
+      method: options.method || 'GET',
+      headers: {
+        'X-API-Monetization-Authorization': `Bearer ${accessToken}`,
+        ...(options.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      },
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(body.error || `Monetization request failed: HTTP ${response.status}`);
+    }
+    return body as T;
+  }, [discoveryApi, fetchApi, oidcAuthApi]);
 
+  const state = useAsync(async (): Promise<MonetizationView> => {
+    void refresh;
     const identity = await request<PortalIdentity>('user', 'me');
     if (identity.admin) {
       const [subscriptions, usage, invoices] = await Promise.all([
@@ -71,10 +93,11 @@ export const MonetizationPage = () => {
         request<UsageSummary[]>('admin', 'usage'),
         request<Invoice[]>('admin', 'invoices'),
       ]);
-      return { identity, subscriptions, usage, invoices };
+      return { identity, subscriptions, usage, invoices, credentials: {} };
     }
 
-    const [subscriptions, usage, billing] = await Promise.all([
+    const [catalog, subscriptions, usage, billing] = await Promise.all([
+      request<ProductCatalog>('user', 'catalog'),
       request<Subscription[]>('user', 'me/subscriptions'),
       request<UsageSummary[]>('user', 'me/usage'),
       request<BillingSummary>('user', 'me/billing').catch(() => ({
@@ -82,14 +105,40 @@ export const MonetizationPage = () => {
         invoices: [],
       } as unknown as BillingSummary)),
     ]);
+    const credentialEntries = await Promise.all(
+      subscriptions
+        .filter(item => item.status === 'active')
+        .map(async item => {
+          const credential = await request<CredentialState>(
+            'user',
+            `me/credentials/${encodeURIComponent(item.product)}/status`,
+          ).catch(() => ({ status: 'provisioning', revealed: false } as CredentialState));
+          return [item.product, credential] as const;
+        }),
+    );
     return {
       identity,
+      catalog,
       subscriptions,
       usage,
       invoices: billing.invoices || [],
       preview: billing.preview,
+      credentials: Object.fromEntries(credentialEntries),
     };
-  }, [discoveryApi, fetchApi, oidcAuthApi]);
+  }, [request, refresh]);
+
+  const runAction = async (key: string, action: () => Promise<void>) => {
+    setPending(key);
+    setNotice(undefined);
+    try {
+      await action();
+      setRefresh(value => value + 1);
+    } catch (error) {
+      setNotice({ message: error instanceof Error ? error.message : String(error), error: true });
+    } finally {
+      setPending(undefined);
+    }
+  };
 
   const totals = useMemo(() => {
     const usage = state.value?.usage || [];
@@ -108,11 +157,16 @@ export const MonetizationPage = () => {
 
   return (
     <Box p={3}>
-      <Box mb={3}>
-        <Typography variant="h4">API Monetization</Typography>
-        <Typography variant="subtitle1" color="textSecondary">
-          Subscription, accepted usage, token consumption and billing from the monetization control plane
-        </Typography>
+      <Box mb={3} display="flex" justifyContent="space-between" alignItems="center">
+        <Box>
+          <Typography variant="h4">API Monetization</Typography>
+          <Typography variant="subtitle1" color="textSecondary">
+            Subscribe to production APIs and manage your usage, credentials and billing
+          </Typography>
+        </Box>
+        <Button variant="outlined" onClick={() => setRefresh(value => value + 1)}>
+          Refresh
+        </Button>
       </Box>
       {state.loading && (
         <Box display="flex" justifyContent="center" p={4}>
@@ -121,6 +175,9 @@ export const MonetizationPage = () => {
       )}
       {state.error && (
         <Paper variant="outlined"><Box p={2}><Typography color="error">{state.error.message}</Typography></Box></Paper>
+      )}
+      {notice && (
+        <Box mb={2}><Paper variant="outlined"><Box p={2}><Typography color={notice.error ? 'error' : 'primary'}>{notice.message}</Typography></Box></Paper></Box>
       )}
       {state.value && (
         <>
@@ -134,12 +191,157 @@ export const MonetizationPage = () => {
             <Grid item xs={12} sm={6} md={3}><Metric title="AI tokens" value={(totals.promptTokens + totals.completionTokens).toLocaleString()} detail={`${totals.promptTokens.toLocaleString()} prompt · ${totals.completionTokens.toLocaleString()} completion`} /></Grid>
             <Grid item xs={12} sm={6} md={3}><Metric title={state.value.identity.admin ? 'Projected revenue' : 'Current estimate'} value={currency(totals.revenue)} /></Grid>
           </Grid>
+
+          {!state.value.identity.admin && state.value.catalog && (
+            <Box mt={3}>
+              <Typography variant="h5" gutterBottom>Production API subscriptions</Typography>
+              <Typography variant="body2" color="textSecondary">
+                A subscription is required before a production API accepts either an API key or a Keycloak JWT. One subscription covers both authentication options for the product.
+              </Typography>
+              <Box mt={1}>
+                <Grid container spacing={2}>
+                  {state.value.catalog.products.filter(product => product.available).map(product => {
+                    const subscription = state.value?.subscriptions.find(item => item.product === product.id);
+                    const credential = state.value?.credentials[product.id];
+                    const selectedPlan = planSelections[product.id] || subscription?.plan || 'free';
+                    const actionKey = `${product.id}-action`;
+                    return (
+                      <Grid item xs={12} md={6} lg={4} key={product.id}>
+                        <Paper variant="outlined" data-testid={`subscription-${product.id}`}>
+                          <Box p={2}>
+                            <Box display="flex" justifyContent="space-between" alignItems="center">
+                              <Typography variant="h6">{product.displayName}</Typography>
+                              <Chip
+                                size="small"
+                                label={subscription ? subscription.status : 'Subscription required'}
+                                color={subscription?.status === 'active' ? 'primary' : 'default'}
+                                variant={subscription?.status === 'active' ? 'default' : 'outlined'}
+                              />
+                            </Box>
+                            <Box mt={1} minHeight={42}>
+                              <Typography variant="body2" color="textSecondary">{product.description}</Typography>
+                            </Box>
+                            <Box mt={2} display="flex" style={{ gap: 8, alignItems: 'center' }}>
+                              <FormControl variant="outlined" size="small" style={{ minWidth: 180, flex: 1 }}>
+                                <InputLabel id={`${product.id}-plan-label`}>Plan</InputLabel>
+                                <Select
+                                  labelId={`${product.id}-plan-label`}
+                                  value={selectedPlan}
+                                  onChange={event => setPlanSelections(current => ({ ...current, [product.id]: String(event.target.value) }))}
+                                  label="Plan"
+                                >
+                                  {state.value?.catalog?.plans.map(plan => (
+                                    <MenuItem key={plan.id} value={plan.id}>
+                                      {plan.displayName} · {currency(plan.monthlyPriceCents)}/month
+                                    </MenuItem>
+                                  ))}
+                                </Select>
+                              </FormControl>
+                              {!subscription ? (
+                                <Button
+                                  color="primary"
+                                  variant="contained"
+                                  disabled={Boolean(pending)}
+                                  data-testid={`subscribe-${product.id}`}
+                                  onClick={() => runAction(actionKey, async () => {
+                                    await request('user', 'me/subscriptions', {
+                                      method: 'POST', body: { product: product.id, plan: selectedPlan },
+                                    });
+                                    setNotice({ message: `${product.displayName} subscription created. Credential provisioning has started.`, error: false });
+                                  })}
+                                >
+                                  {pending === actionKey ? 'Working…' : 'Subscribe'}
+                                </Button>
+                              ) : (
+                                <Button
+                                  color="primary"
+                                  variant="contained"
+                                  disabled={Boolean(pending) || subscription.status !== 'active' || selectedPlan === subscription.plan}
+                                  onClick={() => runAction(actionKey, async () => {
+                                    await request('user', `me/subscriptions/${encodeURIComponent(product.id)}/plan`, {
+                                      method: 'POST', body: { plan: selectedPlan },
+                                    });
+                                    setNotice({ message: `${product.displayName} plan changed without restarting the gateway.`, error: false });
+                                  })}
+                                >Change plan</Button>
+                              )}
+                            </Box>
+                            {subscription && (
+                              <>
+                                <Box mt={2} display="flex" style={{ gap: 8, flexWrap: 'wrap' }}>
+                                  <Button
+                                    variant="outlined"
+                                    disabled={Boolean(pending) || subscription.status !== 'active' || credential?.status !== 'ready' || credential.revealed}
+                                    data-testid={`reveal-${product.id}`}
+                                    onClick={() => runAction(`${product.id}-reveal`, async () => {
+                                      const revealed = await request<CredentialState>('user', `me/credentials/${encodeURIComponent(product.id)}/reveal`, { method: 'POST' });
+                                      if (revealed.apiKey) setRevealedKeys(current => ({ ...current, [product.id]: revealed.apiKey! }));
+                                      setNotice({ message: `Copy the ${product.displayName} API key now; it is shown only once.`, error: false });
+                                    })}
+                                  >Reveal API key</Button>
+                                  <Button
+                                    variant="outlined"
+                                    disabled={Boolean(pending) || subscription.status !== 'active' || credential?.status === 'provisioning'}
+                                    onClick={() => runAction(`${product.id}-rotate`, async () => {
+                                      await request('user', `me/credentials/${encodeURIComponent(product.id)}/rotate`, { method: 'POST' });
+                                      setRevealedKeys(current => {
+                                        const next = { ...current };
+                                        delete next[product.id];
+                                        return next;
+                                      });
+                                      setNotice({ message: `${product.displayName} API key rotation started.`, error: false });
+                                    })}
+                                  >Rotate API key</Button>
+                                  <Button
+                                    color="secondary"
+                                    variant="outlined"
+                                    disabled={Boolean(pending)}
+                                    data-testid={`cancel-${product.id}`}
+                                    onClick={() => runAction(`${product.id}-cancel`, async () => {
+                                      if (!window.confirm(`Cancel ${product.displayName}? API-key and JWT access will be denied immediately.`)) return;
+                                      await request('user', `me/subscriptions/${encodeURIComponent(product.id)}/cancel`, {
+                                        method: 'POST', body: { version: subscription.version },
+                                      });
+                                      setRevealedKeys(current => {
+                                        const next = { ...current };
+                                        delete next[product.id];
+                                        return next;
+                                      });
+                                      setNotice({ message: `${product.displayName} subscription cancelled; API-key and JWT access is revoked.`, error: false });
+                                    })}
+                                  >Cancel</Button>
+                                </Box>
+                                <Box mt={1}>
+                                  <Typography variant="caption" color="textSecondary">
+                                    API key: {credential?.status || (subscription.status === 'active' ? 'provisioning' : 'unavailable')}
+                                    {credential?.endpoint ? ` · ${credential.endpoint}` : ''}
+                                  </Typography>
+                                </Box>
+                                {revealedKeys[product.id] && (
+                                  <Box mt={1} p={1} style={{ background: '#f5f5f5', overflowWrap: 'anywhere' }}>
+                                    <Typography variant="caption">One-time API key</Typography>
+                                    <Typography component="code" display="block" data-testid={`api-key-${product.id}`}>{revealedKeys[product.id]}</Typography>
+                                  </Box>
+                                )}
+                              </>
+                            )}
+                          </Box>
+                        </Paper>
+                      </Grid>
+                    );
+                  })}
+                </Grid>
+              </Box>
+            </Box>
+          )}
+
           <Box mt={3}>
-            <Typography variant="h5" gutterBottom>Subscriptions and usage</Typography>
+            <Typography variant="h5" gutterBottom>{state.value.identity.admin ? 'All subscriptions and usage' : 'My subscriptions and usage'}</Typography>
             <TableContainer component={Paper} variant="outlined">
               <Table aria-label="API subscriptions and usage">
-                <TableHead><TableRow><TableCell>Customer</TableCell><TableCell>Product</TableCell><TableCell>Plan</TableCell><TableCell>Status</TableCell><TableCell align="right">Accepted</TableCell><TableCell align="right">Tokens</TableCell><TableCell align="right">Projected</TableCell></TableRow></TableHead>
+                <TableHead><TableRow><TableCell>{state.value.identity.admin ? 'Customer' : 'Account'}</TableCell><TableCell>Product</TableCell><TableCell>Plan</TableCell><TableCell>Status</TableCell><TableCell align="right">Accepted</TableCell><TableCell align="right">Tokens</TableCell><TableCell align="right">Projected</TableCell></TableRow></TableHead>
                 <TableBody>
+                  {state.value.subscriptions.length === 0 && <TableRow><TableCell colSpan={7}>No subscriptions yet. Subscribe to a production API above to begin.</TableCell></TableRow>}
                   {state.value.subscriptions.map(subscription => {
                     const usage = state.value?.usage.find(item => item.customer === subscription.customerId && item.product === subscription.product) || state.value?.usage.find(item => item.product === subscription.product);
                     return (
@@ -159,7 +361,7 @@ export const MonetizationPage = () => {
             </TableContainer>
           </Box>
           <Box mt={3}>
-            <Typography variant="h5" gutterBottom>Invoices</Typography>
+            <Typography variant="h5" gutterBottom>{state.value.identity.admin ? 'Invoices' : 'My invoices'}</Typography>
             <TableContainer component={Paper} variant="outlined">
               <Table aria-label="Invoices">
                 <TableHead><TableRow><TableCell>Customer</TableCell><TableCell>Period</TableCell><TableCell>Status</TableCell><TableCell align="right">Billable units</TableCell><TableCell align="right">Total</TableCell></TableRow></TableHead>

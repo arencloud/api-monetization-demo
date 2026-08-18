@@ -1,6 +1,7 @@
 export interface NamespacedName {
   name: string;
   namespace?: string;
+  annotations?: Record<string, string>;
 }
 
 export interface TargetReference extends NamespacedName {
@@ -71,6 +72,39 @@ export interface Subscription {
   monthlyQuotaRequests?: number;
   rateLimitRequests?: number;
   rateLimitWindowSeconds?: number;
+  version: number;
+}
+
+export interface Plan {
+  id: string;
+  displayName: string;
+  monthlyPriceCents?: number;
+  includedRequests?: number;
+  monthlyQuotaRequests?: number;
+  overageMicrosPerRequest?: number;
+  rateLimitRequests?: number;
+  rateLimitWindowSeconds?: number;
+}
+
+export interface CatalogProduct {
+  id: string;
+  displayName: string;
+  description: string;
+  unitName: string;
+  available: boolean;
+}
+
+export interface ProductCatalog {
+  products: CatalogProduct[];
+  plans: Plan[];
+}
+
+export interface CredentialState {
+  status: 'provisioning' | 'ready' | 'active';
+  revealed: boolean;
+  endpoint?: string;
+  apiKey?: string;
+  prefix?: string;
 }
 
 export interface UsageSummary {
