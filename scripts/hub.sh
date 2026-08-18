@@ -15,7 +15,7 @@ oc wait route/backstage-api-monetization -n api-monetization-developer-hub \
   --for=jsonpath='{.status.ingress[0].conditions[0].status}'=True --timeout=5m
 
 hub_host=$(oc get route backstage-api-monetization \
-  -n api-monetization-developer-hub -o jsonpath='{.spec.host}')
+  -n api-monetization-developer-hub -o jsonpath='{.status.ingress[0].host}')
 admin_password=$(oc get secret monetization-portal-credentials \
   -n api-monetization-identity \
   -o go-template='{{index .data "portal-admin-password"}}' | base64 -d)

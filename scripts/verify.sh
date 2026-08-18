@@ -170,7 +170,7 @@ oc rollout status deployment/backstage-api-monetization \
 oc wait route/backstage-api-monetization -n api-monetization-developer-hub \
   --for=jsonpath='{.status.ingress[0].conditions[0].status}'=True --timeout=5m
 rhdh_hostname=$(oc get route backstage-api-monetization \
-  -n api-monetization-developer-hub -o jsonpath='{.spec.host}')
+  -n api-monetization-developer-hub -o jsonpath='{.status.ingress[0].host}')
 rhdh_router_hostname=$(oc get route backstage-api-monetization \
   -n api-monetization-developer-hub \
   -o jsonpath='{.status.ingress[0].routerCanonicalHostname}')
