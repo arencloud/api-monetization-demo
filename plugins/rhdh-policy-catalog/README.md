@@ -9,15 +9,15 @@ JWT products intentionally use direct `RateLimitPolicy` resources because the
 demo requires explicit subscription/customer counters. Creating a decorative
 `PlanPolicy` would change enforcement semantics and is therefore not used.
 
-Build the checked-in deployment artifact with:
+Build and test the checked-in deployment artifact with the repository's
+digest-pinned Node toolchain:
 
 ```sh
-npm ci
-npm run tsc
-npm test -- --runInBand
-npm run export-dynamic -- --clean
-npm run package:dynamic
+make rhdh-plugin-test
 ```
+
+The command uses Podman or Docker and builds at the same `/workspace` path in
+development and CI, keeping webpack content hashes reproducible across hosts.
 
 The packaging step drops standard webpack output and source maps; RHDH's
 frontend dynamic loader only consumes `package.json` and `dist-scalprum`. This

@@ -188,13 +188,13 @@ local_plugin = plugin_by_package.get(local_plugin_package, {})
 if (
     local_plugin.get("disabled") is not False
     or local_plugin.get("integrity")
-    != "sha512-3OucX0jBVnH1GfjywbTpYeeQarMoAIEcceYOpnPTJ8YQpgyEl5dkXNtg/x78kjnyskFJvT6/sRSmTqF1WD+S5Q=="
+    != "sha512-MouPHFvukEicXUPQO5eEMXYApelVQnRDZrLgd3St8OnGAYkvdgSm60hCpXyLHLzU1WTkM3hXLk57gXwapy2Jnw=="
 ):
     raise SystemExit("effective-policy RHDH plugin is not checksum-pinned")
 if not local_plugin_path.is_file() or local_plugin_path.stat().st_size >= 750_000:
     raise SystemExit("effective-policy plugin artifact is missing or too large for its ConfigMap")
 if hashlib.sha256(local_plugin_path.read_bytes()).hexdigest() != (
-    "6d77369b039b1221b3722153b982545b7c70cd5e4c1a2eac02a008ab07312d2b"
+    "fa38a6ea4cf609e20bb9f70d1b81a3b386bd1a17aa4b95008715daad4259fbab"
 ):
     raise SystemExit("effective-policy plugin artifact checksum changed; rebuild and review it")
 

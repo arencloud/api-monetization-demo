@@ -35,12 +35,7 @@ test:
 	@go test ./applications/... ./internal/...
 
 rhdh-plugin-test:
-	@cd plugins/rhdh-policy-catalog && \
-		npm ci --ignore-scripts && \
-		npm run tsc && \
-		CI=true npm test -- --runInBand && \
-		npm run export-dynamic -- --clean && \
-		npm run package:dynamic
+	@./plugins/rhdh-policy-catalog/scripts/container-build.sh
 
 lifecycle-test:
 	@./scripts/lifecycle-test.sh
