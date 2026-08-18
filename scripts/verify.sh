@@ -180,8 +180,16 @@ if [[ $rhdh_hostname != developer-hub.* ]]; then
 fi
 rhdh_logs=$(oc logs deployment/backstage-api-monetization \
   -n api-monetization-developer-hub --container=backstage-backend)
-if ! grep -q 'kuadrant' <<<"$rhdh_logs"; then
-  echo "error: Developer Hub logs do not show the Kuadrant dynamic plugin" >&2
+if ! grep -q "loaded dynamic backend plugin '@kuadrant/kuadrant-backstage-plugin-backend-dynamic'.*0.4.0" <<<"$rhdh_logs"; then
+  echo "error: Developer Hub did not load the tested Kuadrant 0.4.0 backend plugin" >&2
+  exit 1
+fi
+if ! grep -q "Loaded dynamic frontend plugin '@kuadrant/kuadrant-backstage-plugin-frontend'.*0.4.0" <<<"$rhdh_logs"; then
+  echo "error: Developer Hub did not load the tested Kuadrant 0.4.0 frontend plugin" >&2
+  exit 1
+fi
+if ! grep -q "Loaded dynamic frontend plugin '@arencloud/rhdh-policy-catalog-dynamic'.*0.1.0" <<<"$rhdh_logs"; then
+  echo "error: Developer Hub did not load the effective-policy catalog plugin" >&2
   exit 1
 fi
 if [[ $(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
