@@ -133,11 +133,14 @@ whose Authentication column is **OIDC**. Open a JWT entry and confirm its OIDC
 tab publishes the cluster's Keycloak token endpoint. JWT entries do not create
 an `APIKey`: obtain a short-lived bearer token from Keycloak instead. Published
 entries show **Production** and **Subscription required** until this developer
-subscribes to the logical product. Open **Billing**, subscribe to a plan, wait
+subscribes to the logical product. The locked rows are greyed and their product
+detail links remain unavailable, while the subscription action stays active.
+Open **Billing**, subscribe to a plan, wait
 for the operator-backed credential to become ready, and reveal it once. Return
 to **API Products** and confirm both the API-key and JWT presentations show
-**Subscribed**. Cancellation immediately restores the subscription-required
-state and denies both credential forms. **My API Keys** contains only the
+**Subscribed**, return to their normal styling, and expose their detail links.
+Cancellation immediately restores the grey subscription-required state and
+denies both credential forms. **My API Keys** contains only the
 consumer-owned credentials provisioned from these subscriptions.
 Sign in as `demo-admin` to use the approval and owner views. The custom portal
 remains available as a rollback path and for the AI playground. Open **Billing**

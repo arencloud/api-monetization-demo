@@ -149,19 +149,44 @@ export const ApiProductsPage = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {rows.map(row => (
-                <TableRow key={`${row.metadata.namespace}/${row.metadata.name}`}>
-                  <TableCell>
-                    <MaterialLink
-                      component={RouterLink}
-                      to={`/kuadrant/api-products/${row.metadata.namespace}/${row.metadata.name}`}
-                    >
-                      <strong>{row.spec?.displayName || row.metadata.name}</strong>
-                    </MaterialLink>
+              {rows.map(row => {
+                const subscriptionLocked = Boolean(
+                  state.value?.identity.developer &&
+                  !state.value.identity.admin &&
+                  row.spec?.publishStatus === 'Published' &&
+                  row.subscriptionStatus !== 'active',
+                );
+                const lockedStyle = subscriptionLocked
+                  ? { opacity: 0.48, filter: 'grayscale(1)' }
+                  : undefined;
+                return (
+                <TableRow
+                  key={`${row.metadata.namespace}/${row.metadata.name}`}
+                  style={{ backgroundColor: subscriptionLocked ? '#f3f3f3' : undefined }}
+                  aria-disabled={subscriptionLocked}
+                  data-subscription-locked={subscriptionLocked ? 'true' : 'false'}
+                >
+                  <TableCell style={lockedStyle}>
+                    {subscriptionLocked ? (
+                      <Box display="flex" style={{ gap: 6, alignItems: 'center' }}>
+                        <LockIcon fontSize="small" />
+                        <Box>
+                          <Typography variant="body2"><strong>{row.spec?.displayName || row.metadata.name}</strong></Typography>
+                          <Typography variant="caption" color="textSecondary">Subscribe to open</Typography>
+                        </Box>
+                      </Box>
+                    ) : (
+                      <MaterialLink
+                        component={RouterLink}
+                        to={`/kuadrant/api-products/${row.metadata.namespace}/${row.metadata.name}`}
+                      >
+                        <strong>{row.spec?.displayName || row.metadata.name}</strong>
+                      </MaterialLink>
+                    )}
                   </TableCell>
-                  <TableCell>{row.spec?.version || '-'}</TableCell>
-                  <TableCell>{row.spec?.targetRef?.name || '-'}</TableCell>
-                  <TableCell>
+                  <TableCell style={lockedStyle}>{row.spec?.version || '-'}</TableCell>
+                  <TableCell style={lockedStyle}>{row.spec?.targetRef?.name || '-'}</TableCell>
+                  <TableCell style={lockedStyle}>
                     {row.effectivePolicies.length > 0 ? (
                       <Box display="flex" style={{ gap: 6, flexWrap: 'wrap' }}>
                         {row.effectivePolicies.map(policy => (
@@ -180,7 +205,7 @@ export const ApiProductsPage = () => {
                       </Typography>
                     )}
                   </TableCell>
-                  <TableCell>
+                  <TableCell style={lockedStyle}>
                     <Box display="flex" style={{ gap: 6, flexWrap: 'wrap' }}>
                       {row.authentication.map(authentication => (
                         <Chip
@@ -201,8 +226,8 @@ export const ApiProductsPage = () => {
                       ))}
                     </Box>
                   </TableCell>
-                  <TableCell>{row.spec?.publishStatus || 'Draft'}</TableCell>
-                  <TableCell>
+                  <TableCell style={lockedStyle}>{row.spec?.publishStatus || 'Draft'}</TableCell>
+                  <TableCell style={lockedStyle}>
                     <Chip
                       size="small"
                       label={row.spec?.publishStatus === 'Published' ? 'Production' : 'Development'}
@@ -224,9 +249,10 @@ export const ApiProductsPage = () => {
                       </MaterialLink>
                     )}
                   </TableCell>
-                  <TableCell>{row.metadata.namespace}</TableCell>
+                  <TableCell style={lockedStyle}>{row.metadata.namespace}</TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         </TableContainer>

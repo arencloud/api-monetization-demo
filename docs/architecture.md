@@ -60,6 +60,10 @@ create, update, or delete Kuadrant `APIKey` resources through RHDH; they first
 create a subscription. The control plane then provisions the operator-native
 credential. At request time Authorino resolves the same active subscription for
 both authentication paths, so catalogue visibility never implies entitlement.
+For consumers, production rows without an active entitlement are greyed and
+their detail links are disabled; the Billing subscription action remains
+available. Both authentication rows unlock as soon as the shared subscription
+becomes active.
 
 Each governed HTTPRoute has its own `APIProduct` presentation in RHDH. The
 three API-key routes advertise API-key authentication and participate in the
