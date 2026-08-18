@@ -16,6 +16,10 @@ coverage.out
 coverage.html
 /bin/
 /dist/
+/plugins/rhdh-policy-catalog/node_modules/
+/plugins/rhdh-policy-catalog/dist/
+/plugins/rhdh-policy-catalog/dist-dynamic/
+/plugins/rhdh-policy-catalog/dist-types/
 
 # IDE and editor settings
 .idea/

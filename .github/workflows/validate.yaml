@@ -46,8 +46,21 @@ jobs:
           source: mirror
           oc: "4.22"
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: plugins/rhdh-policy-catalog/package-lock.json
+
       - name: Validate deployment configuration
         run: make validate
 
       - name: Run unit tests
         run: make test
+
+      - name: Build and test the RHDH effective-policy plugin
+        run: make rhdh-plugin-test
+
+      - name: Verify the committed RHDH plugin artifact
+        run: git diff --exit-code -- platform/developer-hub/arencloud-rhdh-policy-catalog-dynamic-0.1.0.tgz

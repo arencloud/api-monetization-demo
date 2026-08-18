@@ -1,11 +1,12 @@
 SHELL := /usr/bin/env bash
 
-.PHONY: help validate test lifecycle-test multi-product-test ai-model-test ai-monetization-test ai-demo promotion-status preflight bootstrap render status verify observe grafana portal hub demo metered-demo showcase reset-demo uninstall
+.PHONY: help validate test rhdh-plugin-test lifecycle-test multi-product-test ai-model-test ai-monetization-test ai-demo promotion-status preflight bootstrap render status verify observe grafana portal hub demo metered-demo showcase reset-demo uninstall
 
 help:
 	@echo "Targets:"
 	@echo "  validate   Render and statically validate every Kustomize package"
 	@echo "  test       Run Go unit tests"
+	@echo "  rhdh-plugin-test Build, test, and reproduce the custom RHDH plugin artifact"
 	@echo "  lifecycle-test Prove suspend, resume, cancel, cleanup, and resubscribe"
 	@echo "  multi-product-test Prove independent Inventory and Payment subscriptions"
 	@echo "  ai-model-test Prove CPU-only OpenShift AI chat inference"
@@ -31,7 +32,15 @@ validate:
 	@./scripts/validate.sh
 
 test:
-	@go test ./...
+	@go test ./applications/... ./internal/...
+
+rhdh-plugin-test:
+	@cd plugins/rhdh-policy-catalog && \
+		npm ci --ignore-scripts && \
+		npm run tsc && \
+		CI=true npm test -- --runInBand && \
+		npm run export-dynamic -- --clean && \
+		npm run package:dynamic
 
 lifecycle-test:
 	@./scripts/lifecycle-test.sh

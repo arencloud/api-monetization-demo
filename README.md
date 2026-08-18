@@ -72,7 +72,8 @@ The first profile follows the RHCL 1.4 support matrix:
 | cert-manager Operator for Red Hat OpenShift | 1.19 |
 | Red Hat build of Keycloak | 26.6 |
 | Red Hat Developer Hub | 1.10 z-stream (`fast-1.10`) |
-| Kuadrant Developer Hub plugin | 0.2.1, integrity-pinned |
+| Kuadrant Developer Hub plugin | 0.4.0, integrity-pinned |
+| Effective-policy catalog plugin | 0.1.0, source-controlled local TGZ |
 | Red Hat OpenShift GitOps | Latest catalog channel, automatic upgrades |
 | Red Hat OpenShift AI | 3.4 stable channel, 3.4.3 starting CSV |
 | External Secrets Operator for Red Hat OpenShift | 1.2 |

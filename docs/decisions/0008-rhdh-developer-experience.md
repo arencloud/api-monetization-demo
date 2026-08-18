@@ -7,7 +7,7 @@ Accepted incrementally.
 ## Decision
 
 Install Red Hat Developer Hub 1.10 with its Red Hat Operator and automatic
-z-stream updates from `fast-1.10`. Enable the Kuadrant 0.2.1 frontend and backend
+z-stream updates from `fast-1.10`. Enable the Kuadrant 0.4.0 frontend and backend
 dynamic plugins with npm integrity verification. Use the existing Red Hat build
 of Keycloak realm for OIDC, organization synchronization, self-registration,
 and group-to-role mapping. Use a dedicated single-instance CloudNativePG
@@ -20,7 +20,11 @@ monetization story.
 
 The Kuadrant plugin is responsible for RHCL API-product synchronization,
 product discovery, access requests, approvals, API-key management, and
-PlanPolicy visibility. It does not become a billing system. Subscription state,
+policy detail visibility. A small source-controlled frontend extension replaces
+only its product list so the effective policy is resolved from either
+`PlanPolicy` or direct `RateLimitPolicy`. JWT products deliberately retain direct
+policies because their per-customer counters cannot be represented by the
+current `PlanPolicy` API. It does not become a billing system. Subscription state,
 accepted usage, pricing, invoices, revenue, and AI token accounting remain in
 the existing PostgreSQL-backed monetization service and will be exposed through
 a custom RHDH frontend/backend plugin.
@@ -37,8 +41,11 @@ commercial authority across two backends.
   Kuadrant RBAC permissions; there is no guest or resolver-bypass login.
 - APIProduct resources must declare `backstage.io/owner` or the Kuadrant catalog
   provider intentionally skips them.
-- RHDH and Kuadrant plugin compatibility must be tested as a pair. Kuadrant
-  0.2.1 documents RHDH 1.8.4 as its tested baseline, so RHDH 1.10 is accepted
-  only after the repository verification succeeds on the target cluster.
+- RHDH, the Kuadrant 0.4.0 plugins, and the effective-policy extension are
+  tested as a pair. RHDH 1.10 is accepted only after repository verification
+  succeeds on the target cluster.
+- The demo mounts the checksum-pinned custom frontend TGZ from a ConfigMap so
+  fresh-cluster installation has no private-registry prerequisite. Production
+  packaging should publish the same export as a digest-pinned OCI artifact.
 - The next milestone is a custom dynamic plugin that consumes the existing
   control-plane API; request-time enforcement remains entirely in RHCL.

@@ -20,6 +20,10 @@ configMapGenerator:
     namespace: api-monetization-developer-hub
     files:
       - rbac-policy.csv
+  - name: api-monetization-rhdh-local-plugins
+    namespace: api-monetization-developer-hub
+    files:
+      - arencloud-rhdh-policy-catalog-dynamic-0.1.0.tgz
 generatorOptions:
   disableNameSuffixHash: true
   labels:

@@ -60,6 +60,7 @@ done < <(find applications bootstrap gitops operators platform -name kustomizati
 python3 - <<'PY'
 import subprocess
 import json
+import hashlib
 import pathlib
 import re
 import yaml
@@ -166,15 +167,50 @@ plugin_by_package = {
     plugin["package"]: plugin for plugin in dynamic_plugins.get("plugins", [])
 }
 expected_kuadrant_plugins = {
-    "@kuadrant/kuadrant-backstage-plugin-backend-dynamic@v0.2.1":
-        "sha512-pttQ6Lp7wD6EqDXAC3AIm4FWuQYO0i1KwoR0k6opTTyRZOGaNyO3YmPQdF403n+WjfTZRE+dfccD/9R4/SO5iA==",
-    "@kuadrant/kuadrant-backstage-plugin-frontend@v0.2.1":
-        "sha512-E4zgwY3QQmA2mn0CwO2Zwc0k9/oCtHcsVHRcrKal2PfnXv6chKb9fCKi5SznH9FbNtx8fHVYnac9SQjFh5XGCA==",
+    "@kuadrant/kuadrant-backstage-plugin-backend-dynamic@v0.4.0":
+        "sha512-OOkfAbnFxuOkBjvQMUqkd/TtP/yrXr15yQ/Xel880kdgZk39CPlQzVdOS3VXmcLa/Y9toI9nTbyCNqtXAD2C/g==",
+    "@kuadrant/kuadrant-backstage-plugin-frontend@v0.4.0":
+        "sha512-ewW/eOoHcK8MqmhyGzFQvnU8yQkvRpQxhb/GLZbAyWwWpmA/zju2qwFWXx49eBcy9RIlfO2rwS8sQC7do3dfGA==",
 }
 for package, integrity in expected_kuadrant_plugins.items():
     plugin = plugin_by_package.get(package, {})
     if plugin.get("disabled") is not False or plugin.get("integrity") != integrity:
         raise SystemExit(f"{package}: Kuadrant plugin version or integrity is not reproducibly pinned")
+
+local_plugin_path = pathlib.Path(
+    "platform/developer-hub/arencloud-rhdh-policy-catalog-dynamic-0.1.0.tgz"
+)
+local_plugin_package = (
+    "/opt/app-root/src/local-plugins/"
+    "arencloud-rhdh-policy-catalog-dynamic-0.1.0.tgz"
+)
+local_plugin = plugin_by_package.get(local_plugin_package, {})
+if (
+    local_plugin.get("disabled") is not False
+    or local_plugin.get("integrity")
+    != "sha512-3OucX0jBVnH1GfjywbTpYeeQarMoAIEcceYOpnPTJ8YQpgyEl5dkXNtg/x78kjnyskFJvT6/sRSmTqF1WD+S5Q=="
+):
+    raise SystemExit("effective-policy RHDH plugin is not checksum-pinned")
+if not local_plugin_path.is_file() or local_plugin_path.stat().st_size >= 750_000:
+    raise SystemExit("effective-policy plugin artifact is missing or too large for its ConfigMap")
+if hashlib.sha256(local_plugin_path.read_bytes()).hexdigest() != (
+    "6d77369b039b1221b3722153b982545b7c70cd5e4c1a2eac02a008ab07312d2b"
+):
+    raise SystemExit("effective-policy plugin artifact checksum changed; rebuild and review it")
+
+configured_routes = []
+for plugin in dynamic_plugins.get("plugins", []):
+    frontends = (
+        plugin.get("pluginConfig", {})
+        .get("dynamicPlugins", {})
+        .get("frontend", {})
+    )
+    for frontend in frontends.values():
+        configured_routes.extend(
+            route.get("path") for route in frontend.get("dynamicRoutes", [])
+        )
+if configured_routes.count("/kuadrant/api-products") != 1:
+    raise SystemExit("exactly one frontend plugin must own /kuadrant/api-products")
 
 with open("platform/developer-hub/app-config.yaml", encoding="utf-8") as stream:
     rhdh_config = yaml.safe_load(stream)
@@ -205,6 +241,29 @@ if backstage.get("spec", {}).get("flavours") != []:
 pod_spec = backstage.get("spec", {}).get("deployment", {}).get("patch", {}).get("spec", {}).get("template", {}).get("spec", {})
 if pod_spec.get("serviceAccountName") != "api-monetization-rhdh" or pod_spec.get("automountServiceAccountToken") is not True:
     raise SystemExit("RHDH must use its dedicated in-cluster Kuadrant service account")
+plugin_volume = next(
+    (
+        volume for volume in pod_spec.get("volumes", [])
+        if volume.get("name") == "api-monetization-rhdh-local-plugins"
+    ),
+    {},
+)
+plugin_installer = next(
+    (
+        container for container in pod_spec.get("initContainers", [])
+        if container.get("name") == "install-dynamic-plugins"
+    ),
+    {},
+)
+if plugin_volume.get("configMap", {}).get("name") != "api-monetization-rhdh-local-plugins":
+    raise SystemExit("RHDH local plugin ConfigMap is not mounted")
+if not any(
+    mount.get("mountPath") == local_plugin_package
+    and mount.get("subPath") == local_plugin_path.name
+    and mount.get("readOnly") is True
+    for mount in plugin_installer.get("volumeMounts", [])
+):
+    raise SystemExit("RHDH plugin installer cannot read the local effective-policy TGZ")
 extra_envs = backstage.get("spec", {}).get("application", {}).get("extraEnvs", {}).get("envs", [])
 if {"name": "NODE_EXTRA_CA_CERTS", "value": "/opt/app-root/etc/router-ca.crt"} not in extra_envs:
     raise SystemExit("RHDH must trust the discovered OpenShift router CA for Keycloak OIDC")
@@ -880,8 +939,11 @@ if unformatted=$(gofmt -l applications internal); [[ -n $unformatted ]]; then
   exit 1
 fi
 
-go test ./...
-go vet ./...
+mapfile -t go_packages < <(
+  go list ./... | grep -v '/plugins/rhdh-policy-catalog/node_modules/'
+)
+go test "${go_packages[@]}"
+go vet "${go_packages[@]}"
 
 python3 - <<'PY'
 import pathlib
@@ -889,6 +951,8 @@ import yaml
 
 for pattern in ("*.yaml", "*.yml"):
     for path in pathlib.Path(".").rglob(pattern):
+        if any(part in {"node_modules", "dist", "dist-dynamic"} for part in path.parts):
+            continue
         for resource in yaml.safe_load_all(path.read_text(encoding="utf-8")):
             if not resource or resource.get("kind") != "Secret":
                 continue
