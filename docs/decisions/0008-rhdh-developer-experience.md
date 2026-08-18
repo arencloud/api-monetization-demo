@@ -19,9 +19,9 @@ unconfigured AI sidecar would consume resources without contributing to the
 monetization story.
 
 The Kuadrant plugin is responsible for RHCL API-product synchronization,
-product discovery, access requests, approvals, API-key management, and
-policy detail visibility. A source-controlled frontend extension replaces
-only its product list so the effective policy is resolved from either
+read-only product discovery, OIDC metadata, and policy detail visibility. A
+source-controlled frontend extension replaces its product list so the
+effective policy is resolved from either
 `PlanPolicy` or direct `RateLimitPolicy`. JWT products deliberately retain direct
 policies because their per-customer counters cannot be represented by the
 current `PlanPolicy` API. The extension also resolves `TokenRateLimitPolicy`
@@ -43,7 +43,8 @@ commercial authority across two backends.
 - A new developer can register in Keycloak and is synchronized into RHDH as an
   API consumer.
 - API owners and administrators receive explicit Keycloak group membership and
-  Kuadrant RBAC permissions; there is no guest or resolver-bypass login.
+  product-management RBAC permissions; there is no guest or resolver-bypass
+  login and no interactive role can bypass subscriptions by mutating API keys.
 - APIProduct resources must declare `backstage.io/owner` or the Kuadrant catalog
   provider intentionally skips them.
 - RHDH, the Kuadrant 0.4.0 plugins, and the effective-policy extension are
@@ -55,5 +56,6 @@ commercial authority across two backends.
 - Monetization data and consumer lifecycle actions are unified in RHDH. The AI
   playground remains in the existing portal; request-time enforcement remains
   entirely in RHCL.
-- Consumer RBAC deliberately excludes direct APIKey mutation. Subscription
-  creation is the only self-service credential provisioning path.
+- Every interactive RHDH role deliberately excludes direct APIKey mutation and
+  approval. Subscription creation is the only credential provisioning path;
+  raw Kuadrant key and approval pages are not registered in navigation.

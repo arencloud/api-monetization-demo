@@ -159,8 +159,8 @@ Red Hat Developer Hub is installed through its Operator as the strategic
 developer experience. The integrity-pinned Kuadrant frontend and backend
 plugins synchronize six RHCL `APIProduct` resources into the catalog: an
 API-key and a Keycloak OIDC/JWT presentation of each Inventory, Payment, and AI
-Chat API. They provide product discovery, OIDC metadata, access requests,
-approvals, and API-key lifecycle. GitOps discovers the admitted Keycloak issuer
+Chat API. They provide read-only product discovery and OIDC metadata. GitOps
+discovers the admitted Keycloak issuer
 and installs the OpenShift router CA into the RHCL OIDC components, so the same
 catalog works on a fresh cluster with a different applications domain.
 The default RHDH Lightspeed flavour is disabled because the solution already
@@ -173,8 +173,10 @@ for subscriptions, accepted request/token usage, projected revenue, and
 invoices. Both the Kuadrant API Products view and Developer Hub's APIs explorer
 treat published products as production APIs and show whether the signed-in
 consumer has an active subscription. The Billing page provides
-consumer-scoped subscribe, plan-change, cancellation, and one-time API-key
-reveal/rotation workflows. Its backend applies RHDH permissions before
+consumer-scoped subscribe, plan-change, cancellation, one-time API-key
+reveal/rotation, and Keycloak JWT workflows. Raw Kuadrant credential and
+approval pages are deliberately absent: the subscription control plane is the
+only credential writer. Its backend applies RHDH permissions before
 forwarding the signed-in user's Keycloak token, while the existing control
 plane independently checks the role and maps the token subject to exactly one
 customer. PostgreSQL remains the sole commercial system of record. The

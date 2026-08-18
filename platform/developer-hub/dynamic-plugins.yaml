@@ -32,32 +32,12 @@ plugins:
               - importName: kuadrantApiFactory
             appIcons:
               - {name: kuadrantIcon, importName: KuadrantIcon}
-              - {name: apiIcon, importName: ApiIcon}
-              - {name: keyIcon, importName: KeyIcon}
-              - {name: approvalIcon, importName: ApprovalIcon}
-            menuItems:
-              kuadrant.my-api-keys: {parent: kuadrant}
-              kuadrant.api-key-approval: {parent: kuadrant}
             dynamicRoutes:
               - path: /kuadrant
                 importName: KuadrantPage
-                menuItem: {icon: kuadrantIcon, text: Kuadrant}
-              - path: /kuadrant/my-api-keys
-                importName: MyApiKeysPage
-                menuItem: {icon: keyIcon, text: My API Keys}
-              - path: /kuadrant/api-key-approval
-                importName: ApiKeyApprovalPage
-                menuItem: {icon: approvalIcon, text: API Key Approval}
               - path: /kuadrant/api-products/:namespace/:name
                 importName: ApiProductDetailPage
-              - path: /kuadrant/api-keys/:namespace/:name
-                importName: ApiKeyDetailPage
             mountPoints:
-              - mountPoint: entity.page.api/cards
-                importName: EntityKuadrantApiKeyManagementTab
-                config:
-                  layout: {gridColumn: "1 / -1"}
-                  if: {allOf: [{isKind: api}]}
               - mountPoint: entity.page.api/cards
                 importName: EntityKuadrantApiProductInfoContent
                 config:
@@ -75,13 +55,9 @@ plugins:
           arencloud.rhdh-policy-catalog:
             apiFactories:
               - importName: oidcAuthApiFactory
-            menuItems:
-              api-monetization-policy-catalog.api-products: {parent: kuadrant}
-              api-monetization-policy-catalog.monetization: {parent: kuadrant}
             dynamicRoutes:
               - path: /kuadrant/api-products
                 importName: ApiProductsPage
-                menuItem: {icon: apiIcon, text: API Products}
               - path: /billing
                 importName: MonetizationPage
                 menuItem: {icon: kuadrantIcon, text: Billing}

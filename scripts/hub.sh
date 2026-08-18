@@ -28,4 +28,5 @@ printf 'Developer username: demo-developer\n'
 printf 'Developer password: %s\n' "$developer_password"
 printf 'Admin username:     demo-admin\n'
 printf 'Admin password:     %s\n' "$admin_password"
-printf '\nKuadrant pages: /kuadrant, /kuadrant/api-products, /kuadrant/my-api-keys\n'
+printf '\nConsumer pages: /monetized-apis, /billing\n'
+printf 'Technical policy view (not in navigation): /kuadrant/api-products\n'

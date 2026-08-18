@@ -177,6 +177,32 @@ for package, integrity in expected_kuadrant_plugins.items():
     if plugin.get("disabled") is not False or plugin.get("integrity") != integrity:
         raise SystemExit(f"{package}: Kuadrant plugin version or integrity is not reproducibly pinned")
 
+kuadrant_frontend = (
+    plugin_by_package["@kuadrant/kuadrant-backstage-plugin-frontend@v0.4.0"]
+    .get("pluginConfig", {}).get("dynamicPlugins", {}).get("frontend", {})
+    .get("internal.plugin-kuadrant", {})
+)
+kuadrant_routes = kuadrant_frontend.get("dynamicRoutes", [])
+kuadrant_route_paths = {route.get("path") for route in kuadrant_routes}
+for forbidden_route in (
+    "/kuadrant/my-api-keys",
+    "/kuadrant/api-key-approval",
+    "/kuadrant/api-keys/:namespace/:name",
+):
+    if forbidden_route in kuadrant_route_paths:
+        raise SystemExit(f"{forbidden_route}: raw API-key workflow must not be exposed in RHDH")
+kuadrant_root = next(
+    (route for route in kuadrant_routes if route.get("path") == "/kuadrant"),
+    {},
+)
+if kuadrant_root.get("menuItem"):
+    raise SystemExit("the technical Kuadrant root must not appear in consumer navigation")
+if any(
+    mount.get("importName") == "EntityKuadrantApiKeyManagementTab"
+    for mount in kuadrant_frontend.get("mountPoints", [])
+):
+    raise SystemExit("catalog entities must not expose direct Kuadrant API-key management")
+
 frontend_plugin_path = pathlib.Path(
     "platform/developer-hub/arencloud-rhdh-policy-catalog-dynamic-0.1.2.tgz"
 )
@@ -277,12 +303,37 @@ for permission, action in (
     if expected not in rhdh_rbac:
         raise SystemExit(f"RHDH consumers are missing {permission}")
 for forbidden in (
-    "p, role:default/api-consumer, kuadrant.apikey.create",
-    "p, role:default/api-consumer, kuadrant.apikey.update",
-    "p, role:default/api-consumer, kuadrant.apikey.delete",
+    "kuadrant.apikey.create",
+    "kuadrant.apikey.update",
+    "kuadrant.apikey.delete",
+    "kuadrant.apikey.approve",
 ):
     if forbidden in rhdh_rbac:
-        raise SystemExit("RHDH consumers must subscribe instead of directly mutating APIKey resources")
+        raise SystemExit("all RHDH users must subscribe instead of directly mutating APIKey resources")
+
+with open("platform/developer-hub/kuadrant-access.yaml", encoding="utf-8") as stream:
+    rhdh_access = [resource for resource in yaml.safe_load_all(stream) if resource]
+rhdh_kuadrant_role = next(
+    resource for resource in rhdh_access
+    if resource.get("kind") == "ClusterRole"
+    and resource.get("metadata", {}).get("name") == "api-monetization-rhdh-kuadrant"
+)
+devportal_rules = {
+    tuple(rule.get("resources", [])): set(rule.get("verbs", []))
+    for rule in rhdh_kuadrant_role.get("rules", [])
+    if "devportal.kuadrant.io" in rule.get("apiGroups", [])
+}
+if devportal_rules != {
+    ("apiproducts",): {"get", "list", "watch", "create", "delete", "patch", "update"},
+    ("apiproducts/status",): {"get", "patch", "update"},
+}:
+    raise SystemExit("RHDH must manage products without direct API-key resource access")
+if any(
+    resource.get("kind") in {"Role", "ClusterRole"}
+    and any("secrets" in rule.get("resources", []) for rule in resource.get("rules", []))
+    for resource in rhdh_access
+):
+    raise SystemExit("RHDH's Kuadrant integration must not read credential Secrets")
 
 with open("platform/developer-hub/backstage.yaml", encoding="utf-8") as stream:
     backstage = yaml.safe_load(stream)

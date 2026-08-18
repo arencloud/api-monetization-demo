@@ -126,8 +126,8 @@ Open the unified developer experience and print its generated test identities:
 make hub
 ```
 
-Sign in as `demo-developer`, open **Kuadrant → API Products**, and confirm that
-six entries were synchronized from the live `APIProduct` resources. Inventory,
+Sign in as `demo-developer`, open **APIs**, and confirm that six entries were
+synchronized from the live `APIProduct` resources. Inventory,
 Payment, and AI Chat each have an **API Key** entry and a **Keycloak JWT** entry
 whose Authentication column is **OIDC**. Open a JWT entry and confirm its OIDC
 tab publishes the cluster's Keycloak token endpoint. JWT entries do not create
@@ -135,25 +135,25 @@ an `APIKey`: obtain a short-lived bearer token from Keycloak instead. Published
 entries show **Production** and **Subscription required** until this developer
 subscribes to the logical product. The locked rows are greyed and their product
 detail links remain unavailable, while the subscription action stays active.
-Open the top-level **APIs** page and confirm the same production entries are
-greyed and cannot open their catalog details before subscription. This view is
-subject-scoped too; it is not only a visual copy of the shared catalog.
+Confirm unsubscribed production entries are greyed and cannot open their
+catalog details. This view is subject-scoped; it is not only a visual copy of
+the shared catalog.
 Open **Billing**, subscribe to a plan, wait
 for the operator-backed credential to become ready, and reveal it once. Return
-to **API Products** and confirm both the API-key and JWT presentations show
-**Subscribed**, return to their normal styling, and expose their detail links
-in both **API Products** and **APIs**.
+to **APIs** and confirm both the API-key and JWT presentations show
+**Subscribed**, return to their normal styling, and expose their detail links.
 Cancellation immediately restores the grey subscription-required state and
-denies both credential forms. **My API Keys** contains only the
-consumer-owned credentials provisioned from these subscriptions.
-Sign in as `demo-admin` to use the approval and owner views. The custom portal
+denies both credential forms. API-key reveal and rotation, Keycloak token
+issuance, and credential status remain on the corresponding **Billing**
+subscription. No raw API-key creation or approval page is exposed.
+Sign in as `demo-admin` to show the cross-customer commercial view. The custom portal
 remains available as a rollback path and for the AI playground. Open **Billing**
 in RHDH to show the permission-scoped subscription, accepted usage,
 AI token totals, projected revenue, and persisted invoices. A developer sees
 only the PostgreSQL customer mapped to their Keycloak subject; `demo-admin`
-sees the cross-customer view. In **Kuadrant → API Products**, AI Chat entries
-also show their enforced `TokenRateLimitPolicy` beside the effective request
-policy.
+sees the cross-customer view. The technical `/kuadrant/api-products` route is
+retained without a navigation entry for owners who need to inspect effective
+request and token policies; it is read-only for credentials.
 
 Show the running topology:
 

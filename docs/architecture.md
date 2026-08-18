@@ -28,7 +28,7 @@ assigned external address; the request-time policy path is unchanged.
 
 | Capability | Owner |
 | --- | --- |
-| API catalog, documentation, access requests, API keys | Red Hat Developer Hub and Kuadrant plugins |
+| API catalog, documentation, subscription and credentials UX | Red Hat Developer Hub, custom monetization extension, and Kuadrant plugins |
 | OAuth2/OIDC identities, JWTs, clients, roles | Red Hat build of Keycloak |
 | Database lifecycle, failover, backup hooks | CloudNativePG certified Operator |
 | Secret synchronization and demo credential generation | External Secrets Operator for Red Hat OpenShift |
@@ -43,8 +43,9 @@ assigned external address; the request-time policy path is unchanged.
 | Desired state and promotion | OpenShift GitOps |
 
 Red Hat Developer Hub is the unified presentation layer, not a replacement for
-the request-time enforcement or billing engines. The Kuadrant plugins own the
-operator-native catalog and credential workflows. The custom monetization
+the request-time enforcement or billing engines. The Kuadrant plugins provide
+the operator-native catalog projection and policy details. The custom
+monetization
 frontend presents subscriptions, accepted request/token usage, projected
 revenue, and invoices, and provides subscription, plan, cancellation, and
 credential lifecycle actions. Its backend is the only browser-facing bridge:
@@ -55,10 +56,11 @@ existing portal remains available as a rollback path and for the AI playground.
 
 Every published `APIProduct` is presented as a production API. Its
 `monetization.arencloud.com/product` annotation maps the API-key and OIDC/JWT
-presentations to one logical commercial product. Consumers cannot directly
-create, update, or delete Kuadrant `APIKey` resources through RHDH; they first
-create a subscription. The control plane then provisions the operator-native
-credential. At request time Authorino resolves the same active subscription for
+presentations to one logical commercial product. No interactive RHDH role can
+create, update, delete, or approve Kuadrant `APIKey` resources. Users first
+create a subscription and the control plane alone provisions the
+operator-native credential. At request time Authorino resolves the same active
+subscription for
 both authentication paths, so catalogue visibility never implies entitlement.
 For consumers, production rows without an active entitlement are greyed in
 both the Kuadrant product view and the Developer Hub APIs explorer, and their
@@ -73,17 +75,18 @@ home page. The supported main-menu configuration therefore points the standard
 the built-in `/api-docs` route is not shadowed.
 
 Each governed HTTPRoute has its own `APIProduct` presentation in RHDH. The
-three API-key routes advertise API-key authentication and participate in the
-approval and generated-key workflow. The matching JWT routes advertise OIDC,
+three API-key routes advertise API-key authentication and receive credentials
+only through the subscription workflow. The matching JWT routes advertise OIDC,
 publish the discovered Red Hat build of Keycloak token endpoint, and accept
 short-lived bearer tokens without creating an `APIKey` object. A GitOps hook
 replaces the portable issuer placeholder with the admitted Keycloak Route and
 adds the OpenShift router CA to Authorino and the developer-portal controller;
 no cluster-specific applications domain is stored in Git.
 
-RHDH uses a dedicated service account. Cluster-scoped access is limited to
-Kuadrant, Gateway API, policy, and namespace resources; Secret access is scoped
-to the API application namespace. Keycloak supplies users and groups to the
+RHDH uses a dedicated service account. API owners retain APIProduct management,
+but the Kuadrant integration has no APIKey or credential Secret access.
+Policies, Gateway API, and catalog metadata needed for presentation are visible.
+Keycloak supplies users and groups to the
 catalog through a confidential, read-only service account. `api-consumers`,
 `api-owners`, and `api-admins` map to the matching RHDH RBAC roles, and newly
 registered developers enter the consumer group by default.
