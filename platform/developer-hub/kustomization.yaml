@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - credentials.yaml
+  - identity-secret-store.yaml
+  - database.yaml
+  - runtime-config.yaml
+  - kuadrant-access.yaml
+  - backstage.yaml
+configMapGenerator:
+  - name: api-monetization-rhdh-app-config
+    namespace: api-monetization-developer-hub
+    files:
+      - app-config.yaml
+  - name: api-monetization-rhdh-dynamic-plugins
+    namespace: api-monetization-developer-hub
+    files:
+      - dynamic-plugins.yaml
+  - name: api-monetization-rhdh-rbac-policies
+    namespace: api-monetization-developer-hub
+    files:
+      - rbac-policy.csv
+  - name: api-monetization-rhdh-local-plugins
+    namespace: api-monetization-developer-hub
+    files:
+      - arencloud-rhdh-monetization-backend-dynamic-0.1.0.tgz
+      - arencloud-rhdh-policy-catalog-dynamic-0.1.3.tgz
+generatorOptions:
+  disableNameSuffixHash: true
+  labels:
+    app.kubernetes.io/part-of: api-monetization

@@ -1,0 +1,164 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: api-monetization-oidc-trust
+  namespace: kuadrant-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "8"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: api-monetization-oidc-trust
+  namespace: openshift-ingress-operator
+  annotations:
+    argocd.argoproj.io/sync-wave: "8"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [router-ca]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: api-monetization-oidc-trust
+  namespace: openshift-ingress-operator
+  annotations:
+    argocd.argoproj.io/sync-wave: "8"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: api-monetization-oidc-trust
+subjects:
+  - kind: ServiceAccount
+    name: api-monetization-oidc-trust
+    namespace: kuadrant-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: api-monetization-oidc-trust
+  namespace: kuadrant-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "8"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [api-monetization-router-ca]
+    verbs: [get, patch, update]
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [create]
+  - apiGroups: [operator.authorino.kuadrant.io]
+    resources: [authorinos]
+    resourceNames: [authorino]
+    verbs: [get, patch]
+  - apiGroups: [apps]
+    resources: [deployments]
+    resourceNames: [authorino, developer-portal-controller]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: api-monetization-oidc-trust
+  namespace: kuadrant-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "8"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: api-monetization-oidc-trust
+subjects:
+  - kind: ServiceAccount
+    name: api-monetization-oidc-trust
+    namespace: kuadrant-system
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: api-monetization-oidc-trust
+  namespace: kuadrant-system
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "10"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  activeDeadlineSeconds: 300
+  backoffLimit: 2
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "false"
+      labels:
+        app.kubernetes.io/part-of: api-monetization
+    spec:
+      serviceAccountName: api-monetization-oidc-trust
+      restartPolicy: Never
+      containers:
+        - name: configure
+          image: registry.redhat.io/openshift4/ose-cli-rhel9:v4.22
+          imagePullPolicy: IfNotPresent
+          command: [/bin/bash, -Eeuo, pipefail, -c]
+          args:
+            - |
+              for _ in $(seq 1 60); do
+                if oc get secret router-ca -n openshift-ingress-operator >/dev/null 2>&1 &&
+                  oc get authorino authorino -n kuadrant-system >/dev/null 2>&1 &&
+                  oc get deployment developer-portal-controller -n kuadrant-system >/dev/null 2>&1; then
+                  break
+                fi
+                sleep 2
+              done
+              oc get secret router-ca -n openshift-ingress-operator >/dev/null
+              oc get authorino authorino -n kuadrant-system >/dev/null
+              oc get deployment developer-portal-controller -n kuadrant-system >/dev/null
+
+              combined_ca() {
+                cat /etc/pki/tls/certs/ca-bundle.crt
+                oc get secret router-ca -n openshift-ingress-operator \
+                  -o go-template='{{index .data "tls.crt"}}' \
+                  | base64 -d
+              }
+              ca_digest=$(combined_ca | sha256sum | awk '{print $1}')
+
+              {
+                printf '%s\n' 'apiVersion: v1'
+                printf '%s\n' 'kind: ConfigMap'
+                printf '%s\n' 'metadata:'
+                printf '%s\n' '  name: api-monetization-router-ca'
+                printf '%s\n' '  namespace: kuadrant-system'
+                printf '%s\n' 'data:'
+                printf '%s\n' '  ca-bundle.crt: |'
+                combined_ca | sed 's/^/    /'
+              } | oc apply --server-side \
+                --field-manager=api-monetization-oidc-trust -f -
+
+              oc patch authorino authorino -n kuadrant-system --type=merge --patch \
+                '{"spec":{"volumes":{"defaultMode":420,"items":[{"name":"api-monetization-router-ca","mountPath":"/etc/pki/tls/certs","configMaps":["api-monetization-router-ca"]}]}}}'
+              oc patch deployment developer-portal-controller \
+                -n kuadrant-system --type=strategic --patch \
+                "{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"api-monetization.demo/router-ca-digest\":\"$ca_digest\"}},\"spec\":{\"volumes\":[{\"name\":\"api-monetization-router-ca\",\"configMap\":{\"name\":\"api-monetization-router-ca\"}}],\"containers\":[{\"name\":\"manager\",\"env\":[{\"name\":\"SSL_CERT_FILE\",\"value\":\"/etc/pki/tls/certs/ca-bundle.crt\"}],\"volumeMounts\":[{\"name\":\"api-monetization-router-ca\",\"mountPath\":\"/etc/pki/tls/certs\",\"readOnly\":true}]}]}}}}"
+
+              echo "Kuadrant OIDC components trust the OpenShift router CA"
+          resources:
+            requests: {cpu: 10m, memory: 64Mi}
+            limits: {cpu: 200m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+            runAsNonRoot: true
+            seccompProfile: {type: RuntimeDefault}

@@ -60,6 +60,7 @@ done < <(find applications bootstrap gitops operators platform -name kustomizati
 python3 - <<'PY'
 import subprocess
 import json
+import hashlib
 import pathlib
 import re
 import yaml
@@ -146,6 +147,258 @@ if (
     or openshift_ai_spec.get("startingCSV") != "rhods-operator.3.4.3"
 ):
     raise SystemExit("OpenShift AI Operator subscription is not pinned to the tested 3.4.3 lane")
+
+with open("operators/rhdh/subscription.yaml", encoding="utf-8") as stream:
+    rhdh_subscription = yaml.safe_load(stream)
+rhdh_spec = rhdh_subscription.get("spec", {})
+if (
+    rhdh_spec.get("name") != "rhdh"
+    or rhdh_spec.get("channel") != "fast-1.10"
+    or rhdh_spec.get("source") != "redhat-operators"
+    or rhdh_spec.get("sourceNamespace") != "openshift-marketplace"
+    or rhdh_spec.get("installPlanApproval") != "Automatic"
+    or "startingCSV" in rhdh_spec
+):
+    raise SystemExit("RHDH must track automatic 1.10 z-stream updates on fast-1.10")
+
+with open("platform/developer-hub/dynamic-plugins.yaml", encoding="utf-8") as stream:
+    dynamic_plugins = yaml.safe_load(stream)
+plugin_by_package = {
+    plugin["package"]: plugin for plugin in dynamic_plugins.get("plugins", [])
+}
+expected_kuadrant_plugins = {
+    "@kuadrant/kuadrant-backstage-plugin-backend-dynamic@v0.4.0":
+        "sha512-OOkfAbnFxuOkBjvQMUqkd/TtP/yrXr15yQ/Xel880kdgZk39CPlQzVdOS3VXmcLa/Y9toI9nTbyCNqtXAD2C/g==",
+    "@kuadrant/kuadrant-backstage-plugin-frontend@v0.4.0":
+        "sha512-ewW/eOoHcK8MqmhyGzFQvnU8yQkvRpQxhb/GLZbAyWwWpmA/zju2qwFWXx49eBcy9RIlfO2rwS8sQC7do3dfGA==",
+}
+for package, integrity in expected_kuadrant_plugins.items():
+    plugin = plugin_by_package.get(package, {})
+    if plugin.get("disabled") is not False or plugin.get("integrity") != integrity:
+        raise SystemExit(f"{package}: Kuadrant plugin version or integrity is not reproducibly pinned")
+
+kuadrant_frontend = (
+    plugin_by_package["@kuadrant/kuadrant-backstage-plugin-frontend@v0.4.0"]
+    .get("pluginConfig", {}).get("dynamicPlugins", {}).get("frontend", {})
+    .get("internal.plugin-kuadrant", {})
+)
+kuadrant_routes = kuadrant_frontend.get("dynamicRoutes", [])
+kuadrant_route_paths = {route.get("path") for route in kuadrant_routes}
+for forbidden_route in (
+    "/kuadrant/my-api-keys",
+    "/kuadrant/api-key-approval",
+    "/kuadrant/api-keys/:namespace/:name",
+):
+    if forbidden_route in kuadrant_route_paths:
+        raise SystemExit(f"{forbidden_route}: raw API-key workflow must not be exposed in RHDH")
+kuadrant_root = next(
+    (route for route in kuadrant_routes if route.get("path") == "/kuadrant"),
+    {},
+)
+if kuadrant_root.get("menuItem"):
+    raise SystemExit("the technical Kuadrant root must not appear in consumer navigation")
+if any(
+    mount.get("importName") == "EntityKuadrantApiKeyManagementTab"
+    for mount in kuadrant_frontend.get("mountPoints", [])
+):
+    raise SystemExit("catalog entities must not expose direct Kuadrant API-key management")
+
+frontend_plugin_path = pathlib.Path(
+    "platform/developer-hub/arencloud-rhdh-policy-catalog-dynamic-0.1.3.tgz"
+)
+frontend_plugin_package = (
+    "/opt/app-root/src/local-plugins/"
+    "arencloud-rhdh-policy-catalog-dynamic-0.1.3.tgz"
+)
+frontend_plugin = plugin_by_package.get(frontend_plugin_package, {})
+if (
+    frontend_plugin.get("disabled") is not False
+    or frontend_plugin.get("integrity")
+    != "sha512-hWQm5NZfDlBci00UGuFBU51uCF7CqWhNrCRYcRz0GxvyOKWTRbpo9YjDjutvavK1N9tbURJp2SVwmEimZLQ4IQ=="
+):
+    raise SystemExit("effective-policy RHDH plugin is not checksum-pinned")
+frontend_config = (
+    frontend_plugin.get("pluginConfig", {})
+    .get("dynamicPlugins", {})
+    .get("frontend", {})
+    .get("arencloud.rhdh-policy-catalog", {})
+)
+if frontend_config.get("apiFactories") != [{"importName": "oidcAuthApiFactory"}]:
+    raise SystemExit("RHDH monetization UI must register its generic OIDC API factory")
+if not frontend_plugin_path.is_file() or frontend_plugin_path.stat().st_size >= 250_000:
+    raise SystemExit("effective-policy plugin artifact is missing or too large for its ConfigMap")
+if hashlib.sha256(frontend_plugin_path.read_bytes()).hexdigest() != (
+    "e06a3f9b3e4b476640bf3c15a985496bac9fa65a2e5750cdec2fc641a3f9ec40"
+):
+    raise SystemExit("effective-policy plugin artifact checksum changed; rebuild and review it")
+
+backend_plugin_path = pathlib.Path(
+    "platform/developer-hub/arencloud-rhdh-monetization-backend-dynamic-0.1.0.tgz"
+)
+backend_plugin_package = (
+    "/opt/app-root/src/local-plugins/"
+    "arencloud-rhdh-monetization-backend-dynamic-0.1.0.tgz"
+)
+backend_plugin = plugin_by_package.get(backend_plugin_package, {})
+if (
+    backend_plugin.get("disabled") is not False
+    or backend_plugin.get("integrity")
+    != "sha512-W+mm0icsCnBcOhuw9Y+SRz6XRhKryFzWHtH1yqRxhpBp1zLjnEwMnpxjabvuDcc2qiJqesBeKA4kmScSoy9wyA=="
+):
+    raise SystemExit("monetization RHDH backend plugin is not checksum-pinned")
+if not backend_plugin_path.is_file() or backend_plugin_path.stat().st_size >= 700_000:
+    raise SystemExit("monetization backend artifact is missing or too large for its ConfigMap")
+if hashlib.sha256(backend_plugin_path.read_bytes()).hexdigest() != (
+    "1707fe3185d23f6d7206974072abefa0c835b7b84ab29384fc65697cf393bc7e"
+):
+    raise SystemExit("monetization backend artifact checksum changed; rebuild and review it")
+if frontend_plugin_path.stat().st_size + backend_plugin_path.stat().st_size >= 1_000_000:
+    raise SystemExit("combined RHDH plugin artifacts exceed the ConfigMap safety budget")
+
+configured_routes = []
+for plugin in dynamic_plugins.get("plugins", []):
+    frontends = (
+        plugin.get("pluginConfig", {})
+        .get("dynamicPlugins", {})
+        .get("frontend", {})
+    )
+    for frontend in frontends.values():
+        configured_routes.extend(
+            route.get("path") for route in frontend.get("dynamicRoutes", [])
+        )
+if configured_routes.count("/kuadrant/api-products") != 1:
+    raise SystemExit("exactly one frontend plugin must own /kuadrant/api-products")
+if configured_routes.count("/billing") != 1:
+    raise SystemExit("exactly one frontend plugin must own /billing")
+if configured_routes.count("/monetized-apis") != 1:
+    raise SystemExit("exactly one frontend plugin must own /monetized-apis")
+
+with open("platform/developer-hub/app-config.yaml", encoding="utf-8") as stream:
+    rhdh_config = yaml.safe_load(stream)
+apis_menu = (
+    rhdh_config.get("dynamicPlugins", {}).get("frontend", {})
+    .get("default.main-menu-items", {}).get("menuItems", {})
+    .get("default.apis", {})
+)
+if apis_menu.get("to") != "monetized-apis" or apis_menu.get("enabled") is not True:
+    raise SystemExit("RHDH's top-level APIs menu must open the entitlement-aware explorer")
+if rhdh_config.get("signInPage") != "oidc":
+    raise SystemExit("RHDH must use the Keycloak OIDC sign-in page")
+resolvers = (
+    rhdh_config.get("auth", {}).get("providers", {}).get("oidc", {})
+    .get("production", {}).get("signIn", {}).get("resolvers", [])
+)
+if resolvers != [{"resolver": "oidcSubClaimMatchingKeycloakUserId"}]:
+    raise SystemExit("RHDH must use the non-bypass Keycloak user-ID sign-in resolver")
+if not rhdh_config.get("permission", {}).get("enabled"):
+    raise SystemExit("RHDH permission framework must be enabled for Kuadrant RBAC")
+
+rhdh_rbac = pathlib.Path("platform/developer-hub/rbac-policy.csv").read_text()
+for permission, action in (
+    ("api-monetization.subscription.create.own", "create"),
+    ("api-monetization.subscription.update.own", "update"),
+    ("api-monetization.subscription.delete.own", "delete"),
+):
+    expected = f"p, role:default/api-consumer, {permission}, {action}, allow"
+    if expected not in rhdh_rbac:
+        raise SystemExit(f"RHDH consumers are missing {permission}")
+for forbidden in (
+    "kuadrant.apikey.create",
+    "kuadrant.apikey.update",
+    "kuadrant.apikey.delete",
+    "kuadrant.apikey.approve",
+):
+    if forbidden in rhdh_rbac:
+        raise SystemExit("all RHDH users must subscribe instead of directly mutating APIKey resources")
+
+with open("platform/developer-hub/kuadrant-access.yaml", encoding="utf-8") as stream:
+    rhdh_access = [resource for resource in yaml.safe_load_all(stream) if resource]
+rhdh_kuadrant_role = next(
+    resource for resource in rhdh_access
+    if resource.get("kind") == "ClusterRole"
+    and resource.get("metadata", {}).get("name") == "api-monetization-rhdh-kuadrant"
+)
+devportal_rules = {
+    tuple(rule.get("resources", [])): set(rule.get("verbs", []))
+    for rule in rhdh_kuadrant_role.get("rules", [])
+    if "devportal.kuadrant.io" in rule.get("apiGroups", [])
+}
+if devportal_rules != {
+    ("apiproducts",): {"get", "list", "watch", "create", "delete", "patch", "update"},
+    ("apiproducts/status",): {"get", "patch", "update"},
+}:
+    raise SystemExit("RHDH must manage products without direct API-key resource access")
+if any(
+    resource.get("kind") in {"Role", "ClusterRole"}
+    and any("secrets" in rule.get("resources", []) for rule in resource.get("rules", []))
+    for resource in rhdh_access
+):
+    raise SystemExit("RHDH's Kuadrant integration must not read credential Secrets")
+
+with open("platform/developer-hub/backstage.yaml", encoding="utf-8") as stream:
+    backstage = yaml.safe_load(stream)
+with open("platform/developer-hub/database.yaml", encoding="utf-8") as stream:
+    rhdh_database = yaml.safe_load(stream)
+if rhdh_database.get("spec", {}).get("imageName") != (
+    "ghcr.io/cloudnative-pg/postgresql:17.11-standard-trixie@"
+    "sha256:91e0de662d53895a45f1396f4ee1a75daeb0c26fc87853afc9c8f43e01fdaa21"
+):
+    raise SystemExit("RHDH PostgreSQL 17 image must be digest-pinned")
+if backstage.get("spec", {}).get("database", {}).get("enableLocalDb") is not False:
+    raise SystemExit("RHDH must use its operator-managed external CloudNativePG database")
+if backstage.get("spec", {}).get("flavours") != []:
+    raise SystemExit("RHDH Lightspeed and other default flavours must remain disabled")
+pod_spec = backstage.get("spec", {}).get("deployment", {}).get("patch", {}).get("spec", {}).get("template", {}).get("spec", {})
+if pod_spec.get("serviceAccountName") != "api-monetization-rhdh" or pod_spec.get("automountServiceAccountToken") is not True:
+    raise SystemExit("RHDH must use its dedicated in-cluster Kuadrant service account")
+plugin_volume = next(
+    (
+        volume for volume in pod_spec.get("volumes", [])
+        if volume.get("name") == "api-monetization-rhdh-local-plugins"
+    ),
+    {},
+)
+plugin_installer = next(
+    (
+        container for container in pod_spec.get("initContainers", [])
+        if container.get("name") == "install-dynamic-plugins"
+    ),
+    {},
+)
+if plugin_volume.get("configMap", {}).get("name") != "api-monetization-rhdh-local-plugins":
+    raise SystemExit("RHDH local plugin ConfigMap is not mounted")
+for plugin_path, plugin_package in (
+    (frontend_plugin_path, frontend_plugin_package),
+    (backend_plugin_path, backend_plugin_package),
+):
+    if not any(
+        mount.get("mountPath") == plugin_package
+        and mount.get("subPath") == plugin_path.name
+        and mount.get("readOnly") is True
+        for mount in plugin_installer.get("volumeMounts", [])
+    ):
+        raise SystemExit(f"RHDH plugin installer cannot read {plugin_path.name}")
+extra_envs = backstage.get("spec", {}).get("application", {}).get("extraEnvs", {}).get("envs", [])
+if {"name": "NODE_EXTRA_CA_CERTS", "value": "/opt/app-root/etc/router-ca.crt"} not in extra_envs:
+    raise SystemExit("RHDH must trust the discovered OpenShift router CA for Keycloak OIDC")
+
+expected_commercial_products = {
+    "inventory-api-product.yaml": "inventory",
+    "inventory-jwt-api-product.yaml": "inventory",
+    "payments-api-product.yaml": "payments",
+    "payments-jwt-api-product.yaml": "payments",
+    "ai-chat-api-product.yaml": "ai-chat",
+    "ai-chat-jwt-api-product.yaml": "ai-chat",
+}
+for product_file in pathlib.Path("platform/gateway").glob("*-api-product.yaml"):
+    product = yaml.safe_load(product_file.read_text())
+    annotations = product.get("metadata", {}).get("annotations", {})
+    owner = annotations.get("backstage.io/owner")
+    if owner != "group:default/api-owners":
+        raise SystemExit(f"{product_file}: APIProduct must declare its RHDH catalog owner")
+    expected_product = expected_commercial_products.get(product_file.name)
+    if expected_product and annotations.get("monetization.arencloud.com/product") != expected_product:
+        raise SystemExit(f"{product_file}: APIProduct is not linked to its commercial subscription")
 
 with open("platform/ai-model/serving-runtime.yaml", encoding="utf-8") as stream:
     ai_runtime = yaml.safe_load(stream)
@@ -540,7 +793,7 @@ if (
 ):
     raise SystemExit("Grafana OAuth client secret is not mirrored from the identity namespace")
 
-for product in ("inventory", "payments"):
+for product in ("inventory", "payments", "ai-chat"):
     with open(f"applications/{product}/openapi.yaml", encoding="utf-8") as stream:
         openapi = yaml.safe_load(stream)
     if not str(openapi.get("openapi", "")).startswith("3.") or not openapi.get("paths"):
@@ -595,11 +848,26 @@ if kuadrant.get("spec", {}).get("mtls") != {
 }:
     raise SystemExit("RHCL mTLS must be enabled explicitly for Authorino and Limitador")
 
+with open("platform/secrets/demo/inventory-api-key.yaml", encoding="utf-8") as stream:
+    demo_secret_resources = [resource for resource in yaml.safe_load_all(stream) if resource]
+demo_external_secret = next(
+    resource for resource in demo_secret_resources if resource.get("kind") == "ExternalSecret"
+)
+demo_secret_metadata = (
+    demo_external_secret.get("spec", {}).get("target", {}).get("template", {}).get("metadata", {})
+)
+if demo_secret_metadata.get("labels", {}).get("devportal.kuadrant.io/apiproduct") != "inventory-api":
+    raise SystemExit("The reproducible API key Secret must retain its Kuadrant APIProduct label")
+if demo_secret_metadata.get("annotations", {}).get("secret.kuadrant.io/user-id") != "demo-company":
+    raise SystemExit("The reproducible API key Secret must retain its Kuadrant consumer identity")
+
 auth_policies = []
-for product in ("inventory", "payments"):
+for product in ("inventory", "payments", "ai-chat"):
     with open(f"platform/gateway/{product}-auth-policies.yaml", encoding="utf-8") as stream:
         auth_policies.extend(yaml.safe_load_all(stream))
 for policy in auth_policies:
+    if policy.get("metadata", {}).get("name", "").endswith("-preflight"):
+        continue
     rules = policy.get("spec", {}).get("rules", {})
     active = rules.get("authorization", {}).get("active-subscription", {})
     patterns = active.get("patternMatching", {}).get("patterns", [])
@@ -612,16 +880,16 @@ for policy in auth_policies:
         name = policy.get("metadata", {}).get("name", "unknown")
         raise SystemExit(f"{name}: active subscription authorization is missing")
 
-for product in ("inventory", "payments"):
+for product in ("inventory", "payments", "ai-chat"):
     jwt_policy = next(
         policy for policy in auth_policies if policy.get("metadata", {}).get("name") == f"{product}-jwt"
     )
     jwt_rules = jwt_policy.get("spec", {}).get("rules", {})
     jwt_authentication = jwt_rules.get("authentication", {}).get("keycloak", {}).get("jwt", {})
     if jwt_authentication != {
-        "jwksUrl": "http://api-monetization-service.api-monetization-identity.svc.cluster.local:8080/realms/api-monetization/protocol/openid-connect/certs"
+        "issuerUrl": "https://keycloak-api-monetization.apps.invalid/realms/api-monetization"
     }:
-        raise SystemExit(f"{product}: JWT verification must use the internal Keycloak JWKS endpoint")
+        raise SystemExit(f"{product}: JWT verification must use the portable Keycloak OIDC issuer placeholder")
     jwt_issuer_patterns = (
         jwt_rules.get("authorization", {})
         .get("keycloak-issuer", {})
@@ -797,8 +1065,11 @@ if unformatted=$(gofmt -l applications internal); [[ -n $unformatted ]]; then
   exit 1
 fi
 
-go test ./...
-go vet ./...
+mapfile -t go_packages < <(
+  go list ./... | grep -v '/node_modules/'
+)
+go test "${go_packages[@]}"
+go vet "${go_packages[@]}"
 
 python3 - <<'PY'
 import pathlib
@@ -806,6 +1077,8 @@ import yaml
 
 for pattern in ("*.yaml", "*.yml"):
     for path in pathlib.Path(".").rglob(pattern):
+        if any(part in {"node_modules", "dist", "dist-dynamic"} for part in path.parts):
+            continue
         for resource in yaml.safe_load_all(path.read_text(encoding="utf-8")):
             if not resource or resource.get("kind") != "Secret":
                 continue
@@ -818,17 +1091,17 @@ for pattern in ("*.yaml", "*.yml"):
                 raise SystemExit(f"{path}: plaintext Kubernetes Secret resources are not allowed")
 PY
 
-if rg -n --glob '*.yaml' --glob '*.yml' 'image:[[:space:]]*[^[:space:]]+:latest([[:space:]]|$)' .; then
+if rg -n --glob '!**/node_modules/**' --glob '*.yaml' --glob '*.yml' 'image:[[:space:]]*[^[:space:]]+:latest([[:space:]]|$)' .; then
   echo "error: container images must not use the latest tag" >&2
   exit 1
 fi
 
-if rg -n --glob '*.yaml' --glob '*.yml' $'\t' .; then
+if rg -n --glob '!**/node_modules/**' --glob '*.yaml' --glob '*.yml' $'\t' .; then
   echo "error: YAML files must not contain tabs" >&2
   exit 1
 fi
 
-if rg -n --glob '*.yaml' --glob '*.yml' --glob '*.md' '[[:blank:]]+$' .; then
+if rg -n --glob '!**/node_modules/**' --glob '*.yaml' --glob '*.yml' --glob '*.md' '[[:blank:]]+$' .; then
   echo "error: text files must not contain trailing whitespace" >&2
   exit 1
 fi

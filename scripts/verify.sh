@@ -15,10 +15,10 @@ wait_for_application() {
 
   for _ in $(seq 1 270); do
     state=$(oc get application "$application_name" -n openshift-gitops \
-      -o jsonpath='{.status.sync.status}{"|"}{.status.health.status}' \
+      -o jsonpath='{.status.sync.status}{"|"}{.status.health.status}{"|"}{.status.operationState.phase}' \
       2>/dev/null || true)
-    if [[ $state == "Synced|Healthy" ]]; then
-      echo "$application_name is Synced and Healthy"
+    if [[ $state == "Synced|Healthy|Succeeded" ]]; then
+      echo "$application_name is Synced, Healthy, and finished reconciling"
       return 0
     fi
     sleep 10
@@ -101,6 +101,7 @@ for application_name in \
   api-monetization-demo-secrets \
   api-monetization-database \
   api-monetization-identity \
+  api-monetization-developer-hub \
   api-monetization-ai-chat \
   api-monetization-inventory \
   api-monetization-payments \
@@ -133,12 +134,22 @@ oc wait --for=condition=Ready externalsecret/subscriptions-db-credentials \
   -n api-monetization-data --timeout=5m
 oc wait --for=condition=Ready externalsecret/demo-inventory-api-key \
   -n api-monetization-apps --timeout=5m
+oc wait --for=condition=Ready secretstore/api-monetization-identity \
+  -n api-monetization-developer-hub --timeout=5m
+oc wait --for=condition=Ready externalsecret/api-monetization-rhdh-db \
+  -n api-monetization-developer-hub --timeout=5m
+oc wait --for=condition=Ready externalsecret/api-monetization-rhdh-runtime-secrets \
+  -n api-monetization-developer-hub --timeout=5m
+oc wait --for=condition=Ready externalsecret/api-monetization-rhdh-keycloak \
+  -n api-monetization-developer-hub --timeout=5m
 
 echo "waiting for PostgreSQL clusters"
 oc wait --for=condition=Ready clusters.postgresql.cnpg.io/keycloak-postgres \
   -n api-monetization-identity --timeout=10m
 oc wait --for=condition=Ready clusters.postgresql.cnpg.io/subscriptions-postgres \
   -n api-monetization-data --timeout=10m
+oc wait --for=condition=Ready clusters.postgresql.cnpg.io/api-monetization-rhdh-postgres \
+  -n api-monetization-developer-hub --timeout=10m
 
 echo "waiting for Red Hat build of Keycloak"
 oc wait --for=condition=Ready keycloaks.k8s.keycloak.org/api-monetization \
@@ -147,6 +158,53 @@ oc wait --for=condition=Done keycloakrealmimports.k8s.keycloak.org/api-monetizat
   -n api-monetization-identity --timeout=10m
 oc wait route/api-monetization-keycloak -n api-monetization-identity \
   --for=jsonpath='{.status.ingress[0].conditions[0].status}'=True --timeout=5m
+ingress_certificate=$(oc get ingresscontroller.operator.openshift.io default \
+  -n openshift-ingress-operator -o jsonpath='{.spec.defaultCertificate.name}')
+if [[ -z $ingress_certificate ]]; then
+  ingress_certificate=router-certs-default
+fi
+
+echo "waiting for Red Hat Developer Hub and Kuadrant plugin runtime"
+oc rollout status deployment/backstage-api-monetization \
+  -n api-monetization-developer-hub --timeout=15m
+oc wait route/backstage-api-monetization -n api-monetization-developer-hub \
+  --for=jsonpath='{.status.ingress[0].conditions[0].status}'=True --timeout=5m
+rhdh_hostname=$(oc get route backstage-api-monetization \
+  -n api-monetization-developer-hub -o jsonpath='{.status.ingress[0].host}')
+rhdh_router_hostname=$(oc get route backstage-api-monetization \
+  -n api-monetization-developer-hub \
+  -o jsonpath='{.status.ingress[0].routerCanonicalHostname}')
+if [[ $rhdh_hostname != developer-hub.* ]]; then
+  echo "error: Developer Hub did not receive the portable developer-hub ingress hostname" >&2
+  exit 1
+fi
+rhdh_logs=$(oc logs deployment/backstage-api-monetization \
+  -n api-monetization-developer-hub --container=backstage-backend)
+if ! grep -q "loaded dynamic backend plugin '@kuadrant/kuadrant-backstage-plugin-backend-dynamic'.*0.4.0" <<<"$rhdh_logs"; then
+  echo "error: Developer Hub did not load the tested Kuadrant 0.4.0 backend plugin" >&2
+  exit 1
+fi
+if ! grep -q "Loaded dynamic frontend plugin '@kuadrant/kuadrant-backstage-plugin-frontend'.*0.4.0" <<<"$rhdh_logs"; then
+  echo "error: Developer Hub did not load the tested Kuadrant 0.4.0 frontend plugin" >&2
+  exit 1
+fi
+if ! grep -q "Loaded dynamic frontend plugin '@arencloud/rhdh-policy-catalog-dynamic'.*0.1.3" <<<"$rhdh_logs"; then
+  echo "error: Developer Hub did not load the effective-policy catalog plugin" >&2
+  exit 1
+fi
+if ! grep -qi "loaded dynamic backend plugin '@arencloud/rhdh-monetization-backend-dynamic'.*0.1.0" <<<"$rhdh_logs"; then
+  echo "error: Developer Hub did not load the permission-controlled monetization backend plugin" >&2
+  exit 1
+fi
+if [[ $(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+  --connect-to "$rhdh_hostname:443:$rhdh_router_hostname:443" \
+  "https://$rhdh_hostname/healthcheck") != "200" ]]; then
+  echo "error: Developer Hub health endpoint is unavailable" >&2
+  exit 1
+fi
+echo "Developer Hub: https://$rhdh_hostname (Keycloak and Kuadrant integration ready)"
 
 echo "waiting for application builds and workloads"
 oc wait clusteroperator/image-registry --for=condition=Available --timeout=10m
@@ -353,6 +411,10 @@ api_hostname=$(oc get route api-monetization -n api-monetization-gateway \
   -o jsonpath='{.status.ingress[0].host}')
 jwt_hostname=$(oc get route api-monetization-jwt -n api-monetization-gateway \
   -o jsonpath='{.status.ingress[0].host}')
+keycloak_hostname=$(oc get route api-monetization-keycloak \
+  -n api-monetization-identity -o jsonpath='{.status.ingress[0].host}')
+oidc_issuer="https://$keycloak_hostname/realms/api-monetization"
+oidc_token_endpoint="$oidc_issuer/protocol/openid-connect/token"
 for product in inventory payments ai-chat; do
   api_route_hostname=$(oc get httproute "$product-api-key" -n api-monetization-apps \
     -o jsonpath='{.spec.hostnames[0]}')
@@ -363,6 +425,16 @@ for product in inventory payments ai-chat; do
     exit 1
   fi
 done
+
+for policy in inventory-jwt payments-jwt ai-chat-jwt; do
+  policy_issuer=$(oc get authpolicy "$policy" -n api-monetization-apps \
+    -o jsonpath='{.spec.rules.authentication.keycloak.jwt.issuerUrl}')
+  if [[ $policy_issuer != "$oidc_issuer" ]]; then
+    echo "error: $policy issuer is ${policy_issuer:-empty}; expected $oidc_issuer" >&2
+    exit 1
+  fi
+done
+echo "JWT policies use the admitted Keycloak OIDC issuer"
 api_preflight_hostname=$(oc get httproute ai-chat-api-key-preflight \
   -n api-monetization-apps -o jsonpath='{.spec.hostnames[0]}')
 jwt_preflight_hostname=$(oc get httproute ai-chat-jwt-preflight \
@@ -374,43 +446,64 @@ fi
 
 echo "waiting for APIProducts to publish the admitted API URL"
 for product in inventory payments ai-chat; do
-  api_product_ready=false
-  api_product=""
-  for _ in $(seq 1 60); do
-    api_product=$(oc get apiproduct "$product-api" -n api-monetization-apps \
-      -o json 2>/dev/null || true)
-    if [[ -n $api_product ]]; then
-      api_product_generation=$(jq -r '.metadata.generation // 0' <<<"$api_product")
-      api_product_observed_generation=$(jq -r '.status.observedGeneration // 0' <<<"$api_product")
-      api_product_openapi_status=$(jq -r '[.status.conditions[]? | select(.type == "OpenAPISpecReady")][0].status // ""' <<<"$api_product")
-      api_product_openapi_reason=$(jq -r '[.status.conditions[]? | select(.type == "OpenAPISpecReady")][0].reason // ""' <<<"$api_product")
-      if [[ $api_product_generation == "$api_product_observed_generation" ]]; then
-        if [[ $api_product_openapi_status == "True" ]]; then
-          api_product_server=$(jq -r '.status.openapi.raw // ""' <<<"$api_product" \
-            | sed -n 's/^  - url: //p' | head -n 1)
-          if [[ $api_product_server != "https://$api_hostname" ]]; then
-            echo "error: $product APIProduct server is ${api_product_server:-empty}; expected https://$api_hostname" >&2
+  for auth_mode in api-key jwt; do
+    api_product_name="$product-api"
+    expected_route="$product-api-key"
+    if [[ $auth_mode == jwt ]]; then
+      api_product_name="$product-api-jwt"
+      expected_route="$product-jwt"
+    fi
+    api_product_ready=false
+    api_product=""
+    for _ in $(seq 1 60); do
+      api_product=$(oc get apiproduct "$api_product_name" -n api-monetization-apps \
+        -o json 2>/dev/null || true)
+      if [[ -n $api_product ]]; then
+        api_product_generation=$(jq -r '.metadata.generation // 0' <<<"$api_product")
+        api_product_observed_generation=$(jq -r '.status.observedGeneration // 0' <<<"$api_product")
+        api_product_openapi_status=$(jq -r '[.status.conditions[]? | select(.type == "OpenAPISpecReady")][0].status // ""' <<<"$api_product")
+        api_product_openapi_reason=$(jq -r '[.status.conditions[]? | select(.type == "OpenAPISpecReady")][0].reason // ""' <<<"$api_product")
+        if [[ $api_product_generation == "$api_product_observed_generation" && \
+          $api_product_openapi_status == "True" ]]; then
+          api_product_servers=$(jq -r '.status.openapi.raw // ""' <<<"$api_product" \
+            | sed -n 's/^  - url: //p')
+          api_product_route=$(jq -r '.spec.targetRef.name // ""' <<<"$api_product")
+          if [[ $auth_mode == api-key ]] && \
+            ! grep -Fxq "https://$api_hostname" <<<"$api_product_servers"; then
+            echo "error: $api_product_name does not publish its API-key server URL https://$api_hostname" >&2
             exit 1
+          fi
+          if [[ $api_product_route != "$expected_route" ]]; then
+            echo "error: $api_product_name targets ${api_product_route:-empty}; expected $expected_route" >&2
+            exit 1
+          fi
+          if [[ $auth_mode == jwt ]]; then
+            oidc_status=$(jq -r '[.status.conditions[]? | select(.type == "OIDCDiscovered")][0].status // ""' <<<"$api_product")
+            discovered_token_endpoint=$(jq -r '.status.oidcDiscovery.tokenEndpoint // ""' <<<"$api_product")
+            if [[ $oidc_status != True || $discovered_token_endpoint != "$oidc_token_endpoint" ]]; then
+              echo "error: $api_product_name did not discover Keycloak OIDC at $oidc_token_endpoint" >&2
+              exit 1
+            fi
           fi
           api_product_ready=true
           break
         fi
         if [[ $api_product_openapi_status == "False" && $api_product_openapi_reason == "FetchFailed" ]]; then
           api_product_openapi_message=$(jq -r '[.status.conditions[]? | select(.type == "OpenAPISpecReady")][0].message' <<<"$api_product")
-          echo "error: APIProduct controller could not fetch the $product OpenAPI document" >&2
+          echo "error: APIProduct controller could not fetch the $api_product_name OpenAPI document" >&2
           echo "$api_product_openapi_message" >&2
           exit 1
         fi
       fi
+      sleep 5
+    done
+    if [[ $api_product_ready != true ]]; then
+      echo "error: $api_product_name was not ready within 5 minutes" >&2
+      [[ -n $api_product ]] && jq -r '.status.conditions[]? | "  \(.type)=\(.status) reason=\(.reason): \(.message)"' <<<"$api_product" >&2
+      exit 1
     fi
-    sleep 5
+    echo "$api_product_name is ready for $auth_mode authentication"
   done
-  if [[ $api_product_ready != "true" ]]; then
-    echo "error: $product APIProduct did not publish a ready OpenAPI document within 5 minutes" >&2
-    [[ -n $api_product ]] && jq -r '.status.conditions[]? | "  \(.type)=\(.status) reason=\(.reason): \(.message)"' <<<"$api_product" >&2
-    exit 1
-  fi
-  echo "$product APIProduct publishes https://$api_hostname"
 done
 echo "API-key endpoint: https://$api_hostname/inventory"
 echo "JWT endpoint: https://$jwt_hostname/inventory"
@@ -422,11 +515,6 @@ echo "AI Chat JWT endpoint: https://$jwt_hostname/v1/chat/completions"
 echo "validating authenticated traffic through the complete data path"
 router_hostname=$(oc get route api-monetization -n api-monetization-gateway \
   -o jsonpath='{.status.ingress[0].routerCanonicalHostname}')
-ingress_certificate=$(oc get ingresscontroller.operator.openshift.io default \
-  -n openshift-ingress-operator -o jsonpath='{.spec.defaultCertificate.name}')
-if [[ -z $ingress_certificate ]]; then
-  ingress_certificate=router-certs-default
-fi
 api_key_secret=$(oc get apikey demo-inventory-key -n api-monetization-apps \
   -o jsonpath='{.spec.secretRef.name}')
 api_key_value=$(oc get secret "$api_key_secret" -n api-monetization-apps \
@@ -475,8 +563,6 @@ fi
 echo "Payment JWT path is protected and returned HTTP 401"
 
 echo "validating JWT identity-to-subscription resolution"
-keycloak_hostname=$(oc get route api-monetization-keycloak \
-  -n api-monetization-identity -o jsonpath='{.status.ingress[0].host}')
 keycloak_router_hostname=$(oc get route api-monetization-keycloak \
   -n api-monetization-identity -o jsonpath='{.status.ingress[0].routerCanonicalHostname}')
 keycloak_client_secret=$(oc get secret keycloak-demo-clients \
@@ -490,14 +576,21 @@ jwt_token=$(curl --silent --show-error --fail \
   --data 'grant_type=client_credentials' \
   "https://$keycloak_hostname/realms/api-monetization/protocol/openid-connect/token" \
   | jq -er '.access_token')
-jwt_authenticated_status=$(curl --silent --show-error --output /dev/null \
-  --write-out '%{http_code}' \
-  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
-    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
-  --connect-to "$jwt_hostname:443:$router_hostname:443" \
-  --header "Host: $jwt_hostname" \
-  --header "Authorization: Bearer $jwt_token" \
-  "https://$jwt_hostname/inventory")
+jwt_authenticated_status=""
+for _ in $(seq 1 6); do
+  jwt_authenticated_status=$(curl --silent --show-error --output /dev/null \
+    --write-out '%{http_code}' \
+    --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+      -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+    --connect-to "$jwt_hostname:443:$router_hostname:443" \
+    --header "Host: $jwt_hostname" \
+    --header "Authorization: Bearer $jwt_token" \
+    "https://$jwt_hostname/inventory")
+  if [[ $jwt_authenticated_status == "200" || $jwt_authenticated_status == "429" ]]; then
+    break
+  fi
+  sleep 5
+done
 case "$jwt_authenticated_status" in
   200)
     echo "JWT identity resolved to the active PostgreSQL subscription"
@@ -716,6 +809,40 @@ grafana_client=$(curl --silent --show-error --fail \
   --connect-to "$keycloak_hostname:443:$keycloak_router_hostname:443" \
   --header "Authorization: Bearer $keycloak_admin_token" \
   "https://$keycloak_hostname/admin/realms/api-monetization/clients?clientId=api-monetization-grafana")
+rhdh_client=$(curl --silent --show-error --fail \
+  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+  --connect-to "$keycloak_hostname:443:$keycloak_router_hostname:443" \
+  --header "Authorization: Bearer $keycloak_admin_token" \
+  "https://$keycloak_hostname/admin/realms/api-monetization/clients?clientId=rhdh")
+rhdh_callback="https://$rhdh_hostname/api/auth/oidc/handler/frame"
+if ! jq -e --arg callback "$rhdh_callback" '
+  length == 1 and
+  .[0].publicClient == false and
+  .[0].standardFlowEnabled == true and
+  .[0].serviceAccountsEnabled == true and
+  .[0].directAccessGrantsEnabled == false and
+  (.[0].redirectUris | index($callback) != null) and
+  ([.[0].protocolMappers[]? |
+    select(.protocolMapper == "oidc-audience-mapper") |
+    .config["included.custom.audience"]] |
+    index("monetization-control") != null) and
+  ([.[0].protocolMappers[]? |
+    select(.protocolMapper == "oidc-audience-mapper") |
+    .config["included.custom.audience"]] |
+    index("api-monetization") != null)
+' <<<"$rhdh_client" >/dev/null; then
+  echo "error: Keycloak Developer Hub OIDC/catalog client is incomplete" >&2
+  exit 1
+fi
+source_rhdh_secret=$(oc get secret rhdh-keycloak-client \
+  -n api-monetization-identity -o jsonpath='{.data.client-secret}')
+mirrored_rhdh_secret=$(oc get secret api-monetization-rhdh-keycloak \
+  -n api-monetization-developer-hub -o jsonpath='{.data.KEYCLOAK_CLIENT_SECRET}')
+if [[ -z $source_rhdh_secret || $source_rhdh_secret != "$mirrored_rhdh_secret" ]]; then
+  echo "error: Developer Hub OIDC client secret was not replicated from identity" >&2
+  exit 1
+fi
 grafana_callback="https://$grafana_hostname/login/generic_oauth"
 if ! jq -e --arg callback "$grafana_callback" '
   length == 1 and

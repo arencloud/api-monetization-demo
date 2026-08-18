@@ -8,8 +8,8 @@ allows commercial workflows to evolve without changing API workloads.
 
 ```text
                               CONTROL PLANE
- RHCL Console Portal -> APIProduct/APIKey -> generated credential metadata
- Monetization Portal -> Keycloak login -> subscription / usage / live upgrade
+ RHDH + Kuadrant plugin -> APIProduct/APIKey -> generated credential metadata
+ RHDH/custom portal -> Keycloak login -> subscription / usage / live upgrade
          |                        |                         |
          +------------------------+-------------------------+
                               |
@@ -28,7 +28,7 @@ assigned external address; the request-time policy path is unchanged.
 
 | Capability | Owner |
 | --- | --- |
-| API catalog, documentation, API-key requests | RHCL OpenShift console plugin |
+| API catalog, documentation, subscription and credentials UX | Red Hat Developer Hub, custom monetization extension, and Kuadrant plugins |
 | OAuth2/OIDC identities, JWTs, clients, roles | Red Hat build of Keycloak |
 | Database lifecycle, failover, backup hooks | CloudNativePG certified Operator |
 | Secret synchronization and demo credential generation | External Secrets Operator for Red Hat OpenShift |
@@ -41,6 +41,68 @@ assigned external address; the request-time policy path is unchanged.
 | Plan state, upgrades, rating, invoices | Monetization control plane and PostgreSQL |
 | Operational and business visualization | Grafana Operator, Grafana, and Kiali |
 | Desired state and promotion | OpenShift GitOps |
+
+Red Hat Developer Hub is the unified presentation layer, not a replacement for
+the request-time enforcement or billing engines. The Kuadrant plugins provide
+the operator-native catalog projection and policy details. The custom
+monetization
+frontend presents subscriptions, accepted request/token usage, projected
+revenue, and invoices, and provides subscription, plan, cancellation, and
+credential lifecycle actions. Its backend is the only browser-facing bridge:
+RHDH RBAC authorizes each read or mutation, then the monetization control plane
+verifies the forwarded Keycloak token and resolves the subject to its
+PostgreSQL customer. No browser-supplied customer identifier is trusted. The
+existing portal remains available as a rollback path and for the AI playground.
+
+Every published `APIProduct` is presented as a production API. Its
+`monetization.arencloud.com/product` annotation maps the API-key and OIDC/JWT
+presentations to one logical commercial product. No interactive RHDH role can
+create, update, delete, or approve Kuadrant `APIKey` resources. Users first
+create a subscription and the control plane alone provisions the
+operator-native credential. At request time Authorino resolves the same active
+subscription for
+both authentication paths, so catalogue visibility never implies entitlement.
+For consumers, production rows without an active entitlement are greyed in
+both the Kuadrant product view and the Developer Hub APIs explorer, and their
+detail links are disabled; the Billing subscription action remains available.
+Both authentication rows unlock as soon as the shared subscription becomes
+active. Frontend releases use a new versioned dynamic-plugin artifact
+path so existing RHDH clients cannot retain an earlier module-federation bundle
+under the same package URL.
+RHDH does not permit dynamic routes to override built-in routes other than the
+home page. The supported main-menu configuration therefore points the standard
+**APIs** navigation item at the extension's unique `/monetized-apis` route;
+the built-in `/api-docs` route is not shadowed.
+
+Each governed HTTPRoute has its own `APIProduct` presentation in RHDH. The
+three API-key routes advertise API-key authentication and receive credentials
+only through the subscription workflow. The matching JWT routes advertise OIDC,
+publish the discovered Red Hat build of Keycloak token endpoint, and accept
+short-lived bearer tokens without creating an `APIKey` object. A GitOps hook
+replaces the portable issuer placeholder with the admitted Keycloak Route and
+adds the OpenShift router CA to Authorino and the developer-portal controller;
+no cluster-specific applications domain is stored in Git.
+
+RHDH uses a dedicated service account. API owners retain APIProduct management,
+but the Kuadrant integration has no APIKey or credential Secret access.
+Policies, Gateway API, and catalog metadata needed for presentation are visible.
+Keycloak supplies users and groups to the
+catalog through a confidential, read-only service account. `api-consumers`,
+`api-owners`, and `api-admins` map to the matching RHDH RBAC roles, and newly
+registered developers enter the consumer group by default.
+
+`TokenRateLimitPolicy` discovery is implemented in the custom backend because
+the tested Kuadrant 0.4.0 backend does not expose that CRD. The endpoint uses
+the dedicated RHDH service account and the
+`api-monetization.tokenratelimitpolicy.list` permission. Billing has distinct
+`read.own` and `read.all` permissions. Consumer lifecycle actions additionally
+require `subscription.create.own`, `subscription.update.own`, or
+`subscription.delete.own`; Keycloak performs the matching developer or
+administrator role check again at the control-plane boundary.
+The frontend extension explicitly registers RHDH's generic `auth.oidc` API
+factory. This reuses the signed-in Keycloak session to obtain the short-lived
+provider access token; no token or customer identifier is stored in browser
+configuration.
 
 The browser portal is a public PKCE client in Keycloak. Human administrators
 receive the `monetization-admin` realm role and developers receive the separate

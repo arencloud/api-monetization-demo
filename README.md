@@ -71,10 +71,14 @@ The first profile follows the RHCL 1.4 support matrix:
 | Red Hat OpenShift Service Mesh | 3.4 |
 | cert-manager Operator for Red Hat OpenShift | 1.19 |
 | Red Hat build of Keycloak | 26.6 |
+| Red Hat Developer Hub | 1.10 z-stream (`fast-1.10`) |
+| Kuadrant Developer Hub plugin | 0.4.0, integrity-pinned |
+| Effective-policy catalog plugin | 0.1.0, source-controlled local TGZ |
 | Red Hat OpenShift GitOps | Latest catalog channel, automatic upgrades |
 | Red Hat OpenShift AI | 3.4 stable channel, 3.4.3 starting CSV |
 | External Secrets Operator for Red Hat OpenShift | 1.2 |
 | CloudNativePG certified Operator | 1.30 |
+| Developer Hub database | PostgreSQL 17.11, multi-architecture digest pin |
 | Red Hat build of OpenTelemetry Operator | stable, 0.152.0-2 starting CSV |
 | Tempo Operator | stable, 0.21.0-3 starting CSV |
 | Grafana Operator | v5, 5.24.0 starting CSV |
@@ -87,12 +91,16 @@ The optional CPU AI milestone also requires outbound access to Hugging Face.
 Its pinned Qwen2.5 0.5B model is downloaded when the serving Pod starts. No GPU,
 GPU Operator, RWX volume, or LoadBalancer provider is required.
 
+The Developer Hub Pod also requires outbound access to `registry.npmjs.org` on
+first start so its pinned Kuadrant dynamic plugin packages can be installed.
+
 Because the current profile includes OpenShift AI, the minimum multi-node
 cluster has three 4-vCPU/16-GiB control-plane nodes and two schedulable
 8-vCPU/32-GiB workers. For a reliable live presentation, use three
 8-vCPU/32-GiB workers and at least 100 GiB of provisionable persistent
-capacity. The registry consumes a one-replica 50-GiB persistent volume; the two
-PostgreSQL clusters consume 2 GiB each. See
+capacity. The registry consumes a one-replica 50-GiB persistent volume; the
+subscription and Keycloak PostgreSQL clusters consume 2 GiB each, and the
+Developer Hub PostgreSQL cluster consumes 5 GiB. See
 [the deployment sizing profiles](docs/deployment.md#cluster-sizing) for
 Minimum, Recommended, Large showcase, and single-node requirements, and use
 [the runbook resource gate](docs/demo-runbook.md#select-and-verify-the-cluster-profile)
@@ -147,6 +155,33 @@ control plane, live plan changes, Prometheus metrics, an operator-managed
 Grafana instance and dashboard, structured logs, and an OpenTelemetry-to-Tempo
 trace pipeline.
 
+Red Hat Developer Hub is installed through its Operator as the strategic
+developer experience. The integrity-pinned Kuadrant frontend and backend
+plugins synchronize six RHCL `APIProduct` resources into the catalog: an
+API-key and a Keycloak OIDC/JWT presentation of each Inventory, Payment, and AI
+Chat API. They provide read-only product discovery and OIDC metadata. GitOps
+discovers the admitted Keycloak issuer
+and installs the OpenShift router CA into the RHCL OIDC components, so the same
+catalog works on a fresh cluster with a different applications domain.
+The default RHDH Lightspeed flavour is disabled because the solution already
+contains its independently governed OpenShift AI chat product.
+Developer Hub delegates login to the existing Red Hat build of Keycloak realm;
+Keycloak groups map to the Kuadrant consumer, owner, and administrator roles.
+The source-controlled RHDH extension resolves effective `PlanPolicy`, direct
+`RateLimitPolicy`, and `TokenRateLimitPolicy` resources and adds a Billing view
+for subscriptions, accepted request/token usage, projected revenue, and
+invoices. Both the Kuadrant API Products view and Developer Hub's APIs explorer
+treat published products as production APIs and show whether the signed-in
+consumer has an active subscription. The Billing page provides
+consumer-scoped subscribe, plan-change, cancellation, one-time API-key
+reveal/rotation, and Keycloak JWT workflows. Raw Kuadrant credential and
+approval pages are deliberately absent: the subscription control plane is the
+only credential writer. Its backend applies RHDH permissions before
+forwarding the signed-in user's Keycloak token, while the existing control
+plane independently checks the role and maps the token subject to exactly one
+customer. PostgreSQL remains the sole commercial system of record. The
+existing portal remains deployed as a rollback path and for the AI playground.
+
 The current development milestone adds an Operator-managed OpenShift AI 3.4
 foundation, KServe, and a pinned Qwen2.5 0.5B Instruct model served by Red Hat's
 vLLM CPU x86 runtime. A mesh-injected facade keeps the model internal, exposes
@@ -173,9 +208,12 @@ token limits. Portable CORS rules do not use cookies and therefore require no
 cluster-specific portal hostname.
 
 Developers authenticate with the separate `monetization-developer` role. They
-can browse the multi-product API catalog, choose an independent plan for each
-product, create their own PostgreSQL customer and subscriptions, and request
-product-scoped API keys or a short-lived Keycloak JWT. The
+can browse the multi-product API catalog, but a production API rejects their
+API-key and JWT requests until they subscribe to its logical commercial
+product. Both authentication presentations share that subscription. Developers
+choose an independent plan for each product, create their own PostgreSQL
+customer and subscriptions in RHDH, and request product-scoped API keys or a
+short-lived Keycloak JWT. The
 control plane creates an External Secrets Password generator and ExternalSecret
 before submitting the RHCL `APIKey`; the raw credential is displayed once and
 only its digest is retained in the commercial datastore. Developers can rotate

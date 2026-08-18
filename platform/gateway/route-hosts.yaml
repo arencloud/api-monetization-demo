@@ -76,6 +76,17 @@ rules:
       - get
       - patch
   - apiGroups:
+      - kuadrant.io
+    resources:
+      - authpolicies
+    resourceNames:
+      - inventory-jwt
+      - payments-jwt
+      - ai-chat-jwt
+    verbs:
+      - get
+      - patch
+  - apiGroups:
       - ""
     resources:
       - configmaps
@@ -83,6 +94,15 @@ rules:
       - inventory-api-openapi
       - payments-api-openapi
       - ai-chat-api-openapi
+    verbs:
+      - get
+      - patch
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    resourceNames:
+      - demo-inventory-api-key
     verbs:
       - get
       - patch
@@ -103,6 +123,45 @@ kind: RoleBinding
 metadata:
   name: api-monetization-route-hosts
   namespace: api-monetization-apps
+  annotations:
+    argocd.argoproj.io/sync-wave: "8"
+  labels:
+    app.kubernetes.io/name: api-monetization-route-hosts
+    app.kubernetes.io/part-of: api-monetization
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: api-monetization-route-hosts
+subjects:
+  - kind: ServiceAccount
+    name: api-monetization-route-hosts
+    namespace: api-monetization-gateway
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: api-monetization-route-hosts
+  namespace: api-monetization-identity
+  annotations:
+    argocd.argoproj.io/sync-wave: "8"
+  labels:
+    app.kubernetes.io/name: api-monetization-route-hosts
+    app.kubernetes.io/part-of: api-monetization
+rules:
+  - apiGroups:
+      - route.openshift.io
+    resources:
+      - routes
+    resourceNames:
+      - api-monetization-keycloak
+    verbs:
+      - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: api-monetization-route-hosts
+  namespace: api-monetization-identity
   annotations:
     argocd.argoproj.io/sync-wave: "8"
   labels:
@@ -207,6 +266,60 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
+  name: api-monetization-oidc-auth-migration
+  namespace: api-monetization-gateway
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "19"
+  labels:
+    app.kubernetes.io/name: api-monetization-oidc-auth-migration
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  activeDeadlineSeconds: 180
+  backoffLimit: 2
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "false"
+      labels:
+        app.kubernetes.io/name: api-monetization-oidc-auth-migration
+        app.kubernetes.io/part-of: api-monetization
+    spec:
+      restartPolicy: Never
+      serviceAccountName: api-monetization-route-hosts
+      containers:
+        - name: migrate
+          image: registry.redhat.io/openshift4/ose-cli-rhel9:v4.22
+          imagePullPolicy: IfNotPresent
+          command: [/bin/bash, -Eeuo, pipefail, -c]
+          args:
+            - |
+              for auth_policy in inventory-jwt payments-jwt ai-chat-jwt; do
+                jwks_url=$(oc get authpolicy "$auth_policy" \
+                  -n api-monetization-apps \
+                  -o jsonpath='{.spec.rules.authentication.keycloak.jwt.jwksUrl}' \
+                  2>/dev/null || true)
+                if [[ -n $jwks_url ]]; then
+                  echo "removing legacy jwksUrl from AuthPolicy $auth_policy"
+                  oc patch authpolicy "$auth_policy" \
+                    -n api-monetization-apps \
+                    --type=json \
+                    --patch='[{"op":"remove","path":"/spec/rules/authentication/keycloak/jwt/jwksUrl"},{"op":"add","path":"/spec/rules/authentication/keycloak/jwt/issuerUrl","value":"https://keycloak-api-monetization.apps.invalid/realms/api-monetization"}]'
+                fi
+              done
+          resources:
+            requests: {cpu: 10m, memory: 64Mi}
+            limits: {cpu: 200m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+            runAsNonRoot: true
+            seccompProfile: {type: RuntimeDefault}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
   name: api-monetization-route-hosts
   namespace: api-monetization-gateway
   annotations:
@@ -259,12 +372,13 @@ spec:
 
               route_host() {
                 local route_name=$1
+                local route_namespace=${2:-api-monetization-gateway}
                 local host
                 local admitted
 
                 for _ in $(seq 1 60); do
-                  host=$(api get route "$route_name" -o jsonpath='{.status.ingress[0].host}' 2>/dev/null || true)
-                  admitted=$(api get route "$route_name" -o jsonpath='{.status.ingress[0].conditions[?(@.type=="Admitted")].status}' 2>/dev/null || true)
+                  host=$(api get route "$route_name" -n "$route_namespace" -o jsonpath='{.status.ingress[0].host}' 2>/dev/null || true)
+                  admitted=$(api get route "$route_name" -n "$route_namespace" -o jsonpath='{.status.ingress[0].conditions[?(@.type=="Admitted")].status}' 2>/dev/null || true)
                   if [[ -n $host && $admitted == True ]]; then
                     printf '%s' "$host"
                     return 0
@@ -272,7 +386,7 @@ spec:
                   sleep 5
                 done
 
-                echo "Route $route_name was not admitted before the timeout" >&2
+                echo "Route $route_namespace/$route_name was not admitted before the timeout" >&2
                 return 1
               }
 
@@ -309,13 +423,39 @@ spec:
                   --patch "{\"spec\":{\"hostnames\":[\"$host\"]}}"
               }
 
+              align_oidc_issuer() {
+                local issuer=$1
+                local auth_policy
+
+                for auth_policy in inventory-jwt payments-jwt ai-chat-jwt; do
+                  echo "aligning AuthPolicy $auth_policy with OIDC issuer $issuer"
+                  retry_api patch authpolicy "$auth_policy" \
+                    -n api-monetization-apps \
+                    --type=merge \
+                    --patch "{\"spec\":{\"rules\":{\"authentication\":{\"keycloak\":{\"jwt\":{\"issuerUrl\":\"$issuer\"}}}}}}"
+                done
+              }
+
+              align_demo_api_key_metadata() {
+                echo "aligning the reproducible API key Secret with its APIProduct identity"
+                retry_api label secret demo-inventory-api-key \
+                  -n api-monetization-apps \
+                  devportal.kuadrant.io/apiproduct=inventory-api \
+                  --overwrite
+                retry_api annotate secret demo-inventory-api-key \
+                  -n api-monetization-apps \
+                  secret.kuadrant.io/user-id=demo-company \
+                  --overwrite
+              }
+
               publish_openapi() {
-                local host=$1
-                local product=$2
+                local api_host=$1
+                local jwt_host=$2
+                local product=$3
                 local configmap="${product}-api-openapi"
                 local deployment="${product}-api"
                 local openapi_document=""
-                local current_url
+                local current_urls
                 local rollout_state
                 local generation
                 local observed_generation
@@ -335,15 +475,25 @@ spec:
                   return 1
                 fi
 
-                current_url=$(sed -n 's/^  - url: //p' <<<"$openapi_document" | head -n 1)
-                if [[ $current_url == "https://$host" ]]; then
-                  echo "OpenAPI server URL is already https://$host"
+                current_urls=$(sed -n 's/^  - url: //p' <<<"$openapi_document")
+                if grep -Fxq "https://$api_host" <<<"$current_urls" &&
+                  grep -Fxq "https://$jwt_host" <<<"$current_urls"; then
+                  echo "OpenAPI server URLs already publish both authentication endpoints"
                   return 0
                 fi
 
-                printf '%s\n' "$openapi_document" > /tmp/openapi.yaml
-                sed -i "s#^  - url: .*\$#  - url: https://$host#" /tmp/openapi.yaml
-                if ! grep -Fxq "  - url: https://$host" /tmp/openapi.yaml; then
+                awk -v api_url="https://$api_host" -v jwt_url="https://$jwt_host" '
+                  !replaced && /^  - url: / {
+                    print "  - url: " api_url
+                    print "  - url: " jwt_url
+                    replaced=1
+                    next
+                  }
+                  replaced && /^  - url: / {next}
+                  {print}
+                ' <<<"$openapi_document" >/tmp/openapi.yaml
+                if ! grep -Fxq "  - url: https://$api_host" /tmp/openapi.yaml ||
+                  ! grep -Fxq "  - url: https://$jwt_host" /tmp/openapi.yaml; then
                   echo "error: OpenAPI document has no replaceable server URL" >&2
                   return 1
                 fi
@@ -353,7 +503,7 @@ spec:
                   sed 's/^/    /' /tmp/openapi.yaml
                 } > /tmp/openapi-patch.yaml
 
-                echo "publishing OpenAPI server URL https://$host"
+                echo "publishing OpenAPI server URLs https://$api_host and https://$jwt_host"
                 retry_api patch configmap "$configmap" \
                   -n api-monetization-apps \
                   --type=merge \
@@ -383,6 +533,9 @@ spec:
               bind_routes_to_gateway_service
               api_hostname=$(route_host api-monetization)
               jwt_hostname=$(route_host api-monetization-jwt)
+              keycloak_hostname=$(route_host api-monetization-keycloak api-monetization-identity)
+              align_oidc_issuer "https://$keycloak_hostname/realms/api-monetization"
+              align_demo_api_key_metadata
               align_route "$api_hostname" inventory-api-key
               align_route "$jwt_hostname" inventory-jwt
               align_route "$api_hostname" payments-api-key
@@ -391,9 +544,9 @@ spec:
               align_route "$jwt_hostname" ai-chat-jwt
               align_route "$api_hostname" ai-chat-api-key-preflight
               align_route "$jwt_hostname" ai-chat-jwt-preflight
-              publish_openapi "$api_hostname" inventory
-              publish_openapi "$api_hostname" payments
-              publish_openapi "$api_hostname" ai-chat
+              publish_openapi "$api_hostname" "$jwt_hostname" inventory
+              publish_openapi "$api_hostname" "$jwt_hostname" payments
+              publish_openapi "$api_hostname" "$jwt_hostname" ai-chat
           resources:
             requests:
               cpu: 10m

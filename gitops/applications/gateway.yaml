@@ -76,6 +76,24 @@ spec:
       namespace: api-monetization-apps
       jsonPointers:
         - /spec/hostnames
+    - group: kuadrant.io
+      kind: AuthPolicy
+      name: inventory-jwt
+      namespace: api-monetization-apps
+      jsonPointers:
+        - /spec/rules/authentication/keycloak/jwt/issuerUrl
+    - group: kuadrant.io
+      kind: AuthPolicy
+      name: payments-jwt
+      namespace: api-monetization-apps
+      jsonPointers:
+        - /spec/rules/authentication/keycloak/jwt/issuerUrl
+    - group: kuadrant.io
+      kind: AuthPolicy
+      name: ai-chat-jwt
+      namespace: api-monetization-apps
+      jsonPointers:
+        - /spec/rules/authentication/keycloak/jwt/issuerUrl
   syncPolicy:
     automated:
       prune: true
