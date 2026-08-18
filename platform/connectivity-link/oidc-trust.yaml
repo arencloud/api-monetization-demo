@@ -108,6 +108,9 @@ spec:
     spec:
       serviceAccountName: api-monetization-oidc-trust
       restartPolicy: Never
+      volumes:
+        - name: workspace
+          emptyDir: {}
       containers:
         - name: configure
           image: registry.redhat.io/openshift4/ose-cli-rhel9:v4.22
@@ -127,15 +130,15 @@ spec:
               oc get authorino authorino -n kuadrant-system >/dev/null
               oc get deployment developer-portal-controller -n kuadrant-system >/dev/null
 
-              cp /etc/pki/tls/certs/ca-bundle.crt /tmp/ca-bundle.crt
+              cp /etc/pki/tls/certs/ca-bundle.crt /work/ca-bundle.crt
               oc get secret router-ca -n openshift-ingress-operator \
                 -o go-template='{{index .data "tls.crt"}}' \
-                | base64 -d >>/tmp/ca-bundle.crt
-              ca_digest=$(sha256sum /tmp/ca-bundle.crt | awk '{print $1}')
+                | base64 -d >>/work/ca-bundle.crt
+              ca_digest=$(sha256sum /work/ca-bundle.crt | awk '{print $1}')
 
               oc create configmap api-monetization-router-ca \
                 -n kuadrant-system \
-                --from-file=ca-bundle.crt=/tmp/ca-bundle.crt \
+                --from-file=ca-bundle.crt=/work/ca-bundle.crt \
                 --dry-run=client -o yaml \
                 | oc apply --server-side \
                   --field-manager=api-monetization-oidc-trust -f -
@@ -155,3 +158,6 @@ spec:
             capabilities: {drop: [ALL]}
             runAsNonRoot: true
             seccompProfile: {type: RuntimeDefault}
+          volumeMounts:
+            - name: workspace
+              mountPath: /work

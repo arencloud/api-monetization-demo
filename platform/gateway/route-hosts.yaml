@@ -257,6 +257,60 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
+  name: api-monetization-oidc-auth-migration
+  namespace: api-monetization-gateway
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "19"
+  labels:
+    app.kubernetes.io/name: api-monetization-oidc-auth-migration
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  activeDeadlineSeconds: 180
+  backoffLimit: 2
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "false"
+      labels:
+        app.kubernetes.io/name: api-monetization-oidc-auth-migration
+        app.kubernetes.io/part-of: api-monetization
+    spec:
+      restartPolicy: Never
+      serviceAccountName: api-monetization-route-hosts
+      containers:
+        - name: migrate
+          image: registry.redhat.io/openshift4/ose-cli-rhel9:v4.22
+          imagePullPolicy: IfNotPresent
+          command: [/bin/bash, -Eeuo, pipefail, -c]
+          args:
+            - |
+              for auth_policy in inventory-jwt payments-jwt ai-chat-jwt; do
+                jwks_url=$(oc get authpolicy "$auth_policy" \
+                  -n api-monetization-apps \
+                  -o jsonpath='{.spec.rules.authentication.keycloak.jwt.jwksUrl}' \
+                  2>/dev/null || true)
+                if [[ -n $jwks_url ]]; then
+                  echo "removing legacy jwksUrl from AuthPolicy $auth_policy"
+                  oc patch authpolicy "$auth_policy" \
+                    -n api-monetization-apps \
+                    --type=json \
+                    --patch='[{"op":"remove","path":"/spec/rules/authentication/keycloak/jwt/jwksUrl"},{"op":"add","path":"/spec/rules/authentication/keycloak/jwt/issuerUrl","value":"https://keycloak-api-monetization.apps.invalid/realms/api-monetization"}]'
+                fi
+              done
+          resources:
+            requests: {cpu: 10m, memory: 64Mi}
+            limits: {cpu: 200m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+            runAsNonRoot: true
+            seccompProfile: {type: RuntimeDefault}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
   name: api-monetization-route-hosts
   namespace: api-monetization-gateway
   annotations:
