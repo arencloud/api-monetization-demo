@@ -141,10 +141,9 @@ spec:
                 printf '%s\n' 'metadata:'
                 printf '%s\n' '  name: api-monetization-router-ca'
                 printf '%s\n' '  namespace: kuadrant-system'
-                printf '%s\n' 'binaryData:'
-                printf '%s' '  ca-bundle.crt: '
-                combined_ca | base64 -w0
-                printf '\n'
+                printf '%s\n' 'data:'
+                printf '%s\n' '  ca-bundle.crt: |'
+                combined_ca | sed 's/^/    /'
               } | oc apply --server-side \
                 --field-manager=api-monetization-oidc-trust -f -
 
