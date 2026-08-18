@@ -147,6 +147,65 @@ if (
 ):
     raise SystemExit("OpenShift AI Operator subscription is not pinned to the tested 3.4.3 lane")
 
+with open("operators/rhdh/subscription.yaml", encoding="utf-8") as stream:
+    rhdh_subscription = yaml.safe_load(stream)
+rhdh_spec = rhdh_subscription.get("spec", {})
+if (
+    rhdh_spec.get("name") != "rhdh"
+    or rhdh_spec.get("channel") != "fast-1.10"
+    or rhdh_spec.get("source") != "redhat-operators"
+    or rhdh_spec.get("sourceNamespace") != "openshift-marketplace"
+    or rhdh_spec.get("installPlanApproval") != "Automatic"
+    or "startingCSV" in rhdh_spec
+):
+    raise SystemExit("RHDH must track automatic 1.10 z-stream updates on fast-1.10")
+
+with open("platform/developer-hub/dynamic-plugins.yaml", encoding="utf-8") as stream:
+    dynamic_plugins = yaml.safe_load(stream)
+plugin_by_package = {
+    plugin["package"]: plugin for plugin in dynamic_plugins.get("plugins", [])
+}
+expected_kuadrant_plugins = {
+    "@kuadrant/kuadrant-backstage-plugin-backend-dynamic@v0.2.1":
+        "sha512-pttQ6Lp7wD6EqDXAC3AIm4FWuQYO0i1KwoR0k6opTTyRZOGaNyO3YmPQdF403n+WjfTZRE+dfccD/9R4/SO5iA==",
+    "@kuadrant/kuadrant-backstage-plugin-frontend@v0.2.1":
+        "sha512-E4zgwY3QQmA2mn0CwO2Zwc0k9/oCtHcsVHRcrKal2PfnXv6chKb9fCKi5SznH9FbNtx8fHVYnac9SQjFh5XGCA==",
+}
+for package, integrity in expected_kuadrant_plugins.items():
+    plugin = plugin_by_package.get(package, {})
+    if plugin.get("disabled") is not False or plugin.get("integrity") != integrity:
+        raise SystemExit(f"{package}: Kuadrant plugin version or integrity is not reproducibly pinned")
+
+with open("platform/developer-hub/app-config.yaml", encoding="utf-8") as stream:
+    rhdh_config = yaml.safe_load(stream)
+if rhdh_config.get("signInPage") != "oidc":
+    raise SystemExit("RHDH must use the Keycloak OIDC sign-in page")
+resolvers = (
+    rhdh_config.get("auth", {}).get("providers", {}).get("oidc", {})
+    .get("production", {}).get("signIn", {}).get("resolvers", [])
+)
+if resolvers != [{"resolver": "oidcSubClaimMatchingKeycloakUserId"}]:
+    raise SystemExit("RHDH must use the non-bypass Keycloak user-ID sign-in resolver")
+if not rhdh_config.get("permission", {}).get("enabled"):
+    raise SystemExit("RHDH permission framework must be enabled for Kuadrant RBAC")
+
+with open("platform/developer-hub/backstage.yaml", encoding="utf-8") as stream:
+    backstage = yaml.safe_load(stream)
+if backstage.get("spec", {}).get("database", {}).get("enableLocalDb") is not False:
+    raise SystemExit("RHDH must use its operator-managed external CloudNativePG database")
+pod_spec = backstage.get("spec", {}).get("deployment", {}).get("patch", {}).get("spec", {}).get("template", {}).get("spec", {})
+if pod_spec.get("serviceAccountName") != "api-monetization-rhdh" or pod_spec.get("automountServiceAccountToken") is not True:
+    raise SystemExit("RHDH must use its dedicated in-cluster Kuadrant service account")
+extra_envs = backstage.get("spec", {}).get("application", {}).get("extraEnvs", {}).get("envs", [])
+if {"name": "NODE_EXTRA_CA_CERTS", "value": "/opt/app-root/etc/router-ca.crt"} not in extra_envs:
+    raise SystemExit("RHDH must trust the discovered OpenShift router CA for Keycloak OIDC")
+
+for product_file in pathlib.Path("platform/gateway").glob("*-api-product.yaml"):
+    product = yaml.safe_load(product_file.read_text())
+    owner = product.get("metadata", {}).get("annotations", {}).get("backstage.io/owner")
+    if owner != "group:default/api-owners":
+        raise SystemExit(f"{product_file}: APIProduct must declare its RHDH catalog owner")
+
 with open("platform/ai-model/serving-runtime.yaml", encoding="utf-8") as stream:
     ai_runtime = yaml.safe_load(stream)
 with open("platform/ai-model/inference-service.yaml", encoding="utf-8") as stream:

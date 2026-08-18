@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: api-monetization-rhdh
+  namespace: api-monetization-developer-hub
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: api-monetization-rhdh-kuadrant
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+rules:
+  - apiGroups: [kuadrant.io]
+    resources:
+      - authpolicies
+      - ratelimitpolicies
+      - tokenratelimitpolicies
+      - dnspolicies
+      - tlspolicies
+    verbs: [get, list, watch]
+  - apiGroups: [extensions.kuadrant.io]
+    resources: [planpolicies]
+    verbs: [get, list, watch]
+  - apiGroups: [devportal.kuadrant.io]
+    resources:
+      - apiproducts
+      - apikeys
+      - apikeyrequests
+      - apikeyapprovals
+    verbs: [get, list, watch, create, delete, patch, update]
+  - apiGroups: [devportal.kuadrant.io]
+    resources:
+      - apiproducts/status
+      - apikeys/status
+      - apikeyrequests/status
+      - apikeyapprovals/status
+    verbs: [get, patch, update]
+  - apiGroups: [gateway.networking.k8s.io]
+    resources: [gateways, httproutes]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [namespaces]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: api-monetization-rhdh-kuadrant
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: api-monetization-rhdh-kuadrant
+subjects:
+  - kind: ServiceAccount
+    name: api-monetization-rhdh
+    namespace: api-monetization-developer-hub
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: api-monetization-rhdh-api-credentials
+  namespace: api-monetization-apps
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list, watch, create, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: api-monetization-rhdh-api-credentials
+  namespace: api-monetization-apps
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: api-monetization-rhdh-api-credentials
+subjects:
+  - kind: ServiceAccount
+    name: api-monetization-rhdh
+    namespace: api-monetization-developer-hub

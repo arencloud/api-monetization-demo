@@ -5,6 +5,7 @@ metadata:
   namespace: api-monetization-apps
   annotations:
     argocd.argoproj.io/sync-wave: "40"
+    backstage.io/owner: group:default/api-owners
   labels:
     app.kubernetes.io/part-of: api-monetization
 spec:

@@ -1,6 +1,23 @@
 apiVersion: v1
 kind: Namespace
 metadata:
+  name: rhdh-operator
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+    app.kubernetes.io/component: developer-hub-operator
+    openshift.io/cluster-monitoring: "true"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: api-monetization-developer-hub
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+    app.kubernetes.io/component: developer-experience
+---
+apiVersion: v1
+kind: Namespace
+metadata:
   name: redhat-ods-operator
   labels:
     app.kubernetes.io/part-of: api-monetization

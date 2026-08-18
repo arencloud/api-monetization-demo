@@ -225,6 +225,7 @@ check_package_channel opentelemetry-product stable
 check_package_channel tempo-product stable
 check_package_channel grafana-operator v5
 check_package_channel rhods-operator stable-3.x
+check_package_channel rhdh fast-1.10
 
 check_existing_subscription() {
   local package_name=$1
@@ -255,6 +256,7 @@ check_existing_subscription opentelemetry-product stable
 check_existing_subscription tempo-product stable
 check_existing_subscription grafana-operator v5
 check_existing_subscription rhods-operator stable-3.x
+check_existing_subscription rhdh fast-1.10
 
 existing_gitops_starting_csv=$(oc get subscription openshift-gitops-operator \
   -n openshift-gitops-operator -o jsonpath='{.spec.startingCSV}' 2>/dev/null || true)

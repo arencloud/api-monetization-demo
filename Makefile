@@ -1,6 +1,6 @@
 SHELL := /usr/bin/env bash
 
-.PHONY: help validate test lifecycle-test multi-product-test ai-model-test ai-monetization-test ai-demo promotion-status preflight bootstrap render status verify observe grafana portal demo metered-demo showcase reset-demo uninstall
+.PHONY: help validate test lifecycle-test multi-product-test ai-model-test ai-monetization-test ai-demo promotion-status preflight bootstrap render status verify observe grafana portal hub demo metered-demo showcase reset-demo uninstall
 
 help:
 	@echo "Targets:"
@@ -20,6 +20,7 @@ help:
 	@echo "  observe    Show live accepted, limited, overage, and revenue metrics"
 	@echo "  grafana    Print the managed Grafana URL and SSO/break-glass logins"
 	@echo "  portal     Print the portal URL and generated developer/admin logins"
+	@echo "  hub        Print the Developer Hub URL and Keycloak test logins"
 	@echo "  demo       Run API-key and JWT rate-limit and live-upgrade scenarios"
 	@echo "  metered-demo Generate real Pay-as-you-go usage and a draft invoice"
 	@echo "  showcase   Run the complete verified demo and restore reusable state"
@@ -79,6 +80,9 @@ grafana:
 
 portal:
 	@./scripts/portal.sh
+
+hub:
+	@./scripts/hub.sh
 
 demo:
 	@./scripts/demo.sh

@@ -101,6 +101,7 @@ for application_name in \
   api-monetization-demo-secrets \
   api-monetization-database \
   api-monetization-identity \
+  api-monetization-developer-hub \
   api-monetization-ai-chat \
   api-monetization-inventory \
   api-monetization-payments \
@@ -133,12 +134,22 @@ oc wait --for=condition=Ready externalsecret/subscriptions-db-credentials \
   -n api-monetization-data --timeout=5m
 oc wait --for=condition=Ready externalsecret/demo-inventory-api-key \
   -n api-monetization-apps --timeout=5m
+oc wait --for=condition=Ready secretstore/api-monetization-identity \
+  -n api-monetization-developer-hub --timeout=5m
+oc wait --for=condition=Ready externalsecret/api-monetization-rhdh-db \
+  -n api-monetization-developer-hub --timeout=5m
+oc wait --for=condition=Ready externalsecret/api-monetization-rhdh-runtime-secrets \
+  -n api-monetization-developer-hub --timeout=5m
+oc wait --for=condition=Ready externalsecret/api-monetization-rhdh-keycloak \
+  -n api-monetization-developer-hub --timeout=5m
 
 echo "waiting for PostgreSQL clusters"
 oc wait --for=condition=Ready clusters.postgresql.cnpg.io/keycloak-postgres \
   -n api-monetization-identity --timeout=10m
 oc wait --for=condition=Ready clusters.postgresql.cnpg.io/subscriptions-postgres \
   -n api-monetization-data --timeout=10m
+oc wait --for=condition=Ready clusters.postgresql.cnpg.io/api-monetization-rhdh-postgres \
+  -n api-monetization-developer-hub --timeout=10m
 
 echo "waiting for Red Hat build of Keycloak"
 oc wait --for=condition=Ready keycloaks.k8s.keycloak.org/api-monetization \
@@ -147,6 +158,41 @@ oc wait --for=condition=Done keycloakrealmimports.k8s.keycloak.org/api-monetizat
   -n api-monetization-identity --timeout=10m
 oc wait route/api-monetization-keycloak -n api-monetization-identity \
   --for=jsonpath='{.status.ingress[0].conditions[0].status}'=True --timeout=5m
+ingress_certificate=$(oc get ingresscontroller.operator.openshift.io default \
+  -n openshift-ingress-operator -o jsonpath='{.spec.defaultCertificate.name}')
+if [[ -z $ingress_certificate ]]; then
+  ingress_certificate=router-certs-default
+fi
+
+echo "waiting for Red Hat Developer Hub and Kuadrant plugin runtime"
+oc rollout status deployment/backstage-api-monetization \
+  -n api-monetization-developer-hub --timeout=15m
+oc wait route/backstage-api-monetization -n api-monetization-developer-hub \
+  --for=jsonpath='{.status.ingress[0].conditions[0].status}'=True --timeout=5m
+rhdh_hostname=$(oc get route backstage-api-monetization \
+  -n api-monetization-developer-hub -o jsonpath='{.spec.host}')
+rhdh_router_hostname=$(oc get route backstage-api-monetization \
+  -n api-monetization-developer-hub \
+  -o jsonpath='{.status.ingress[0].routerCanonicalHostname}')
+if [[ $rhdh_hostname != developer-hub.* ]]; then
+  echo "error: Developer Hub did not receive the portable developer-hub ingress hostname" >&2
+  exit 1
+fi
+rhdh_logs=$(oc logs deployment/backstage-api-monetization \
+  -n api-monetization-developer-hub --container=backstage-backend)
+if ! grep -q 'kuadrant' <<<"$rhdh_logs"; then
+  echo "error: Developer Hub logs do not show the Kuadrant dynamic plugin" >&2
+  exit 1
+fi
+if [[ $(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+  --connect-to "$rhdh_hostname:443:$rhdh_router_hostname:443" \
+  "https://$rhdh_hostname/healthcheck") != "200" ]]; then
+  echo "error: Developer Hub health endpoint is unavailable" >&2
+  exit 1
+fi
+echo "Developer Hub: https://$rhdh_hostname (Keycloak and Kuadrant integration ready)"
 
 echo "waiting for application builds and workloads"
 oc wait clusteroperator/image-registry --for=condition=Available --timeout=10m
@@ -422,11 +468,6 @@ echo "AI Chat JWT endpoint: https://$jwt_hostname/v1/chat/completions"
 echo "validating authenticated traffic through the complete data path"
 router_hostname=$(oc get route api-monetization -n api-monetization-gateway \
   -o jsonpath='{.status.ingress[0].routerCanonicalHostname}')
-ingress_certificate=$(oc get ingresscontroller.operator.openshift.io default \
-  -n openshift-ingress-operator -o jsonpath='{.spec.defaultCertificate.name}')
-if [[ -z $ingress_certificate ]]; then
-  ingress_certificate=router-certs-default
-fi
 api_key_secret=$(oc get apikey demo-inventory-key -n api-monetization-apps \
   -o jsonpath='{.spec.secretRef.name}')
 api_key_value=$(oc get secret "$api_key_secret" -n api-monetization-apps \
@@ -716,6 +757,32 @@ grafana_client=$(curl --silent --show-error --fail \
   --connect-to "$keycloak_hostname:443:$keycloak_router_hostname:443" \
   --header "Authorization: Bearer $keycloak_admin_token" \
   "https://$keycloak_hostname/admin/realms/api-monetization/clients?clientId=api-monetization-grafana")
+rhdh_client=$(curl --silent --show-error --fail \
+  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+  --connect-to "$keycloak_hostname:443:$keycloak_router_hostname:443" \
+  --header "Authorization: Bearer $keycloak_admin_token" \
+  "https://$keycloak_hostname/admin/realms/api-monetization/clients?clientId=rhdh")
+rhdh_callback="https://$rhdh_hostname/api/auth/oidc/handler/frame"
+if ! jq -e --arg callback "$rhdh_callback" '
+  length == 1 and
+  .[0].publicClient == false and
+  .[0].standardFlowEnabled == true and
+  .[0].serviceAccountsEnabled == true and
+  .[0].directAccessGrantsEnabled == false and
+  (.[0].redirectUris | index($callback) != null)
+' <<<"$rhdh_client" >/dev/null; then
+  echo "error: Keycloak Developer Hub OIDC/catalog client is incomplete" >&2
+  exit 1
+fi
+source_rhdh_secret=$(oc get secret rhdh-keycloak-client \
+  -n api-monetization-identity -o jsonpath='{.data.client-secret}')
+mirrored_rhdh_secret=$(oc get secret api-monetization-rhdh-keycloak \
+  -n api-monetization-developer-hub -o jsonpath='{.data.KEYCLOAK_CLIENT_SECRET}')
+if [[ -z $source_rhdh_secret || $source_rhdh_secret != "$mirrored_rhdh_secret" ]]; then
+  echo "error: Developer Hub OIDC client secret was not replicated from identity" >&2
+  exit 1
+fi
 grafana_callback="https://$grafana_hostname/login/generic_oauth"
 if ! jq -e --arg callback "$grafana_callback" '
   length == 1 and

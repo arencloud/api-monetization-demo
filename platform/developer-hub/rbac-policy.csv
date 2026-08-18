@@ -1,0 +1,48 @@
+# API consumers discover published products and manage only their own credentials.
+p, role:default/api-consumer, kuadrant.apiproduct.read.all, read, allow
+p, role:default/api-consumer, kuadrant.apiproduct.list, read, allow
+p, role:default/api-consumer, kuadrant.apikey.create, create, allow, apiproduct:*/*
+p, role:default/api-consumer, kuadrant.apikey.read.own, read, allow
+p, role:default/api-consumer, kuadrant.apikey.update.own, update, allow
+p, role:default/api-consumer, kuadrant.apikey.delete.own, delete, allow
+p, role:default/api-consumer, catalog.entity.read, read, allow
+p, role:default/api-consumer, kuadrant.planpolicy.list, read, allow
+p, role:default/api-consumer, kuadrant.authpolicy.list, read, allow
+p, role:default/api-consumer, kuadrant.ratelimitpolicy.list, read, allow
+p, role:default/api-consumer, kuadrant.httproute.list, read, allow
+
+# API owners publish products and approve access to products they own.
+p, role:default/api-owner, kuadrant.planpolicy.read, read, allow
+p, role:default/api-owner, kuadrant.planpolicy.list, read, allow
+p, role:default/api-owner, kuadrant.apiproduct.create, create, allow
+p, role:default/api-owner, kuadrant.apiproduct.read.all, read, allow
+p, role:default/api-owner, kuadrant.apiproduct.update.own, update, allow
+p, role:default/api-owner, kuadrant.apiproduct.delete.own, delete, allow
+p, role:default/api-owner, kuadrant.apiproduct.list, read, allow
+p, role:default/api-owner, kuadrant.apikey.create, create, allow, apiproduct:*/*
+p, role:default/api-owner, kuadrant.apikey.read.own, read, allow
+p, role:default/api-owner, kuadrant.apikey.update.own, update, allow
+p, role:default/api-owner, kuadrant.apikey.delete.own, delete, allow
+p, role:default/api-owner, kuadrant.apikey.approve, update, allow
+p, role:default/api-owner, catalog.entity.read, read, allow
+
+# API administrators manage every Kuadrant API product and credential.
+p, role:default/api-admin, kuadrant.planpolicy.read, read, allow
+p, role:default/api-admin, kuadrant.planpolicy.list, read, allow
+p, role:default/api-admin, kuadrant.apiproduct.create, create, allow
+p, role:default/api-admin, kuadrant.apiproduct.read.all, read, allow
+p, role:default/api-admin, kuadrant.apiproduct.update.all, update, allow
+p, role:default/api-admin, kuadrant.apiproduct.delete.all, delete, allow
+p, role:default/api-admin, kuadrant.apiproduct.list, read, allow
+p, role:default/api-admin, kuadrant.apikey.create, create, allow, apiproduct:*/*
+p, role:default/api-admin, kuadrant.apikey.read.all, read, allow
+p, role:default/api-admin, kuadrant.apikey.update.all, update, allow
+p, role:default/api-admin, kuadrant.apikey.delete.all, delete, allow
+p, role:default/api-admin, kuadrant.apikey.approve, update, allow
+p, role:default/api-admin, catalog.entity.read, read, allow
+p, role:default/api-admin, policy-entity, read, allow
+p, role:default/api-admin, policy.entity.create, create, allow
+
+g, group:default/api-consumers, role:default/api-consumer
+g, group:default/api-owners, role:default/api-owner
+g, group:default/api-admins, role:default/api-admin

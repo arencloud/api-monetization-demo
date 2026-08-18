@@ -1,0 +1,69 @@
+includes:
+  - dynamic-plugins.default.yaml
+plugins:
+  - package: ./dynamic-plugins/dist/backstage-community-plugin-catalog-backend-module-keycloak-dynamic
+    disabled: false
+  - package: ./dynamic-plugins/dist/backstage-community-plugin-rbac
+    disabled: false
+    pluginConfig:
+      dynamicPlugins:
+        frontend:
+          backstage-community.plugin-rbac:
+            mountPoints:
+              - mountPoint: admin.page.rbac/cards
+                importName: RbacPage
+                config:
+                  layout: {gridColumn: "1 / -1", width: 100vw}
+                  props: {useHeader: false}
+            dynamicRoutes:
+              - path: /admin/rbac
+                importName: RbacPage
+  - package: "@kuadrant/kuadrant-backstage-plugin-backend-dynamic@v0.2.1"
+    integrity: sha512-pttQ6Lp7wD6EqDXAC3AIm4FWuQYO0i1KwoR0k6opTTyRZOGaNyO3YmPQdF403n+WjfTZRE+dfccD/9R4/SO5iA==
+    disabled: false
+  - package: "@kuadrant/kuadrant-backstage-plugin-frontend@v0.2.1"
+    integrity: sha512-E4zgwY3QQmA2mn0CwO2Zwc0k9/oCtHcsVHRcrKal2PfnXv6chKb9fCKi5SznH9FbNtx8fHVYnac9SQjFh5XGCA==
+    disabled: false
+    pluginConfig:
+      dynamicPlugins:
+        frontend:
+          internal.plugin-kuadrant:
+            apiFactories:
+              - importName: kuadrantApiFactory
+            appIcons:
+              - {name: kuadrantIcon, importName: KuadrantIcon}
+              - {name: apiIcon, importName: ApiIcon}
+              - {name: keyIcon, importName: KeyIcon}
+              - {name: approvalIcon, importName: ApprovalIcon}
+            menuItems:
+              kuadrant.api-products: {parent: kuadrant}
+              kuadrant.my-api-keys: {parent: kuadrant}
+              kuadrant.api-key-approval: {parent: kuadrant}
+            dynamicRoutes:
+              - path: /kuadrant
+                importName: KuadrantPage
+                menuItem: {icon: kuadrantIcon, text: Kuadrant}
+              - path: /kuadrant/api-products
+                importName: ApiProductsPage
+                menuItem: {icon: apiIcon, text: API Products}
+              - path: /kuadrant/my-api-keys
+                importName: MyApiKeysPage
+                menuItem: {icon: keyIcon, text: My API Keys}
+              - path: /kuadrant/api-key-approval
+                importName: ApiKeyApprovalPage
+                menuItem: {icon: approvalIcon, text: API Key Approval}
+              - path: /kuadrant/api-products/:namespace/:name
+                importName: ApiProductDetailPage
+              - path: /kuadrant/api-keys/:namespace/:name
+                importName: ApiKeyDetailPage
+            mountPoints:
+              - mountPoint: entity.page.api/cards
+                importName: EntityKuadrantApiKeyManagementTab
+                config:
+                  layout: {gridColumn: "1 / -1"}
+                  if: {allOf: [{isKind: api}]}
+              - mountPoint: entity.page.api/cards
+                importName: EntityKuadrantApiProductInfoContent
+                config:
+                  layout: {gridColumn: "1 / -1"}
+                  if: {allOf: [{isKind: api}]}

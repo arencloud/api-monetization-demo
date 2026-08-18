@@ -58,8 +58,9 @@ LoadBalancer provider are not required.
    subtract existing pod requests from worker allocatable capacity before
    comparing it with the headroom column.
 4. Confirm the other prerequisites: Red Hat product entitlements, required
-   Operator catalogs, Open Data Hub absent, external image-registry access, and
-   outbound Hugging Face model access.
+   Operator catalogs, Open Data Hub absent, external image-registry access,
+   outbound npm access for the Kuadrant RHDH plugins, and outbound Hugging Face
+   model access.
 5. Run the complete deployment sequence:
 
    ```bash
@@ -118,6 +119,19 @@ API-management product.
 
 The **Connectivity Link** and **GitOps** console entries are enabled by GitOps
 after their Operators install the corresponding console plugins.
+
+Open the unified developer experience and print its generated test identities:
+
+```bash
+make hub
+```
+
+Sign in as `demo-developer`, open **Kuadrant → API Products**, and confirm that
+Inventory, Payment, and AI Chat were synchronized from the live `APIProduct`
+resources. **My API Keys** contains consumer-owned credentials. Sign in as
+`demo-admin` to use the approval and owner views. The custom portal remains the
+current place for plans, usage, invoices, and the AI playground during the RHDH
+billing-plugin migration.
 
 Show the running topology:
 

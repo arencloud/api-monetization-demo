@@ -11,11 +11,13 @@ resources:
   - grafana-operator.yaml
   - service-mesh-operator.yaml
   - keycloak-operator.yaml
+  - rhdh-operator.yaml
   - openshift-ai-operator.yaml
   - external-secrets.yaml
   - demo-secrets.yaml
   - database.yaml
   - identity.yaml
+  - developer-hub.yaml
   - ai-chat.yaml
   - inventory.yaml
   - payments.yaml

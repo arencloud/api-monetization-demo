@@ -71,6 +71,8 @@ The first profile follows the RHCL 1.4 support matrix:
 | Red Hat OpenShift Service Mesh | 3.4 |
 | cert-manager Operator for Red Hat OpenShift | 1.19 |
 | Red Hat build of Keycloak | 26.6 |
+| Red Hat Developer Hub | 1.10 z-stream (`fast-1.10`) |
+| Kuadrant Developer Hub plugin | 0.2.1, integrity-pinned |
 | Red Hat OpenShift GitOps | Latest catalog channel, automatic upgrades |
 | Red Hat OpenShift AI | 3.4 stable channel, 3.4.3 starting CSV |
 | External Secrets Operator for Red Hat OpenShift | 1.2 |
@@ -87,12 +89,16 @@ The optional CPU AI milestone also requires outbound access to Hugging Face.
 Its pinned Qwen2.5 0.5B model is downloaded when the serving Pod starts. No GPU,
 GPU Operator, RWX volume, or LoadBalancer provider is required.
 
+The Developer Hub Pod also requires outbound access to `registry.npmjs.org` on
+first start so its pinned Kuadrant dynamic plugin packages can be installed.
+
 Because the current profile includes OpenShift AI, the minimum multi-node
 cluster has three 4-vCPU/16-GiB control-plane nodes and two schedulable
 8-vCPU/32-GiB workers. For a reliable live presentation, use three
 8-vCPU/32-GiB workers and at least 100 GiB of provisionable persistent
-capacity. The registry consumes a one-replica 50-GiB persistent volume; the two
-PostgreSQL clusters consume 2 GiB each. See
+capacity. The registry consumes a one-replica 50-GiB persistent volume; the
+subscription and Keycloak PostgreSQL clusters consume 2 GiB each, and the
+Developer Hub PostgreSQL cluster consumes 5 GiB. See
 [the deployment sizing profiles](docs/deployment.md#cluster-sizing) for
 Minimum, Recommended, Large showcase, and single-node requirements, and use
 [the runbook resource gate](docs/demo-runbook.md#select-and-verify-the-cluster-profile)
@@ -146,6 +152,16 @@ monetized Inventory, Payment, and AI Chat APIs, a PostgreSQL-backed subscription
 control plane, live plan changes, Prometheus metrics, an operator-managed
 Grafana instance and dashboard, structured logs, and an OpenTelemetry-to-Tempo
 trace pipeline.
+
+Red Hat Developer Hub is installed through its Operator as the strategic
+developer experience. The integrity-pinned Kuadrant frontend and backend
+plugins synchronize the three RHCL `APIProduct` resources into the catalog and
+provide product discovery, access requests, approvals, and API-key lifecycle.
+Developer Hub delegates login to the existing Red Hat build of Keycloak realm;
+Keycloak groups map to the Kuadrant consumer, owner, and administrator roles.
+The existing monetization portal remains deployed during this migration and is
+still authoritative for subscriptions, usage, plan changes, billing, invoices,
+and the AI playground until equivalent custom RHDH plugins are delivered.
 
 The current development milestone adds an Operator-managed OpenShift AI 3.4
 foundation, KServe, and a pinned Qwen2.5 0.5B Instruct model served by Red Hat's

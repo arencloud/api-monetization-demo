@@ -1,0 +1,31 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: api-monetization-rhdh-postgres
+  namespace: api-monetization-developer-hub
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  labels:
+    app.kubernetes.io/name: api-monetization-rhdh-postgres
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  instances: 1
+  enableSuperuserAccess: false
+  primaryUpdateStrategy: unsupervised
+  bootstrap:
+    initdb:
+      database: rhdh
+      owner: rhdh
+      secret:
+        name: api-monetization-rhdh-db
+  storage:
+    size: 5Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  monitoring:
+    enablePodMonitor: true

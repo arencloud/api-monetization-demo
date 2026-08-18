@@ -8,8 +8,8 @@ allows commercial workflows to evolve without changing API workloads.
 
 ```text
                               CONTROL PLANE
- RHCL Console Portal -> APIProduct/APIKey -> generated credential metadata
- Monetization Portal -> Keycloak login -> subscription / usage / live upgrade
+ RHDH + Kuadrant plugin -> APIProduct/APIKey -> generated credential metadata
+ RHDH/custom portal -> Keycloak login -> subscription / usage / live upgrade
          |                        |                         |
          +------------------------+-------------------------+
                               |
@@ -28,7 +28,7 @@ assigned external address; the request-time policy path is unchanged.
 
 | Capability | Owner |
 | --- | --- |
-| API catalog, documentation, API-key requests | RHCL OpenShift console plugin |
+| API catalog, documentation, access requests, API keys | Red Hat Developer Hub and Kuadrant plugins |
 | OAuth2/OIDC identities, JWTs, clients, roles | Red Hat build of Keycloak |
 | Database lifecycle, failover, backup hooks | CloudNativePG certified Operator |
 | Secret synchronization and demo credential generation | External Secrets Operator for Red Hat OpenShift |
@@ -41,6 +41,21 @@ assigned external address; the request-time policy path is unchanged.
 | Plan state, upgrades, rating, invoices | Monetization control plane and PostgreSQL |
 | Operational and business visualization | Grafana Operator, Grafana, and Kiali |
 | Desired state and promotion | OpenShift GitOps |
+
+Red Hat Developer Hub is the target unified experience, not a replacement for
+the request-time enforcement or billing engines. The Kuadrant plugins own the
+operator-native catalog and credential workflows. A later custom monetization
+plugin will present subscriptions, accepted usage, pricing, invoices, customer
+administration, and the AI playground by calling the existing control-plane
+backend. During migration, the existing portal remains available so every
+working business workflow has one authoritative implementation.
+
+RHDH uses a dedicated service account. Cluster-scoped access is limited to
+Kuadrant, Gateway API, policy, and namespace resources; Secret access is scoped
+to the API application namespace. Keycloak supplies users and groups to the
+catalog through a confidential, read-only service account. `api-consumers`,
+`api-owners`, and `api-admins` map to the matching RHDH RBAC roles, and newly
+registered developers enter the consumer group by default.
 
 The browser portal is a public PKCE client in Keycloak. Human administrators
 receive the `monetization-admin` realm role and developers receive the separate

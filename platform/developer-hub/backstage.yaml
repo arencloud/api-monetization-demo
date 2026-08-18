@@ -1,0 +1,54 @@
+apiVersion: rhdh.redhat.com/v1alpha5
+kind: Backstage
+metadata:
+  name: api-monetization
+  namespace: api-monetization-developer-hub
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+  labels:
+    app.kubernetes.io/name: api-monetization-developer-hub
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  monitoring:
+    enabled: true
+  database:
+    enableLocalDb: false
+  application:
+    appConfig:
+      configMaps:
+        - name: api-monetization-rhdh-app-config
+    dynamicPluginsConfigMapName: api-monetization-rhdh-dynamic-plugins
+    extraFiles:
+      mountPath: /opt/app-root/etc
+      configMaps:
+        - name: api-monetization-rhdh-rbac-policies
+        - name: api-monetization-rhdh-router-ca
+    extraEnvs:
+      envs:
+        - name: NODE_EXTRA_CA_CERTS
+          value: /opt/app-root/etc/router-ca.crt
+      secrets:
+        - name: api-monetization-rhdh-db
+        - name: api-monetization-rhdh-runtime-secrets
+        - name: api-monetization-rhdh-runtime-config
+        - name: api-monetization-rhdh-keycloak
+    route:
+      enabled: true
+      subdomain: developer-hub
+  deployment:
+    patch:
+      spec:
+        replicas: 1
+        template:
+          spec:
+            automountServiceAccountToken: true
+            serviceAccountName: api-monetization-rhdh
+            containers:
+              - name: backstage-backend
+                resources:
+                  requests:
+                    cpu: 500m
+                    memory: 1Gi
+                  limits:
+                    cpu: "2"
+                    memory: 3Gi
