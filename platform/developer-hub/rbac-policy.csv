@@ -10,6 +10,8 @@ p, role:default/api-consumer, kuadrant.planpolicy.list, read, allow
 p, role:default/api-consumer, kuadrant.authpolicy.list, read, allow
 p, role:default/api-consumer, kuadrant.ratelimitpolicy.list, read, allow
 p, role:default/api-consumer, kuadrant.httproute.list, read, allow
+p, role:default/api-consumer, api-monetization.tokenratelimitpolicy.list, read, allow
+p, role:default/api-consumer, api-monetization.billing.read.own, read, allow
 
 # API owners publish products and approve access to products they own.
 p, role:default/api-owner, kuadrant.planpolicy.read, read, allow
@@ -28,6 +30,8 @@ p, role:default/api-owner, kuadrant.apikey.update.own, update, allow
 p, role:default/api-owner, kuadrant.apikey.delete.own, delete, allow
 p, role:default/api-owner, kuadrant.apikey.approve, update, allow
 p, role:default/api-owner, catalog.entity.read, read, allow
+p, role:default/api-owner, api-monetization.tokenratelimitpolicy.list, read, allow
+p, role:default/api-owner, api-monetization.billing.read.own, read, allow
 
 # API administrators manage every Kuadrant API product and credential.
 p, role:default/api-admin, kuadrant.planpolicy.read, read, allow
@@ -48,6 +52,9 @@ p, role:default/api-admin, kuadrant.apikey.approve, update, allow
 p, role:default/api-admin, catalog.entity.read, read, allow
 p, role:default/api-admin, policy-entity, read, allow
 p, role:default/api-admin, policy.entity.create, create, allow
+p, role:default/api-admin, api-monetization.tokenratelimitpolicy.list, read, allow
+p, role:default/api-admin, api-monetization.billing.read.own, read, allow
+p, role:default/api-admin, api-monetization.billing.read.all, read, allow
 
 g, group:default/api-consumers, role:default/api-consumer
 g, group:default/api-owners, role:default/api-owner

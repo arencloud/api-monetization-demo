@@ -1,2 +1,2 @@
-export { ApiProductsPage, policyCatalogPlugin } from './plugin';
-export { resolveEffectivePolicies } from './policies';
+export { ApiProductsPage, MonetizationPage, policyCatalogPlugin } from './plugin';
+export { resolveEffectivePolicies, resolveTokenPolicies } from './policies';

@@ -63,8 +63,11 @@ plugins:
                 config:
                   layout: {gridColumn: "1 / -1"}
                   if: {allOf: [{isKind: api}]}
+  - package: /opt/app-root/src/local-plugins/arencloud-rhdh-monetization-backend-dynamic-0.1.0.tgz
+    integrity: sha512-Cn0X5vZRkJuhJ9Qu8TmlyeM6ok4WGRfCWEpMAwEV4+LDbNpKNxSW8KBOKmlRD5xtOEE3MKNkpQ3aVnuV0p6VDw==
+    disabled: false
   - package: /opt/app-root/src/local-plugins/arencloud-rhdh-policy-catalog-dynamic-0.1.0.tgz
-    integrity: sha512-MouPHFvukEicXUPQO5eEMXYApelVQnRDZrLgd3St8OnGAYkvdgSm60hCpXyLHLzU1WTkM3hXLk57gXwapy2Jnw==
+    integrity: sha512-5jMs/HF9GCfXmbJmuf08YAoWLXsQXCm1i/8OzsQU6IK4CN0Bs8UUApqX+OoKA0oUk5j4IJ77yUB/qOcM39KTOQ==
     disabled: false
     pluginConfig:
       dynamicPlugins:
@@ -72,7 +75,11 @@ plugins:
           arencloud.rhdh-policy-catalog:
             menuItems:
               api-monetization-policy-catalog.api-products: {parent: kuadrant}
+              api-monetization-policy-catalog.monetization: {parent: kuadrant}
             dynamicRoutes:
               - path: /kuadrant/api-products
                 importName: ApiProductsPage
                 menuItem: {icon: apiIcon, text: API Products}
+              - path: /billing
+                importName: MonetizationPage
+                menuItem: {icon: kuadrantIcon, text: Billing}

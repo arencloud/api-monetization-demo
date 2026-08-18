@@ -59,6 +59,14 @@ export const resolveEffectivePolicies = (
     .map(policy => describe('RateLimitPolicy', policy));
 };
 
+export const resolveTokenPolicies = (
+  product: APIProduct,
+  tokenRateLimitPolicies: TrafficPolicy[],
+): EffectivePolicy[] =>
+  tokenRateLimitPolicies
+    .filter(policy => targetMatches(product, policy))
+    .map(policy => describe('TokenRateLimitPolicy', policy));
+
 export const getAuthentication = (product: APIProduct): string[] => {
   const authentication =
     product.status?.discoveredAuthScheme?.authentication || {};

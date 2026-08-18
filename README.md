@@ -167,9 +167,15 @@ The default RHDH Lightspeed flavour is disabled because the solution already
 contains its independently governed OpenShift AI chat product.
 Developer Hub delegates login to the existing Red Hat build of Keycloak realm;
 Keycloak groups map to the Kuadrant consumer, owner, and administrator roles.
-The existing monetization portal remains deployed during this migration and is
-still authoritative for subscriptions, usage, plan changes, billing, invoices,
-and the AI playground until equivalent custom RHDH plugins are delivered.
+The source-controlled RHDH extension resolves effective `PlanPolicy`, direct
+`RateLimitPolicy`, and `TokenRateLimitPolicy` resources and adds a Billing view
+for subscriptions, accepted request/token usage, projected revenue, and
+invoices. Its backend applies RHDH permissions before forwarding the signed-in
+user's Keycloak token, while the existing control plane applies the independent
+role and customer-scope check. PostgreSQL remains the sole commercial system of
+record. The existing portal remains deployed for subscription mutations, API
+key reveal/rotation, invoice generation, and the AI playground while those
+interactive workflows are migrated incrementally.
 
 The current development milestone adds an Operator-managed OpenShift AI 3.4
 foundation, KServe, and a pinned Qwen2.5 0.5B Instruct model served by Red Hat's

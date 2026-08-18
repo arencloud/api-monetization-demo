@@ -22,7 +22,11 @@ import LockIcon from '@material-ui/icons/Lock';
 import VpnKeyIcon from '@material-ui/icons/VpnKey';
 import { Link as RouterLink } from 'react-router-dom';
 import useAsync from 'react-use/lib/useAsync';
-import { getAuthentication, resolveEffectivePolicies } from '../policies';
+import {
+  getAuthentication,
+  resolveEffectivePolicies,
+  resolveTokenPolicies,
+} from '../policies';
 import {
   APIProduct,
   EffectivePolicy,
@@ -41,6 +45,7 @@ export const ApiProductsPage = () => {
 
   const state = useAsync(async () => {
     const baseUrl = await discoveryApi.getBaseUrl('kuadrant');
+    const monetizationBaseUrl = await discoveryApi.getBaseUrl('api-monetization');
     const fetchResource = async <T,>(path: string): Promise<ResourceList<T>> => {
       const response = await fetchApi.fetch(`${baseUrl}/${path}`);
       if (!response.ok) {
@@ -51,19 +56,24 @@ export const ApiProductsPage = () => {
       return response.json() as Promise<ResourceList<T>>;
     };
 
-    const [products, plans, rateLimits] = await Promise.all([
+    const [products, plans, rateLimits, tokenRateLimits] = await Promise.all([
       fetchResource<APIProduct>('apiproducts'),
       fetchResource<TrafficPolicy>('planpolicies'),
       fetchResource<TrafficPolicy>('ratelimitpolicies'),
+      fetchApi.fetch(`${monetizationBaseUrl}/tokenratelimitpolicies`).then(async response => {
+        if (!response.ok) {
+          throw new Error(`TokenRateLimitPolicy request failed: HTTP ${response.status}`);
+        }
+        return response.json() as Promise<ResourceList<TrafficPolicy>>;
+      }),
     ]);
 
     return products.items.map<ProductRow>(product => ({
       ...product,
-      effectivePolicies: resolveEffectivePolicies(
-        product,
-        plans.items,
-        rateLimits.items,
-      ),
+      effectivePolicies: [
+        ...resolveEffectivePolicies(product, plans.items, rateLimits.items),
+        ...resolveTokenPolicies(product, tokenRateLimits.items),
+      ],
       authentication: getAuthentication(product),
     }));
   }, [discoveryApi, fetchApi]);

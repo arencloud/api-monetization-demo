@@ -54,6 +54,10 @@ spec:
               - name: install-dynamic-plugins
                 volumeMounts:
                   - name: api-monetization-rhdh-local-plugins
+                    mountPath: /opt/app-root/src/local-plugins/arencloud-rhdh-monetization-backend-dynamic-0.1.0.tgz
+                    subPath: arencloud-rhdh-monetization-backend-dynamic-0.1.0.tgz
+                    readOnly: true
+                  - name: api-monetization-rhdh-local-plugins
                     mountPath: /opt/app-root/src/local-plugins/arencloud-rhdh-policy-catalog-dynamic-0.1.0.tgz
                     subPath: arencloud-rhdh-policy-catalog-dynamic-0.1.0.tgz
                     readOnly: true

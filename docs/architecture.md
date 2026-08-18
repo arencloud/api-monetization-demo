@@ -42,13 +42,15 @@ assigned external address; the request-time policy path is unchanged.
 | Operational and business visualization | Grafana Operator, Grafana, and Kiali |
 | Desired state and promotion | OpenShift GitOps |
 
-Red Hat Developer Hub is the target unified experience, not a replacement for
+Red Hat Developer Hub is the unified presentation layer, not a replacement for
 the request-time enforcement or billing engines. The Kuadrant plugins own the
-operator-native catalog and credential workflows. A later custom monetization
-plugin will present subscriptions, accepted usage, pricing, invoices, customer
-administration, and the AI playground by calling the existing control-plane
-backend. During migration, the existing portal remains available so every
-working business workflow has one authoritative implementation.
+operator-native catalog and credential workflows. The custom monetization
+frontend presents subscriptions, accepted request/token usage, projected
+revenue, and invoices. Its backend is the only browser-facing bridge: RHDH RBAC
+authorizes the operation, then the monetization control plane verifies the
+forwarded Keycloak token and resolves the subject to its PostgreSQL customer.
+No browser-supplied customer identifier is trusted. The existing portal remains
+available for lifecycle mutations and the AI playground during migration.
 
 Each governed HTTPRoute has its own `APIProduct` presentation in RHDH. The
 three API-key routes advertise API-key authentication and participate in the
@@ -65,6 +67,13 @@ to the API application namespace. Keycloak supplies users and groups to the
 catalog through a confidential, read-only service account. `api-consumers`,
 `api-owners`, and `api-admins` map to the matching RHDH RBAC roles, and newly
 registered developers enter the consumer group by default.
+
+`TokenRateLimitPolicy` discovery is implemented in the custom backend because
+the tested Kuadrant 0.4.0 backend does not expose that CRD. The endpoint uses
+the dedicated RHDH service account and the
+`api-monetization.tokenratelimitpolicy.list` permission. Billing has distinct
+`read.own` and `read.all` permissions; Keycloak performs the matching developer
+or administrator role check again at the control-plane boundary.
 
 The browser portal is a public PKCE client in Keycloak. Human administrators
 receive the `monetization-admin` realm role and developers receive the separate

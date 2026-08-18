@@ -21,6 +21,14 @@ coverage.html
 /plugins/rhdh-policy-catalog/dist/
 /plugins/rhdh-policy-catalog/dist-dynamic/
 /plugins/rhdh-policy-catalog/dist-types/
+/plugins/rhdh-monetization-backend/.cache/
+/plugins/rhdh-monetization-backend/.npm/
+/plugins/rhdh-monetization-backend/node_modules/
+/plugins/rhdh-monetization-backend/dist/
+/plugins/rhdh-monetization-backend/dist-dynamic/
+/plugins/rhdh-monetization-backend/dist-types/
+/plugins/rhdh-monetization-backend/src/*.d.ts
+/plugins/rhdh-monetization-backend/tsconfig.tsbuildinfo
 
 # IDE and editor settings
 .idea/

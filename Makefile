@@ -35,6 +35,7 @@ test:
 	@go test ./applications/... ./internal/...
 
 rhdh-plugin-test:
+	@./plugins/rhdh-monetization-backend/scripts/container-build.sh
 	@./plugins/rhdh-policy-catalog/scripts/container-build.sh
 
 lifecycle-test:

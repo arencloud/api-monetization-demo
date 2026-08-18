@@ -16,7 +16,8 @@
     "name": "arencloud.rhdh-policy-catalog",
     "exposedModules": {
       "PluginRoot": "./src/index.ts",
-      "ApiProductsPage": "./src/plugin.ts"
+      "ApiProductsPage": "./src/extensions/ApiProductsPage.ts",
+      "MonetizationPage": "./src/extensions/MonetizationPage.ts"
     }
   },
   "sideEffects": false,

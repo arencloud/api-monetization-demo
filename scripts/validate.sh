@@ -177,26 +177,49 @@ for package, integrity in expected_kuadrant_plugins.items():
     if plugin.get("disabled") is not False or plugin.get("integrity") != integrity:
         raise SystemExit(f"{package}: Kuadrant plugin version or integrity is not reproducibly pinned")
 
-local_plugin_path = pathlib.Path(
+frontend_plugin_path = pathlib.Path(
     "platform/developer-hub/arencloud-rhdh-policy-catalog-dynamic-0.1.0.tgz"
 )
-local_plugin_package = (
+frontend_plugin_package = (
     "/opt/app-root/src/local-plugins/"
     "arencloud-rhdh-policy-catalog-dynamic-0.1.0.tgz"
 )
-local_plugin = plugin_by_package.get(local_plugin_package, {})
+frontend_plugin = plugin_by_package.get(frontend_plugin_package, {})
 if (
-    local_plugin.get("disabled") is not False
-    or local_plugin.get("integrity")
-    != "sha512-MouPHFvukEicXUPQO5eEMXYApelVQnRDZrLgd3St8OnGAYkvdgSm60hCpXyLHLzU1WTkM3hXLk57gXwapy2Jnw=="
+    frontend_plugin.get("disabled") is not False
+    or frontend_plugin.get("integrity")
+    != "sha512-5jMs/HF9GCfXmbJmuf08YAoWLXsQXCm1i/8OzsQU6IK4CN0Bs8UUApqX+OoKA0oUk5j4IJ77yUB/qOcM39KTOQ=="
 ):
     raise SystemExit("effective-policy RHDH plugin is not checksum-pinned")
-if not local_plugin_path.is_file() or local_plugin_path.stat().st_size >= 750_000:
+if not frontend_plugin_path.is_file() or frontend_plugin_path.stat().st_size >= 250_000:
     raise SystemExit("effective-policy plugin artifact is missing or too large for its ConfigMap")
-if hashlib.sha256(local_plugin_path.read_bytes()).hexdigest() != (
-    "fa38a6ea4cf609e20bb9f70d1b81a3b386bd1a17aa4b95008715daad4259fbab"
+if hashlib.sha256(frontend_plugin_path.read_bytes()).hexdigest() != (
+    "d96521c8f46ce4f03a80f843162b56b9bc2c678d359281a75a1027c1e2fcc5b5"
 ):
     raise SystemExit("effective-policy plugin artifact checksum changed; rebuild and review it")
+
+backend_plugin_path = pathlib.Path(
+    "platform/developer-hub/arencloud-rhdh-monetization-backend-dynamic-0.1.0.tgz"
+)
+backend_plugin_package = (
+    "/opt/app-root/src/local-plugins/"
+    "arencloud-rhdh-monetization-backend-dynamic-0.1.0.tgz"
+)
+backend_plugin = plugin_by_package.get(backend_plugin_package, {})
+if (
+    backend_plugin.get("disabled") is not False
+    or backend_plugin.get("integrity")
+    != "sha512-Cn0X5vZRkJuhJ9Qu8TmlyeM6ok4WGRfCWEpMAwEV4+LDbNpKNxSW8KBOKmlRD5xtOEE3MKNkpQ3aVnuV0p6VDw=="
+):
+    raise SystemExit("monetization RHDH backend plugin is not checksum-pinned")
+if not backend_plugin_path.is_file() or backend_plugin_path.stat().st_size >= 700_000:
+    raise SystemExit("monetization backend artifact is missing or too large for its ConfigMap")
+if hashlib.sha256(backend_plugin_path.read_bytes()).hexdigest() != (
+    "baeda0b15525f2b8f561c584cd15b6a1f58d3171d947c0693ee49703c3aa8a64"
+):
+    raise SystemExit("monetization backend artifact checksum changed; rebuild and review it")
+if frontend_plugin_path.stat().st_size + backend_plugin_path.stat().st_size >= 1_000_000:
+    raise SystemExit("combined RHDH plugin artifacts exceed the ConfigMap safety budget")
 
 configured_routes = []
 for plugin in dynamic_plugins.get("plugins", []):
@@ -211,6 +234,8 @@ for plugin in dynamic_plugins.get("plugins", []):
         )
 if configured_routes.count("/kuadrant/api-products") != 1:
     raise SystemExit("exactly one frontend plugin must own /kuadrant/api-products")
+if configured_routes.count("/billing") != 1:
+    raise SystemExit("exactly one frontend plugin must own /billing")
 
 with open("platform/developer-hub/app-config.yaml", encoding="utf-8") as stream:
     rhdh_config = yaml.safe_load(stream)
@@ -257,13 +282,17 @@ plugin_installer = next(
 )
 if plugin_volume.get("configMap", {}).get("name") != "api-monetization-rhdh-local-plugins":
     raise SystemExit("RHDH local plugin ConfigMap is not mounted")
-if not any(
-    mount.get("mountPath") == local_plugin_package
-    and mount.get("subPath") == local_plugin_path.name
-    and mount.get("readOnly") is True
-    for mount in plugin_installer.get("volumeMounts", [])
+for plugin_path, plugin_package in (
+    (frontend_plugin_path, frontend_plugin_package),
+    (backend_plugin_path, backend_plugin_package),
 ):
-    raise SystemExit("RHDH plugin installer cannot read the local effective-policy TGZ")
+    if not any(
+        mount.get("mountPath") == plugin_package
+        and mount.get("subPath") == plugin_path.name
+        and mount.get("readOnly") is True
+        for mount in plugin_installer.get("volumeMounts", [])
+    ):
+        raise SystemExit(f"RHDH plugin installer cannot read {plugin_path.name}")
 extra_envs = backstage.get("spec", {}).get("application", {}).get("extraEnvs", {}).get("envs", [])
 if {"name": "NODE_EXTRA_CA_CERTS", "value": "/opt/app-root/etc/router-ca.crt"} not in extra_envs:
     raise SystemExit("RHDH must trust the discovered OpenShift router CA for Keycloak OIDC")
@@ -940,7 +969,7 @@ if unformatted=$(gofmt -l applications internal); [[ -n $unformatted ]]; then
 fi
 
 mapfile -t go_packages < <(
-  go list ./... | grep -v '/plugins/rhdh-policy-catalog/node_modules/'
+  go list ./... | grep -v '/node_modules/'
 )
 go test "${go_packages[@]}"
 go vet "${go_packages[@]}"
@@ -965,17 +994,17 @@ for pattern in ("*.yaml", "*.yml"):
                 raise SystemExit(f"{path}: plaintext Kubernetes Secret resources are not allowed")
 PY
 
-if rg -n --glob '*.yaml' --glob '*.yml' 'image:[[:space:]]*[^[:space:]]+:latest([[:space:]]|$)' .; then
+if rg -n --glob '!**/node_modules/**' --glob '*.yaml' --glob '*.yml' 'image:[[:space:]]*[^[:space:]]+:latest([[:space:]]|$)' .; then
   echo "error: container images must not use the latest tag" >&2
   exit 1
 fi
 
-if rg -n --glob '*.yaml' --glob '*.yml' $'\t' .; then
+if rg -n --glob '!**/node_modules/**' --glob '*.yaml' --glob '*.yml' $'\t' .; then
   echo "error: YAML files must not contain tabs" >&2
   exit 1
 fi
 
-if rg -n --glob '*.yaml' --glob '*.yml' --glob '*.md' '[[:blank:]]+$' .; then
+if rg -n --glob '!**/node_modules/**' --glob '*.yaml' --glob '*.yml' --glob '*.md' '[[:blank:]]+$' .; then
   echo "error: text files must not contain trailing whitespace" >&2
   exit 1
 fi

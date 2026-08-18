@@ -79,3 +79,6 @@ permission:
   rbac:
     policies-csv-file: /opt/app-root/etc/rbac-policy.csv
     policyFileReload: true
+
+apiMonetization:
+  controlBaseUrl: http://monetization-control.api-monetization-data.svc.cluster.local:8080

@@ -134,8 +134,13 @@ tab publishes the cluster's Keycloak token endpoint. JWT entries do not create
 an `APIKey`: obtain a short-lived bearer token from Keycloak instead. **My API
 Keys** contains the consumer-owned credentials for the three API-key entries.
 Sign in as `demo-admin` to use the approval and owner views. The custom portal
-remains the current place for plans, usage, invoices, and the AI playground
-during the RHDH billing-plugin migration.
+remains available for lifecycle mutations and the AI playground. Open
+**Billing** in RHDH to show the permission-scoped subscription, accepted usage,
+AI token totals, projected revenue, and persisted invoices. A developer sees
+only the PostgreSQL customer mapped to their Keycloak subject; `demo-admin`
+sees the cross-customer view. In **Kuadrant → API Products**, AI Chat entries
+also show their enforced `TokenRateLimitPolicy` beside the effective request
+policy.
 
 Show the running topology:
 

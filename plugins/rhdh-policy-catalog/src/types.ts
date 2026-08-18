@@ -46,8 +46,66 @@ export interface ResourceList<T> {
 }
 
 export interface EffectivePolicy {
-  kind: "PlanPolicy" | "RateLimitPolicy";
+  kind: "PlanPolicy" | "RateLimitPolicy" | "TokenRateLimitPolicy";
   name: string;
   namespace: string;
   enforced: boolean;
+}
+
+export interface PortalIdentity {
+  username: string;
+  admin: boolean;
+  developer: boolean;
+}
+
+export interface Subscription {
+  id: string;
+  customerId: string;
+  customer: string;
+  product: string;
+  plan: string;
+  planName: string;
+  status: string;
+  monthlyPriceCents?: number;
+  includedRequests?: number;
+  monthlyQuotaRequests?: number;
+  rateLimitRequests?: number;
+  rateLimitWindowSeconds?: number;
+}
+
+export interface UsageSummary {
+  customer: string;
+  product: string;
+  requests: number;
+  overageRequests: number;
+  projectedRevenueEuro: number;
+  promptTokens?: number;
+  completionTokens?: number;
+}
+
+export interface InvoiceItem {
+  product: string;
+  plan: string;
+  description: string;
+  billableUnits: number;
+  totalCents: number;
+}
+
+export interface Invoice {
+  id?: string;
+  customerId: string;
+  customer: string;
+  periodStart: string;
+  periodEnd: string;
+  status: string;
+  currency: string;
+  subtotalCents: number;
+  overageCents: number;
+  totalCents: number;
+  items: InvoiceItem[];
+}
+
+export interface BillingSummary {
+  preview: Invoice;
+  invoices: Invoice[];
 }

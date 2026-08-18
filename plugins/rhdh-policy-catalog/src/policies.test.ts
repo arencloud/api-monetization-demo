@@ -1,4 +1,8 @@
-import { getAuthentication, resolveEffectivePolicies } from './policies';
+import {
+  getAuthentication,
+  resolveEffectivePolicies,
+  resolveTokenPolicies,
+} from './policies';
 import { APIProduct, TrafficPolicy } from './types';
 
 const product = (route: string): APIProduct => ({
@@ -61,5 +65,29 @@ describe('getAuthentication', () => {
       discoveredAuthScheme: { authentication: { bearer: { jwt: {} } } },
     };
     expect(getAuthentication(jwtProduct)).toEqual(['OIDC']);
+  });
+});
+
+describe('resolveTokenPolicies', () => {
+  it('adds an enforced TokenRateLimitPolicy only to its target route', () => {
+    expect(
+      resolveTokenPolicies(
+        product('ai-chat-jwt'),
+        [policy('ai-chat-jwt-tokens', 'ai-chat-jwt')],
+      ),
+    ).toEqual([
+      {
+        kind: 'TokenRateLimitPolicy',
+        name: 'ai-chat-jwt-tokens',
+        namespace: 'api-monetization-apps',
+        enforced: true,
+      },
+    ]);
+    expect(
+      resolveTokenPolicies(
+        product('inventory-jwt'),
+        [policy('ai-chat-jwt-tokens', 'ai-chat-jwt')],
+      ),
+    ).toEqual([]);
   });
 });

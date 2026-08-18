@@ -20,14 +20,15 @@ monetization story.
 
 The Kuadrant plugin is responsible for RHCL API-product synchronization,
 product discovery, access requests, approvals, API-key management, and
-policy detail visibility. A small source-controlled frontend extension replaces
+policy detail visibility. A source-controlled frontend extension replaces
 only its product list so the effective policy is resolved from either
 `PlanPolicy` or direct `RateLimitPolicy`. JWT products deliberately retain direct
 policies because their per-customer counters cannot be represented by the
-current `PlanPolicy` API. It does not become a billing system. Subscription state,
-accepted usage, pricing, invoices, revenue, and AI token accounting remain in
-the existing PostgreSQL-backed monetization service and will be exposed through
-a custom RHDH frontend/backend plugin.
+current `PlanPolicy` API. The extension also resolves `TokenRateLimitPolicy`
+through a permission-controlled custom backend and presents read-only
+subscriptions, accepted usage, pricing, invoices, revenue, and AI token
+accounting from the existing PostgreSQL-backed monetization service. It does
+not become a second billing system.
 
 The existing portal remains deployed until the custom plugin reaches feature
 parity. This gives the migration an explicit rollback and avoids duplicating
@@ -44,8 +45,9 @@ commercial authority across two backends.
 - RHDH, the Kuadrant 0.4.0 plugins, and the effective-policy extension are
   tested as a pair. RHDH 1.10 is accepted only after repository verification
   succeeds on the target cluster.
-- The demo mounts the checksum-pinned custom frontend TGZ from a ConfigMap so
+- The demo mounts checksum-pinned custom frontend and backend TGZs from a ConfigMap so
   fresh-cluster installation has no private-registry prerequisite. Production
   packaging should publish the same export as a digest-pinned OCI artifact.
-- The next milestone is a custom dynamic plugin that consumes the existing
-  control-plane API; request-time enforcement remains entirely in RHCL.
+- Read-only monetization data is now unified in RHDH. Lifecycle mutations and
+  the AI playground remain the next incremental migration; request-time
+  enforcement remains entirely in RHCL.
