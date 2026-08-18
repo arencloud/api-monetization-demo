@@ -45,6 +45,28 @@ interface MonetizationView {
   credentials: Record<string, CredentialState>;
 }
 
+interface JwtCredential {
+  token: string;
+  expiresAt: number;
+}
+
+const decodeJwtClaims = (token: string): { aud?: string | string[]; exp?: number } => {
+  const payload = token.split('.')[1]?.replace(/-/g, '+').replace(/_/g, '/');
+  if (!payload) throw new Error('Keycloak returned an invalid access token');
+  return JSON.parse(atob(payload.padEnd(Math.ceil(payload.length / 4) * 4, '=')));
+};
+
+const jwtEndpoint = (apiKeyEndpoint: string | undefined): string | undefined => {
+  if (!apiKeyEndpoint) return undefined;
+  try {
+    const endpoint = new URL(apiKeyEndpoint);
+    endpoint.hostname = endpoint.hostname.replace(/^api-monetization\./, 'api-monetization-jwt.');
+    return endpoint.toString();
+  } catch {
+    return undefined;
+  }
+};
+
 const currency = (cents: number | undefined, code = 'EUR') =>
   new Intl.NumberFormat(undefined, { style: 'currency', currency: code }).format(
     Number(cents || 0) / 100,
@@ -57,6 +79,7 @@ export const MonetizationPage = () => {
   const [refresh, setRefresh] = useState(0);
   const [planSelections, setPlanSelections] = useState<Record<string, string>>({});
   const [revealedKeys, setRevealedKeys] = useState<Record<string, string>>({});
+  const [revealedJwts, setRevealedJwts] = useState<Record<string, JwtCredential>>({});
   const [pending, setPending] = useState<string>();
   const [notice, setNotice] = useState<{ message: string; error: boolean }>();
 
@@ -293,6 +316,25 @@ export const MonetizationPage = () => {
                                     })}
                                   >Rotate API key</Button>
                                   <Button
+                                    variant="outlined"
+                                    disabled={Boolean(pending) || subscription.status !== 'active'}
+                                    data-testid={`jwt-${product.id}`}
+                                    onClick={() => runAction(`${product.id}-jwt`, async () => {
+                                      const token = await oidcAuthApi.getAccessToken(['openid', 'profile', 'email']);
+                                      const claims = decodeJwtClaims(token);
+                                      const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+                                      if (!audiences.includes('api-monetization')) {
+                                        throw new Error('The RHDH Keycloak token is missing the API gateway audience. Sign out and sign in again.');
+                                      }
+                                      if (!claims.exp) throw new Error('The Keycloak access token has no expiry');
+                                      setRevealedJwts(current => ({
+                                        ...current,
+                                        [product.id]: { token, expiresAt: claims.exp! * 1000 },
+                                      }));
+                                      setNotice({ message: `${product.displayName} Keycloak JWT is ready to copy.`, error: false });
+                                    })}
+                                  >Get Keycloak JWT</Button>
+                                  <Button
                                     color="secondary"
                                     variant="outlined"
                                     disabled={Boolean(pending)}
@@ -303,6 +345,11 @@ export const MonetizationPage = () => {
                                         method: 'POST', body: { version: subscription.version },
                                       });
                                       setRevealedKeys(current => {
+                                        const next = { ...current };
+                                        delete next[product.id];
+                                        return next;
+                                      });
+                                      setRevealedJwts(current => {
                                         const next = { ...current };
                                         delete next[product.id];
                                         return next;
@@ -321,6 +368,24 @@ export const MonetizationPage = () => {
                                   <Box mt={1} p={1} style={{ background: '#f5f5f5', overflowWrap: 'anywhere' }}>
                                     <Typography variant="caption">One-time API key</Typography>
                                     <Typography component="code" display="block" data-testid={`api-key-${product.id}`}>{revealedKeys[product.id]}</Typography>
+                                  </Box>
+                                )}
+                                {revealedJwts[product.id] && (
+                                  <Box mt={1} p={1} style={{ background: '#f5f5f5', overflowWrap: 'anywhere' }}>
+                                    <Typography variant="caption">
+                                      Keycloak JWT · expires {new Date(revealedJwts[product.id].expiresAt).toLocaleTimeString()}
+                                      {jwtEndpoint(credential?.endpoint) ? ` · ${jwtEndpoint(credential?.endpoint)}` : ''}
+                                    </Typography>
+                                    <Typography component="code" display="block" data-testid={`jwt-token-${product.id}`}>
+                                      {revealedJwts[product.id].token}
+                                    </Typography>
+                                    <Box mt={1}>
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
+                                        onClick={() => navigator.clipboard.writeText(revealedJwts[product.id].token)}
+                                      >Copy JWT</Button>
+                                    </Box>
                                   </Box>
                                 )}
                               </>

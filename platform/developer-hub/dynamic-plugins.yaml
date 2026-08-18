@@ -46,8 +46,8 @@ plugins:
   - package: /opt/app-root/src/local-plugins/arencloud-rhdh-monetization-backend-dynamic-0.1.0.tgz
     integrity: sha512-W+mm0icsCnBcOhuw9Y+SRz6XRhKryFzWHtH1yqRxhpBp1zLjnEwMnpxjabvuDcc2qiJqesBeKA4kmScSoy9wyA==
     disabled: false
-  - package: /opt/app-root/src/local-plugins/arencloud-rhdh-policy-catalog-dynamic-0.1.2.tgz
-    integrity: sha512-emntgK8JUGuXdM9EOVmWypmVywdkCw36Fu/Ni/riJzh4SVjQozUoochqT8Y3IPeoWfVQflGppQLvxb9dch2j6g==
+  - package: /opt/app-root/src/local-plugins/arencloud-rhdh-policy-catalog-dynamic-0.1.3.tgz
+    integrity: sha512-hWQm5NZfDlBci00UGuFBU51uCF7CqWhNrCRYcRz0GxvyOKWTRbpo9YjDjutvavK1N9tbURJp2SVwmEimZLQ4IQ==
     disabled: false
     pluginConfig:
       dynamicPlugins:

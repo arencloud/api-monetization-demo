@@ -204,17 +204,17 @@ if any(
     raise SystemExit("catalog entities must not expose direct Kuadrant API-key management")
 
 frontend_plugin_path = pathlib.Path(
-    "platform/developer-hub/arencloud-rhdh-policy-catalog-dynamic-0.1.2.tgz"
+    "platform/developer-hub/arencloud-rhdh-policy-catalog-dynamic-0.1.3.tgz"
 )
 frontend_plugin_package = (
     "/opt/app-root/src/local-plugins/"
-    "arencloud-rhdh-policy-catalog-dynamic-0.1.2.tgz"
+    "arencloud-rhdh-policy-catalog-dynamic-0.1.3.tgz"
 )
 frontend_plugin = plugin_by_package.get(frontend_plugin_package, {})
 if (
     frontend_plugin.get("disabled") is not False
     or frontend_plugin.get("integrity")
-    != "sha512-emntgK8JUGuXdM9EOVmWypmVywdkCw36Fu/Ni/riJzh4SVjQozUoochqT8Y3IPeoWfVQflGppQLvxb9dch2j6g=="
+    != "sha512-hWQm5NZfDlBci00UGuFBU51uCF7CqWhNrCRYcRz0GxvyOKWTRbpo9YjDjutvavK1N9tbURJp2SVwmEimZLQ4IQ=="
 ):
     raise SystemExit("effective-policy RHDH plugin is not checksum-pinned")
 frontend_config = (
@@ -228,7 +228,7 @@ if frontend_config.get("apiFactories") != [{"importName": "oidcAuthApiFactory"}]
 if not frontend_plugin_path.is_file() or frontend_plugin_path.stat().st_size >= 250_000:
     raise SystemExit("effective-policy plugin artifact is missing or too large for its ConfigMap")
 if hashlib.sha256(frontend_plugin_path.read_bytes()).hexdigest() != (
-    "eaa5431aa1289cdec92eb4b431b63ba794b9027c8e955577d28343aaeade8d9a"
+    "e06a3f9b3e4b476640bf3c15a985496bac9fa65a2e5750cdec2fc641a3f9ec40"
 ):
     raise SystemExit("effective-policy plugin artifact checksum changed; rebuild and review it")
 
