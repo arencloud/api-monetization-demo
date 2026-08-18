@@ -80,5 +80,16 @@ permission:
     policies-csv-file: /opt/app-root/etc/rbac-policy.csv
     policyFileReload: true
 
+dynamicPlugins:
+  frontend:
+    default.main-menu-items:
+      menuItems:
+        default.apis:
+          title: APIs
+          icon: extension
+          to: monetized-apis
+          priority: 70
+          enabled: true
+
 apiMonetization:
   controlBaseUrl: http://monetization-control.api-monetization-data.svc.cluster.local:8080

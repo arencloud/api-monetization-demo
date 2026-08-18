@@ -85,5 +85,5 @@ plugins:
               - path: /billing
                 importName: MonetizationPage
                 menuItem: {icon: kuadrantIcon, text: Billing}
-              - path: /api-docs
+              - path: /monetized-apis
                 importName: MonetizedApisPage

@@ -244,11 +244,18 @@ if configured_routes.count("/kuadrant/api-products") != 1:
     raise SystemExit("exactly one frontend plugin must own /kuadrant/api-products")
 if configured_routes.count("/billing") != 1:
     raise SystemExit("exactly one frontend plugin must own /billing")
-if configured_routes.count("/api-docs") != 1:
-    raise SystemExit("exactly one frontend plugin must own /api-docs")
+if configured_routes.count("/monetized-apis") != 1:
+    raise SystemExit("exactly one frontend plugin must own /monetized-apis")
 
 with open("platform/developer-hub/app-config.yaml", encoding="utf-8") as stream:
     rhdh_config = yaml.safe_load(stream)
+apis_menu = (
+    rhdh_config.get("dynamicPlugins", {}).get("frontend", {})
+    .get("default.main-menu-items", {}).get("menuItems", {})
+    .get("default.apis", {})
+)
+if apis_menu.get("to") != "monetized-apis" or apis_menu.get("enabled") is not True:
+    raise SystemExit("RHDH's top-level APIs menu must open the entitlement-aware explorer")
 if rhdh_config.get("signInPage") != "oidc":
     raise SystemExit("RHDH must use the Keycloak OIDC sign-in page")
 resolvers = (
