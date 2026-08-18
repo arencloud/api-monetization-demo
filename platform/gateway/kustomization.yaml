@@ -12,16 +12,19 @@ resources:
   - inventory-jwt-rate-limits.yaml
   - openapi-readiness.yaml
   - inventory-api-product.yaml
+  - inventory-jwt-api-product.yaml
   - payments-routes.yaml
   - payments-auth-policies.yaml
   - payments-plan-policy.yaml
   - payments-jwt-rate-limits.yaml
   - payments-api-product.yaml
+  - payments-jwt-api-product.yaml
   - ai-chat-routes.yaml
   - ai-chat-auth-policies.yaml
   - ai-chat-plan-policy.yaml
   - ai-chat-jwt-rate-limits.yaml
   - ai-chat-token-rate-limits.yaml
   - ai-chat-api-product.yaml
+  - ai-chat-jwt-api-product.yaml
   - demo-api-key.yaml
   - portal-rbac.yaml

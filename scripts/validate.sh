@@ -608,7 +608,7 @@ if (
 ):
     raise SystemExit("Grafana OAuth client secret is not mirrored from the identity namespace")
 
-for product in ("inventory", "payments"):
+for product in ("inventory", "payments", "ai-chat"):
     with open(f"applications/{product}/openapi.yaml", encoding="utf-8") as stream:
         openapi = yaml.safe_load(stream)
     if not str(openapi.get("openapi", "")).startswith("3.") or not openapi.get("paths"):
@@ -664,10 +664,12 @@ if kuadrant.get("spec", {}).get("mtls") != {
     raise SystemExit("RHCL mTLS must be enabled explicitly for Authorino and Limitador")
 
 auth_policies = []
-for product in ("inventory", "payments"):
+for product in ("inventory", "payments", "ai-chat"):
     with open(f"platform/gateway/{product}-auth-policies.yaml", encoding="utf-8") as stream:
         auth_policies.extend(yaml.safe_load_all(stream))
 for policy in auth_policies:
+    if policy.get("metadata", {}).get("name", "").endswith("-preflight"):
+        continue
     rules = policy.get("spec", {}).get("rules", {})
     active = rules.get("authorization", {}).get("active-subscription", {})
     patterns = active.get("patternMatching", {}).get("patterns", [])
@@ -680,16 +682,16 @@ for policy in auth_policies:
         name = policy.get("metadata", {}).get("name", "unknown")
         raise SystemExit(f"{name}: active subscription authorization is missing")
 
-for product in ("inventory", "payments"):
+for product in ("inventory", "payments", "ai-chat"):
     jwt_policy = next(
         policy for policy in auth_policies if policy.get("metadata", {}).get("name") == f"{product}-jwt"
     )
     jwt_rules = jwt_policy.get("spec", {}).get("rules", {})
     jwt_authentication = jwt_rules.get("authentication", {}).get("keycloak", {}).get("jwt", {})
     if jwt_authentication != {
-        "jwksUrl": "http://api-monetization-service.api-monetization-identity.svc.cluster.local:8080/realms/api-monetization/protocol/openid-connect/certs"
+        "issuerUrl": "https://keycloak-api-monetization.apps.invalid/realms/api-monetization"
     }:
-        raise SystemExit(f"{product}: JWT verification must use the internal Keycloak JWKS endpoint")
+        raise SystemExit(f"{product}: JWT verification must use the portable Keycloak OIDC issuer placeholder")
     jwt_issuer_patterns = (
         jwt_rules.get("authorization", {})
         .get("keycloak-issuer", {})

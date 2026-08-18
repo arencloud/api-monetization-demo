@@ -127,11 +127,15 @@ make hub
 ```
 
 Sign in as `demo-developer`, open **Kuadrant → API Products**, and confirm that
-Inventory, Payment, and AI Chat were synchronized from the live `APIProduct`
-resources. **My API Keys** contains consumer-owned credentials. Sign in as
-`demo-admin` to use the approval and owner views. The custom portal remains the
-current place for plans, usage, invoices, and the AI playground during the RHDH
-billing-plugin migration.
+six entries were synchronized from the live `APIProduct` resources. Inventory,
+Payment, and AI Chat each have an **API Key** entry and a **Keycloak JWT** entry
+whose Authentication column is **OIDC**. Open a JWT entry and confirm its OIDC
+tab publishes the cluster's Keycloak token endpoint. JWT entries do not create
+an `APIKey`: obtain a short-lived bearer token from Keycloak instead. **My API
+Keys** contains the consumer-owned credentials for the three API-key entries.
+Sign in as `demo-admin` to use the approval and owner views. The custom portal
+remains the current place for plans, usage, invoices, and the AI playground
+during the RHDH billing-plugin migration.
 
 Show the running topology:
 

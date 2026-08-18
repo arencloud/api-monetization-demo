@@ -79,7 +79,9 @@ spec:
     authentication:
       keycloak:
         jwt:
-          jwksUrl: http://api-monetization-service.api-monetization-identity.svc.cluster.local:8080/realms/api-monetization/protocol/openid-connect/certs
+          # The route-host hook replaces this portable placeholder with the
+          # admitted Keycloak Route issuer on every cluster.
+          issuerUrl: https://keycloak-api-monetization.apps.invalid/realms/api-monetization
     authorization:
       keycloak-issuer:
         patternMatching:

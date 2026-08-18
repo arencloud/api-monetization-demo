@@ -156,8 +156,12 @@ trace pipeline.
 
 Red Hat Developer Hub is installed through its Operator as the strategic
 developer experience. The integrity-pinned Kuadrant frontend and backend
-plugins synchronize the three RHCL `APIProduct` resources into the catalog and
-provide product discovery, access requests, approvals, and API-key lifecycle.
+plugins synchronize six RHCL `APIProduct` resources into the catalog: an
+API-key and a Keycloak OIDC/JWT presentation of each Inventory, Payment, and AI
+Chat API. They provide product discovery, OIDC metadata, access requests,
+approvals, and API-key lifecycle. GitOps discovers the admitted Keycloak issuer
+and installs the OpenShift router CA into the RHCL OIDC components, so the same
+catalog works on a fresh cluster with a different applications domain.
 The default RHDH Lightspeed flavour is disabled because the solution already
 contains its independently governed OpenShift AI chat product.
 Developer Hub delegates login to the existing Red Hat build of Keycloak realm;

@@ -1,0 +1,23 @@
+apiVersion: devportal.kuadrant.io/v1alpha1
+kind: APIProduct
+metadata:
+  name: inventory-api-jwt
+  namespace: api-monetization-apps
+  annotations:
+    argocd.argoproj.io/sync-wave: "40"
+    backstage.io/owner: group:default/api-owners
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  displayName: Inventory API (Keycloak JWT)
+  description: Product and stock availability API authenticated with a Red Hat build of Keycloak access token.
+  version: v1
+  approvalMode: automatic
+  publishStatus: Published
+  targetRef: {group: gateway.networking.k8s.io, kind: HTTPRoute, name: inventory-jwt}
+  tags: [inventory, oidc, keycloak, monetized, demo]
+  contact: {team: API Platform, email: api-platform@example.invalid}
+  documentation:
+    docsURL: https://github.com/arencloud/api-monetization-demo/blob/main/docs/demo-runbook.md
+    openAPISpecURL: http://inventory-api.api-monetization-apps.svc.cluster.local:8082/openapi.yaml
+    gitRepository: https://github.com/arencloud/api-monetization-demo

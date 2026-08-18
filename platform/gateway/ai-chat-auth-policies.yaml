@@ -65,7 +65,7 @@ spec:
     authentication:
       keycloak:
         jwt:
-          jwksUrl: http://api-monetization-service.api-monetization-identity.svc.cluster.local:8080/realms/api-monetization/protocol/openid-connect/certs
+          issuerUrl: https://keycloak-api-monetization.apps.invalid/realms/api-monetization
     authorization:
       keycloak-issuer:
         patternMatching:

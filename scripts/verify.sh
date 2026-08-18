@@ -399,6 +399,10 @@ api_hostname=$(oc get route api-monetization -n api-monetization-gateway \
   -o jsonpath='{.status.ingress[0].host}')
 jwt_hostname=$(oc get route api-monetization-jwt -n api-monetization-gateway \
   -o jsonpath='{.status.ingress[0].host}')
+keycloak_hostname=$(oc get route api-monetization-keycloak \
+  -n api-monetization-identity -o jsonpath='{.status.ingress[0].host}')
+oidc_issuer="https://$keycloak_hostname/realms/api-monetization"
+oidc_token_endpoint="$oidc_issuer/protocol/openid-connect/token"
 for product in inventory payments ai-chat; do
   api_route_hostname=$(oc get httproute "$product-api-key" -n api-monetization-apps \
     -o jsonpath='{.spec.hostnames[0]}')
@@ -409,6 +413,16 @@ for product in inventory payments ai-chat; do
     exit 1
   fi
 done
+
+for policy in inventory-jwt payments-jwt ai-chat-jwt; do
+  policy_issuer=$(oc get authpolicy "$policy" -n api-monetization-apps \
+    -o jsonpath='{.spec.rules.authentication.keycloak.jwt.issuerUrl}')
+  if [[ $policy_issuer != "$oidc_issuer" ]]; then
+    echo "error: $policy issuer is ${policy_issuer:-empty}; expected $oidc_issuer" >&2
+    exit 1
+  fi
+done
+echo "JWT policies use the admitted Keycloak OIDC issuer"
 api_preflight_hostname=$(oc get httproute ai-chat-api-key-preflight \
   -n api-monetization-apps -o jsonpath='{.spec.hostnames[0]}')
 jwt_preflight_hostname=$(oc get httproute ai-chat-jwt-preflight \
@@ -420,43 +434,64 @@ fi
 
 echo "waiting for APIProducts to publish the admitted API URL"
 for product in inventory payments ai-chat; do
-  api_product_ready=false
-  api_product=""
-  for _ in $(seq 1 60); do
-    api_product=$(oc get apiproduct "$product-api" -n api-monetization-apps \
-      -o json 2>/dev/null || true)
-    if [[ -n $api_product ]]; then
-      api_product_generation=$(jq -r '.metadata.generation // 0' <<<"$api_product")
-      api_product_observed_generation=$(jq -r '.status.observedGeneration // 0' <<<"$api_product")
-      api_product_openapi_status=$(jq -r '[.status.conditions[]? | select(.type == "OpenAPISpecReady")][0].status // ""' <<<"$api_product")
-      api_product_openapi_reason=$(jq -r '[.status.conditions[]? | select(.type == "OpenAPISpecReady")][0].reason // ""' <<<"$api_product")
-      if [[ $api_product_generation == "$api_product_observed_generation" ]]; then
-        if [[ $api_product_openapi_status == "True" ]]; then
-          api_product_server=$(jq -r '.status.openapi.raw // ""' <<<"$api_product" \
-            | sed -n 's/^  - url: //p' | head -n 1)
-          if [[ $api_product_server != "https://$api_hostname" ]]; then
-            echo "error: $product APIProduct server is ${api_product_server:-empty}; expected https://$api_hostname" >&2
+  for auth_mode in api-key jwt; do
+    api_product_name="$product-api"
+    expected_route="$product-api-key"
+    if [[ $auth_mode == jwt ]]; then
+      api_product_name="$product-api-jwt"
+      expected_route="$product-jwt"
+    fi
+    api_product_ready=false
+    api_product=""
+    for _ in $(seq 1 60); do
+      api_product=$(oc get apiproduct "$api_product_name" -n api-monetization-apps \
+        -o json 2>/dev/null || true)
+      if [[ -n $api_product ]]; then
+        api_product_generation=$(jq -r '.metadata.generation // 0' <<<"$api_product")
+        api_product_observed_generation=$(jq -r '.status.observedGeneration // 0' <<<"$api_product")
+        api_product_openapi_status=$(jq -r '[.status.conditions[]? | select(.type == "OpenAPISpecReady")][0].status // ""' <<<"$api_product")
+        api_product_openapi_reason=$(jq -r '[.status.conditions[]? | select(.type == "OpenAPISpecReady")][0].reason // ""' <<<"$api_product")
+        if [[ $api_product_generation == "$api_product_observed_generation" && \
+          $api_product_openapi_status == "True" ]]; then
+          api_product_servers=$(jq -r '.status.openapi.raw // ""' <<<"$api_product" \
+            | sed -n 's/^  - url: //p')
+          api_product_route=$(jq -r '.spec.targetRef.name // ""' <<<"$api_product")
+          if ! grep -Fxq "https://$api_hostname" <<<"$api_product_servers" || \
+            ! grep -Fxq "https://$jwt_hostname" <<<"$api_product_servers"; then
+            echo "error: $api_product_name does not publish both API-key and JWT server URLs" >&2
             exit 1
+          fi
+          if [[ $api_product_route != "$expected_route" ]]; then
+            echo "error: $api_product_name targets ${api_product_route:-empty}; expected $expected_route" >&2
+            exit 1
+          fi
+          if [[ $auth_mode == jwt ]]; then
+            oidc_status=$(jq -r '[.status.conditions[]? | select(.type == "OIDCDiscovered")][0].status // ""' <<<"$api_product")
+            discovered_token_endpoint=$(jq -r '.status.oidcDiscovery.tokenEndpoint // ""' <<<"$api_product")
+            if [[ $oidc_status != True || $discovered_token_endpoint != "$oidc_token_endpoint" ]]; then
+              echo "error: $api_product_name did not discover Keycloak OIDC at $oidc_token_endpoint" >&2
+              exit 1
+            fi
           fi
           api_product_ready=true
           break
         fi
         if [[ $api_product_openapi_status == "False" && $api_product_openapi_reason == "FetchFailed" ]]; then
           api_product_openapi_message=$(jq -r '[.status.conditions[]? | select(.type == "OpenAPISpecReady")][0].message' <<<"$api_product")
-          echo "error: APIProduct controller could not fetch the $product OpenAPI document" >&2
+          echo "error: APIProduct controller could not fetch the $api_product_name OpenAPI document" >&2
           echo "$api_product_openapi_message" >&2
           exit 1
         fi
       fi
+      sleep 5
+    done
+    if [[ $api_product_ready != true ]]; then
+      echo "error: $api_product_name was not ready within 5 minutes" >&2
+      [[ -n $api_product ]] && jq -r '.status.conditions[]? | "  \(.type)=\(.status) reason=\(.reason): \(.message)"' <<<"$api_product" >&2
+      exit 1
     fi
-    sleep 5
+    echo "$api_product_name is ready for $auth_mode authentication"
   done
-  if [[ $api_product_ready != "true" ]]; then
-    echo "error: $product APIProduct did not publish a ready OpenAPI document within 5 minutes" >&2
-    [[ -n $api_product ]] && jq -r '.status.conditions[]? | "  \(.type)=\(.status) reason=\(.reason): \(.message)"' <<<"$api_product" >&2
-    exit 1
-  fi
-  echo "$product APIProduct publishes https://$api_hostname"
 done
 echo "API-key endpoint: https://$api_hostname/inventory"
 echo "JWT endpoint: https://$jwt_hostname/inventory"
@@ -516,8 +551,6 @@ fi
 echo "Payment JWT path is protected and returned HTTP 401"
 
 echo "validating JWT identity-to-subscription resolution"
-keycloak_hostname=$(oc get route api-monetization-keycloak \
-  -n api-monetization-identity -o jsonpath='{.status.ingress[0].host}')
 keycloak_router_hostname=$(oc get route api-monetization-keycloak \
   -n api-monetization-identity -o jsonpath='{.status.ingress[0].routerCanonicalHostname}')
 keycloak_client_secret=$(oc get secret keycloak-demo-clients \

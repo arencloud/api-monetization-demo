@@ -50,6 +50,15 @@ administration, and the AI playground by calling the existing control-plane
 backend. During migration, the existing portal remains available so every
 working business workflow has one authoritative implementation.
 
+Each governed HTTPRoute has its own `APIProduct` presentation in RHDH. The
+three API-key routes advertise API-key authentication and participate in the
+approval and generated-key workflow. The matching JWT routes advertise OIDC,
+publish the discovered Red Hat build of Keycloak token endpoint, and accept
+short-lived bearer tokens without creating an `APIKey` object. A GitOps hook
+replaces the portable issuer placeholder with the admitted Keycloak Route and
+adds the OpenShift router CA to Authorino and the developer-portal controller;
+no cluster-specific applications domain is stored in Git.
+
 RHDH uses a dedicated service account. Cluster-scoped access is limited to
 Kuadrant, Gateway API, policy, and namespace resources; Secret access is scoped
 to the API application namespace. Keycloak supplies users and groups to the
