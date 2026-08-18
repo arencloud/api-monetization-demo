@@ -10,7 +10,7 @@ metadata:
     app.kubernetes.io/part-of: api-monetization
 spec:
   instances: 1
-  imageName: ghcr.io/cloudnative-pg/postgresql@sha256:91e0de662d53895a45f1396f4ee1a75daeb0c26fc87853afc9c8f43e01fdaa21
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.11-standard-trixie@sha256:91e0de662d53895a45f1396f4ee1a75daeb0c26fc87853afc9c8f43e01fdaa21
   enableSuperuserAccess: false
   primaryUpdateStrategy: unsupervised
   bootstrap:

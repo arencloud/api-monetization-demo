@@ -194,7 +194,7 @@ with open("platform/developer-hub/backstage.yaml", encoding="utf-8") as stream:
 with open("platform/developer-hub/database.yaml", encoding="utf-8") as stream:
     rhdh_database = yaml.safe_load(stream)
 if rhdh_database.get("spec", {}).get("imageName") != (
-    "ghcr.io/cloudnative-pg/postgresql@"
+    "ghcr.io/cloudnative-pg/postgresql:17.11-standard-trixie@"
     "sha256:91e0de662d53895a45f1396f4ee1a75daeb0c26fc87853afc9c8f43e01fdaa21"
 ):
     raise SystemExit("RHDH PostgreSQL 17 image must be digest-pinned")
