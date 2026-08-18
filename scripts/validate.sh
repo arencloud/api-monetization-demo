@@ -200,6 +200,8 @@ if rhdh_database.get("spec", {}).get("imageName") != (
     raise SystemExit("RHDH PostgreSQL 17 image must be digest-pinned")
 if backstage.get("spec", {}).get("database", {}).get("enableLocalDb") is not False:
     raise SystemExit("RHDH must use its operator-managed external CloudNativePG database")
+if backstage.get("spec", {}).get("flavours") != []:
+    raise SystemExit("RHDH Lightspeed and other default flavours must remain disabled")
 pod_spec = backstage.get("spec", {}).get("deployment", {}).get("patch", {}).get("spec", {}).get("template", {}).get("spec", {})
 if pod_spec.get("serviceAccountName") != "api-monetization-rhdh" or pod_spec.get("automountServiceAccountToken") is not True:
     raise SystemExit("RHDH must use its dedicated in-cluster Kuadrant service account")

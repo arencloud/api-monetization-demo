@@ -172,7 +172,7 @@ metadata:
     app.kubernetes.io/name: api-monetization-portal-identity
     app.kubernetes.io/part-of: api-monetization
 spec:
-  activeDeadlineSeconds: 1200
+  activeDeadlineSeconds: 3600
   backoffLimit: 2
   template:
     metadata:

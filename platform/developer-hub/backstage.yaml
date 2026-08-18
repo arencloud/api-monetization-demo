@@ -9,6 +9,9 @@ metadata:
     app.kubernetes.io/name: api-monetization-developer-hub
     app.kubernetes.io/part-of: api-monetization
 spec:
+  # RHDH 1.10 enables the separate Lightspeed flavour by default. The demo
+  # already provides its own OpenShift AI experience, so keep the portal lean.
+  flavours: []
   monitoring:
     enabled: true
   database:

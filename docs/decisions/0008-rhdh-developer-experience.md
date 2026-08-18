@@ -13,6 +13,11 @@ of Keycloak realm for OIDC, organization synchronization, self-registration,
 and group-to-role mapping. Use a dedicated single-instance CloudNativePG
 database and service account for the demo profile.
 
+Disable RHDH's default Lightspeed flavour. The project already exposes its own
+OpenShift AI model through RHCL token policies, metering, and billing; a second
+unconfigured AI sidecar would consume resources without contributing to the
+monetization story.
+
 The Kuadrant plugin is responsible for RHCL API-product synchronization,
 product discovery, access requests, approvals, API-key management, and
 PlanPolicy visibility. It does not become a billing system. Subscription state,

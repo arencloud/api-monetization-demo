@@ -158,6 +158,8 @@ Red Hat Developer Hub is installed through its Operator as the strategic
 developer experience. The integrity-pinned Kuadrant frontend and backend
 plugins synchronize the three RHCL `APIProduct` resources into the catalog and
 provide product discovery, access requests, approvals, and API-key lifecycle.
+The default RHDH Lightspeed flavour is disabled because the solution already
+contains its independently governed OpenShift AI chat product.
 Developer Hub delegates login to the existing Red Hat build of Keycloak realm;
 Keycloak groups map to the Kuadrant consumer, owner, and administrator roles.
 The existing monetization portal remains deployed during this migration and is
