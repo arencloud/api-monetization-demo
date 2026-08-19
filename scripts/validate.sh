@@ -430,6 +430,12 @@ expected_token_env = {
 }
 if expected_token_env not in backstage_container.get("env", []):
     raise SystemExit("RHDH must map the cluster-generated token into Kuadrant's required setting")
+runtime_config = pathlib.Path("platform/developer-hub/runtime-config.yaml").read_text()
+if (
+    "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt" not in runtime_config
+    or "cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt" not in runtime_config
+):
+    raise SystemExit("RHDH's trusted bundle must include the OpenShift Kubernetes API CA")
 plugin_volume = next(
     (
         volume for volume in pod_spec.get("volumes", [])

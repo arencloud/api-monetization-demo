@@ -222,6 +222,10 @@ if grep -q "Missing required config value at 'kubernetes.clusterLocatorMethods\[
   echo "error: Developer Hub did not receive its cluster-generated Kubernetes credential" >&2
   exit 1
 fi
+if grep -q "self-signed certificate in certificate chain" <<<"$rhdh_logs"; then
+  echo "error: Developer Hub does not trust the OpenShift Kubernetes API certificate" >&2
+  exit 1
+fi
 if [[ $(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
   --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
     -o go-template='{{index .data "tls.crt"}}' | base64 -d) \

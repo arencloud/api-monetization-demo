@@ -240,6 +240,9 @@ spec:
               oc get secret router-ca -n openshift-ingress-operator \
                 -o go-template='{{index .data "tls.crt"}}' \
                 | base64 -d >/tmp/router-ca.crt
+              printf '\n' >>/tmp/router-ca.crt
+              cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+                >>/tmp/router-ca.crt
               oc create configmap api-monetization-rhdh-router-ca \
                 --from-file=router-ca.crt=/tmp/router-ca.crt \
                 --dry-run=client -o yaml \
