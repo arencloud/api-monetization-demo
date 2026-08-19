@@ -91,8 +91,9 @@ catalog through a confidential, read-only service account. `api-consumers`,
 `api-owners`, and `api-admins` map to the matching RHDH RBAC roles, and newly
 registered developers enter the consumer group by default.
 An external conditional RBAC policy limits consumers to catalog entities of
-Kind `API`; Component/Service entities and their development controls remain
-owner and administrator concerns. API-owner Components with a validated
+Kind `API` and `Group`, allowing API ownership relations to resolve while
+Component/Service entities and their development controls remain owner and
+administrator concerns. API-owner Components with a validated
 `github.com/project-slug` annotation receive an **Open in Dev Spaces** action,
 including projects created by earlier Golden Path template versions.
 

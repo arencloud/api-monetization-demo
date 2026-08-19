@@ -10,3 +10,4 @@ conditions:
   params:
     kinds:
       - API
+      - Group

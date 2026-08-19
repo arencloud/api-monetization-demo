@@ -204,9 +204,9 @@ def assert_platform_configuration() -> None:
         conditional_policy.get("roleEntityRef") != "role:default/api-consumer"
         or conditional_policy.get("permissionMapping") != ["read"]
         or conditional_policy.get("conditions", {}).get("rule") != "IS_ENTITY_KIND"
-        or conditional_policy.get("conditions", {}).get("params", {}).get("kinds") != ["API"]
+        or conditional_policy.get("conditions", {}).get("params", {}).get("kinds") != ["API", "Group"]
     ):
-        fail("API consumers must see only API entities through conditional RBAC")
+        fail("API consumers must see APIs and their owner groups through conditional RBAC")
 
     project = yaml.safe_load((ROOT / "gitops/applications/api-owner-project.yaml").read_text(encoding="utf-8"))
     spec = project.get("spec", {})

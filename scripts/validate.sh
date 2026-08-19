@@ -377,9 +377,9 @@ if (
     or conditional_policy.get("pluginId") != "catalog"
     or conditional_policy.get("permissionMapping") != ["read"]
     or conditional_policy.get("conditions", {}).get("rule") != "IS_ENTITY_KIND"
-    or conditional_policy.get("conditions", {}).get("params", {}).get("kinds") != ["API"]
+    or conditional_policy.get("conditions", {}).get("params", {}).get("kinds") != ["API", "Group"]
 ):
-    raise SystemExit("RHDH consumers must be conditionally restricted to catalog Kind API")
+    raise SystemExit("RHDH consumers must be restricted to APIs and their owner groups")
 for permission, action in (
     ("api-monetization.subscription.create.own", "create"),
     ("api-monetization.subscription.update.own", "update"),
