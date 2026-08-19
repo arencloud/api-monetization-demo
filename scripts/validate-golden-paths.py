@@ -71,6 +71,8 @@ def assert_template(path: pathlib.Path) -> None:
     spec = template.get("spec", {})
     if spec.get("owner") != "group:default/api-owners":
         fail(f"{path}: template must be owned by api-owners")
+    if template.get("metadata", {}).get("annotations", {}).get("backstage.io/template-version") != "1.2.0":
+        fail(f"{path}: template must expose the self-service publication release")
     actions = [step.get("action") for step in spec.get("steps", [])]
     if actions != ["fetch:template", "publish:github", "catalog:register"]:
         fail(f"{path}: must render, create a dedicated GitHub repository, and register it")
@@ -107,15 +109,15 @@ def assert_template(path: pathlib.Path) -> None:
         (link for link in output_links if link.get("title") == "Dedicated GitHub repository"),
         {},
     ).get("url")
-    bootstrap_link = next(
-        (link for link in output_links if link.get("title") == "Bootstrap with OpenShift GitOps"),
+    publication_link = next(
+        (link for link in output_links if link.get("title") == "Publish from the Component overview"),
         {},
-    ).get("url")
+    )
     expected_repository = "https://github.com/${{ parameters.repoOwner }}/${{ parameters.name }}"
     if repository_link != expected_repository:
         fail(f"{path}: repository link must not contain a Git transport suffix")
-    if bootstrap_link != f"{expected_repository}/blob/main/bootstrap/argocd-application.yaml":
-        fail(f"{path}: GitOps bootstrap link must address the GitHub web interface")
+    if publication_link.get("entityRef") != "${{ steps.register.output.entityRef }}":
+        fail(f"{path}: task output must direct the owner to governed publication")
 
 
 def assert_platform_configuration() -> None:
@@ -144,6 +146,8 @@ def assert_platform_configuration() -> None:
         fail("RHDH must inject the discovered Dev Spaces URL into every Golden Path")
     if app_config.get("apiMonetization", {}).get("devSpacesBaseUrl") != "${DEV_SPACES_URL}":
         fail("RHDH monetization backend must consume the discovered Dev Spaces URL")
+    if app_config.get("apiMonetization", {}).get("publication", {}).get("githubOwner") != "arencloud":
+        fail("RHDH publication must be restricted to the approved GitHub organization")
     custom_resources = {
         (resource.get("group"), resource.get("apiVersion"), resource.get("plural"))
         for resource in app_config.get("kubernetes", {}).get("customResources", [])
@@ -192,6 +196,13 @@ def assert_platform_configuration() -> None:
             line = f"p, role:default/{role}, {permission}, {action}, allow"
             if line not in policy:
                 fail(f"RHDH {role} is missing {permission}")
+        for permission, action in (
+            ("api-monetization.publication.read", "read"),
+            ("api-monetization.publication.create", "create"),
+        ):
+            line = f"p, role:default/{role}, {permission}, {action}, allow"
+            if line not in policy:
+                fail(f"RHDH {role} is missing {permission}")
     consumer_lines = [line for line in policy.splitlines() if "role:default/api-consumer" in line]
     if any("scaffolder." in line or "catalog.location.create" in line for line in consumer_lines):
         fail("API consumers must not execute owner Golden Paths")
@@ -218,6 +229,31 @@ def assert_platform_configuration() -> None:
     forbidden = {("", "Secret"), ("rbac.authorization.k8s.io", "Role"), ("rbac.authorization.k8s.io", "RoleBinding")}
     if allowed & forbidden or spec.get("clusterResourceWhitelist"):
         fail("API-owner repositories must not create secrets, RBAC, or cluster resources")
+
+    access = list(yaml.safe_load_all(
+        (ROOT / "platform/developer-hub/kuadrant-access.yaml").read_text(encoding="utf-8")
+    ))
+    publication_role = next(
+        (resource for resource in access if resource and resource.get("kind") == "Role"
+         and resource.get("metadata", {}).get("name") == "api-monetization-rhdh-publications"),
+        None,
+    )
+    publication_binding = next(
+        (resource for resource in access if resource and resource.get("kind") == "RoleBinding"
+         and resource.get("metadata", {}).get("name") == "api-monetization-rhdh-publications"),
+        None,
+    )
+    expected_verbs = {"get", "create", "patch"}
+    role_rules = publication_role.get("rules", []) if publication_role else []
+    if not any(
+        rule.get("apiGroups") == ["argoproj.io"]
+        and rule.get("resources") == ["applications"]
+        and set(rule.get("verbs", [])) == expected_verbs
+        for rule in role_rules
+    ):
+        fail("RHDH publication role must have only the required Argo CD Application verbs")
+    if not publication_binding or publication_binding.get("roleRef", {}).get("name") != "api-monetization-rhdh-publications":
+        fail("RHDH publication role must be bound in openshift-gitops")
 
     rendered = subprocess.check_output(
         ["oc", "kustomize", "gitops/applications"], cwd=ROOT, text=True
@@ -305,6 +341,35 @@ def assert_rendered_project(kind: str, project: pathlib.Path) -> None:
     for suffix in ("api-key", "jwt"):
         if not (project / "gitops/api-products.yaml").read_text(encoding="utf-8").count(f"orders-edge-{suffix}"):
             fail(f"{kind}: generated project is missing the {suffix} product")
+
+    routes = (project / "gitops/routes.yaml").read_text(encoding="utf-8")
+    auth = (project / "gitops/auth-policies.yaml").read_text(encoding="utf-8")
+    plans = (project / "gitops/plans.yaml").read_text(encoding="utf-8")
+    if "api-monetization.invalid" not in routes or "jwt.api-monetization.invalid" not in routes:
+        fail(f"{kind}: generated routes must use portable publication placeholders")
+    api_products = (project / "gitops/api-products.yaml").read_text(encoding="utf-8")
+    if api_products.count("svc.cluster.local:8082/openapi.yaml") != 2:
+        fail(f"{kind}: both APIProducts must use the mesh-exempt documentation port")
+    peer_authentication = yaml.safe_load(
+        (project / "gitops/peer-authentication.yaml").read_text(encoding="utf-8")
+    )
+    if (
+        peer_authentication.get("spec", {}).get("mtls", {}).get("mode") != "STRICT"
+        or peer_authentication.get("spec", {}).get("portLevelMtls", {}).get("8082", {}).get("mode") != "DISABLE"
+    ):
+        fail(f"{kind}: API traffic must retain strict mTLS with only port 8082 exempted")
+    for required in (
+        "/internal/entitlements/", "/internal/entitlements/token/",
+        "active-subscription", "x-monetization-customer", "x-monetization-plan",
+    ):
+        if required not in auth:
+            fail(f"{kind}: generated AuthPolicies are missing {required}")
+    for required in (
+        'auth.kuadrant.plan == "free"', 'auth.kuadrant.plan == "developer"',
+        "auth.kuadrant.customer",
+    ):
+        if required not in plans:
+            fail(f"{kind}: generated JWT plan policy is missing {required}")
 
     if kind == "camel-api-integration":
         ET.parse(project / "pom.xml")

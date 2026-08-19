@@ -48,6 +48,13 @@ data:
       created_at timestamptz NOT NULL DEFAULT now()
     );
 
+    CREATE TABLE monetization.api_product_plans (
+      api_product_id text NOT NULL REFERENCES monetization.api_products(id) ON DELETE CASCADE,
+      plan_id text NOT NULL REFERENCES monetization.plans(id),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (api_product_id, plan_id)
+    );
+
     CREATE TABLE monetization.customers (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       external_id text NOT NULL UNIQUE,
@@ -212,6 +219,11 @@ data:
       ('inventory', 'Inventory API', 'Product and stock inventory operations', 'request'),
       ('payments', 'Payment API', 'Payment authorization and settlement operations', 'request'),
       ('ai-chat', 'AI Chat API', 'CPU-hosted chat inference billed by prompt and completion tokens', 'token');
+
+    INSERT INTO monetization.api_product_plans (api_product_id, plan_id)
+      SELECT product.id, plan.id
+      FROM monetization.api_products product
+      CROSS JOIN monetization.plans plan;
 
     INSERT INTO monetization.customers (external_id, display_name, billing_email)
       VALUES ('demo-company', 'Demo Company', 'billing@example.invalid');

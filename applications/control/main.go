@@ -593,7 +593,12 @@ func (a *app) changePlan(w http.ResponseWriter, r *http.Request) {
 	if input.Product == "" {
 		input.Product = "inventory"
 	}
-	if !validIdentifier(input.Plan) || !selfServiceProductAvailable(input.Product) {
+	definition, available, discoveryErr := a.selfServiceProduct(r.Context(), input.Product)
+	if discoveryErr != nil {
+		serverError(w, discoveryErr)
+		return
+	}
+	if !validIdentifier(input.Plan) || !available || !containsString(definition.Plans, input.Plan) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid plan"})
 		return
 	}
@@ -678,7 +683,12 @@ func (a *app) changeSubscriptionStatus(w http.ResponseWriter, r *http.Request) {
 	if input.Product == "" {
 		input.Product = "inventory"
 	}
-	if (input.Status != "active" && input.Status != "suspended") || input.Version < 1 || !selfServiceProductAvailable(input.Product) {
+	_, available, discoveryErr := a.selfServiceProduct(r.Context(), input.Product)
+	if discoveryErr != nil {
+		serverError(w, discoveryErr)
+		return
+	}
+	if (input.Status != "active" && input.Status != "suspended") || input.Version < 1 || !available {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "status must be active or suspended with the current version"})
 		return
 	}

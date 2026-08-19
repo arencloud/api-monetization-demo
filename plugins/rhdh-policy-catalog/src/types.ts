@@ -92,6 +92,7 @@ export interface CatalogProduct {
   description: string;
   unitName: string;
   available: boolean;
+  planIds: string[];
 }
 
 export interface ProductCatalog {

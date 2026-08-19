@@ -11,6 +11,5 @@ COPY --from=builder /home/jboss/project/target/quarkus-app/*.jar ./
 COPY --from=builder /home/jboss/project/target/quarkus-app/app/ app/
 COPY --from=builder /home/jboss/project/target/quarkus-app/quarkus/ quarkus/
 USER 185
-EXPOSE 8080
+EXPOSE 8080 8082
 ENTRYPOINT ["java", "-jar", "quarkus-run.jar"]
-

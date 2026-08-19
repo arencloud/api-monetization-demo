@@ -9,6 +9,5 @@ FROM registry.access.redhat.com/ubi9-micro:9.7
 WORKDIR /opt/app-root/src
 COPY --from=builder /tmp/api /usr/local/bin/api
 USER 1001
-EXPOSE 8080
+EXPOSE 8080 8082
 ENTRYPOINT ["/usr/local/bin/api"]
-

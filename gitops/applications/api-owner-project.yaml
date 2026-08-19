@@ -20,6 +20,7 @@ spec:
     - {group: image.openshift.io, kind: ImageStream}
     - {group: build.openshift.io, kind: BuildConfig}
     - {group: monitoring.coreos.com, kind: ServiceMonitor}
+    - {group: security.istio.io, kind: PeerAuthentication}
     - {group: gateway.networking.k8s.io, kind: HTTPRoute}
     - {group: kuadrant.io, kind: AuthPolicy}
     - {group: kuadrant.io, kind: RateLimitPolicy}

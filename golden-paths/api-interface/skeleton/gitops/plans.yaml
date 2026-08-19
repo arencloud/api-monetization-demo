@@ -34,11 +34,23 @@ metadata:
 spec:
   targetRef: {group: gateway.networking.k8s.io, kind: HTTPRoute, name: '${{ values.name }}-jwt'}
   limits:
-    authenticated-developer:
+    free:
+      rates:
+        - limit: ${{ values.freeRequestsPerMinute }}
+          window: 1m
+        - limit: ${{ values.freeMonthlyQuota }}
+          window: 720h
+      counters:
+        - expression: auth.kuadrant.customer
+      when:
+        - predicate: auth.kuadrant.plan == "free"
+    developer:
       rates:
         - limit: ${{ values.developerRequestsPerMinute }}
           window: 1m
         - limit: ${{ values.developerMonthlyQuota }}
           window: 720h
       counters:
-        - expression: auth.identity.sub
+        - expression: auth.kuadrant.customer
+      when:
+        - predicate: auth.kuadrant.plan == "developer"

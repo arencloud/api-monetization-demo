@@ -13,7 +13,7 @@ surface:
 - Gateway API routes for API-key and Keycloak JWT traffic;
 - RHCL AuthPolicy, PlanPolicy, and JWT RateLimitPolicy resources;
 - APIProduct entries for both authentication choices;
-- an OpenShift GitOps bootstrap Application.
+- governed self-service publication through Red Hat Developer Hub.
 
 ## Develop
 
@@ -27,17 +27,25 @@ go run .
 curl http://localhost:8080${{ values.apiPath }}
 ```
 
-## Onboard through GitOps
+## Publish through Developer Hub
 
-The API Platform team reviews `bootstrap/argocd-application.yaml` before adding
-it to the cluster. The generated Application deliberately has no automated sync:
-the platform team performs the first and subsequent promotions after reviewing
-the repository. OpenShift then builds the `main` branch into the integrated
-registry and Argo CD reconciles `gitops/`.
+Keep both generated APIProducts in `Draft` while developing. When the contract,
+implementation, and plan limits are ready, change both APIProducts to
+`Published`, merge the changes into `main`, and return to this Component's
+Overview page in Developer Hub. Select **Publish API** on the OpenShift Dev
+Spaces card.
 
-The generated APIProduct and RHCL plan definitions are ready for catalog and
-credential provisioning. The Billing administrator must also approve commercial
-pricing for the product; API owners control technical limits, not prices.
+Developer Hub validates the repository contract, creates a constrained Argo CD
+Application, and discovers the cluster's gateway and Keycloak hostnames. Argo CD
+then builds `main` with the integrated registry and reconciles `gitops/`. The API
+becomes available for consumer subscription only after the APIProduct reports
+both `Ready=True` and `OpenAPISpecReady=True`. Matching centrally governed
+commercial plans are attached automatically; API owners control their generated technical
+limits, while centrally governed prices remain unchanged.
+
+The checked-in `bootstrap/argocd-application.yaml` is retained as a reviewable
+reference and disaster-recovery fallback. Normal publication must use Developer
+Hub so cluster-specific routes and subscription enforcement are applied.
 
 Private repositories require both an Argo CD repository credential and an
 OpenShift BuildConfig source secret. Public repositories work without either

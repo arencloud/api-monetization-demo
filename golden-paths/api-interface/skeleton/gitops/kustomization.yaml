@@ -4,6 +4,7 @@ resources:
   - build.yaml
   - deployment.yaml
   - service.yaml
+  - peer-authentication.yaml
   - monitoring.yaml
   - routes.yaml
   - auth-policies.yaml

@@ -21,7 +21,10 @@ import {
   subscriptionDeleteOwnPermission,
   subscriptionUpdateOwnPermission,
   tokenRateLimitPolicyListPermission,
+  publicationCreatePermission,
+  publicationReadPermission,
 } from './permissions';
+import { publicationStatus, publishGeneratedProject } from './publication';
 
 const permissionByAccess: Record<ControlAccess, BasicPermission> = {
   'read-own': billingReadOwnPermission,
@@ -124,6 +127,7 @@ export async function createRouter({
   const controlBaseUrl = config.getOptionalString('apiMonetization.controlBaseUrl') ||
     'http://monetization-control.api-monetization-data.svc.cluster.local:8080';
   const devSpacesBaseUrl = config.getString('apiMonetization.devSpacesBaseUrl');
+  const publicationOwner = config.getOptionalString('apiMonetization.publication.githubOwner') || 'arencloud';
 
   router.use(express.json());
 
@@ -138,6 +142,24 @@ export async function createRouter({
   router.get('/tokenratelimitpolicies', async (req, res) => {
     await requirePermission(req, httpAuth, permissions, tokenRateLimitPolicyListPermission);
     res.json(await listTokenRateLimitPolicies());
+  });
+
+  router.get('/publications/:owner/:repository', async (req, res) => {
+    await requirePermission(req, httpAuth, permissions, publicationReadPermission);
+    if (req.params.owner !== publicationOwner) {
+      throw new InputError(`publications are restricted to the ${publicationOwner} organization`);
+    }
+    res.json(await publicationStatus(req.params.owner, req.params.repository));
+  });
+
+  router.post('/publications/:owner/:repository', async (req, res) => {
+    await requirePermission(req, httpAuth, permissions, publicationCreatePermission);
+    const result = await publishGeneratedProject(
+      publicationOwner,
+      req.params.owner,
+      req.params.repository,
+    );
+    res.status(result.phase === 'ready' ? 200 : 202).json(result);
   });
 
   router.all('/control/user/:resource(*)', async (req, res) => {

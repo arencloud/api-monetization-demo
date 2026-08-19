@@ -226,7 +226,11 @@ export const MonetizationPage = () => {
                   {state.value.catalog.products.filter(product => product.available).map(product => {
                     const subscription = state.value?.subscriptions.find(item => item.product === product.id);
                     const credential = state.value?.credentials[product.id];
-                    const selectedPlan = planSelections[product.id] || subscription?.plan || 'free';
+                    const productPlans = state.value?.catalog?.plans.filter(
+                      plan => product.planIds.includes(plan.id),
+                    ) || [];
+                    const selectedPlan = planSelections[product.id] || subscription?.plan ||
+                      (product.planIds.includes('free') ? 'free' : productPlans[0]?.id || '');
                     const actionKey = `${product.id}-action`;
                     return (
                       <Grid item xs={12} md={6} lg={4} key={product.id}>
@@ -253,7 +257,7 @@ export const MonetizationPage = () => {
                                   onChange={event => setPlanSelections(current => ({ ...current, [product.id]: String(event.target.value) }))}
                                   label="Plan"
                                 >
-                                  {state.value?.catalog?.plans.map(plan => (
+                                  {productPlans.map(plan => (
                                     <MenuItem key={plan.id} value={plan.id}>
                                       {plan.displayName} · {currency(plan.monthlyPriceCents)}/month
                                     </MenuItem>

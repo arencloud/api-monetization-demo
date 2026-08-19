@@ -1,6 +1,6 @@
 {
   "name": "@arencloud/rhdh-monetization-backend",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "license": "Apache-2.0",
   "main": "src/index.ts",
@@ -52,8 +52,8 @@
     "@backstage/plugin-permission-common": "^0.9.7",
     "@backstage/plugin-permission-node": "^0.10.11",
     "@red-hat-developer-hub/cli": "1.10.3",
-    "@types/jest": "^29.5.14",
     "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.14",
     "jest": "29.7.0",
     "jest-environment-jsdom": "29.7.0",
     "typescript": "^5.9.3"
@@ -61,5 +61,9 @@
   "files": [
     "dist",
     "dist-dynamic"
+  ],
+  "bundleDependencies": [
+    "express",
+    "express-promise-router"
   ]
 }

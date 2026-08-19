@@ -18,7 +18,7 @@ var requestCount atomic.Uint64
 
 func main() {
 	mux := routes()
-	server := &http.Server{
+	apiServer := &http.Server{
 		Addr:              env("HTTP_ADDR", ":8080"),
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
@@ -26,8 +26,27 @@ func main() {
 		WriteTimeout:      15 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
-	log.Printf("${{ values.name }} listening on %s", server.Addr)
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	docsMux := http.NewServeMux()
+	docsMux.HandleFunc("GET /healthz", health)
+	docsMux.HandleFunc("GET /openapi.yaml", openAPI)
+	docsServer := &http.Server{
+		Addr:              env("DOCS_ADDR", ":8082"),
+		Handler:           docsMux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+	errors := make(chan error, 2)
+	for name, server := range map[string]*http.Server{
+		"API": apiServer, "OpenAPI documentation": docsServer,
+	} {
+		go func() {
+			log.Printf("${{ values.name }} %s listening on %s", name, server.Addr)
+			errors <- server.ListenAndServe()
+		}()
+	}
+	if err := <-errors; err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
 }
@@ -78,4 +97,3 @@ func env(name, fallback string) string {
 	}
 	return fallback
 }
-

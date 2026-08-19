@@ -146,3 +146,5 @@ dynamicPlugins:
 apiMonetization:
   controlBaseUrl: http://monetization-control.api-monetization-data.svc.cluster.local:8080
   devSpacesBaseUrl: ${DEV_SPACES_URL}
+  publication:
+    githubOwner: arencloud

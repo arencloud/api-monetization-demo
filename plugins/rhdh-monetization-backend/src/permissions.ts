@@ -30,6 +30,16 @@ export const subscriptionDeleteOwnPermission = createPermission({
   attributes: { action: 'delete' },
 });
 
+export const publicationReadPermission = createPermission({
+  name: 'api-monetization.publication.read',
+  attributes: { action: 'read' },
+});
+
+export const publicationCreatePermission = createPermission({
+  name: 'api-monetization.publication.create',
+  attributes: { action: 'create' },
+});
+
 export const apiMonetizationPermissions = [
   tokenRateLimitPolicyListPermission,
   billingReadOwnPermission,
@@ -37,4 +47,6 @@ export const apiMonetizationPermissions = [
   subscriptionCreateOwnPermission,
   subscriptionUpdateOwnPermission,
   subscriptionDeleteOwnPermission,
+  publicationReadPermission,
+  publicationCreatePermission,
 ];

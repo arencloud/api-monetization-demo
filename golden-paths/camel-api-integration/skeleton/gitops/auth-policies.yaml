@@ -15,11 +15,33 @@ spec:
           allNamespaces: true
         credentials:
           authorizationHeader: {prefix: APIKEY}
+    metadata:
+      subscription:
+        http:
+          method: GET
+          urlExpression: >-
+            'http://monetization-control.api-monetization-data.svc.cluster.local:8081/internal/entitlements/' +
+            auth.identity.metadata.annotations['secret.kuadrant.io/user-id'] + '/${{ values.name }}'
+    authorization:
+      active-subscription:
+        patternMatching:
+          patterns:
+            - {selector: auth.metadata.subscription.status, operator: eq, value: active}
     response:
+      success:
+        headers:
+          x-monetization-customer:
+            plain: {selector: auth.identity.metadata.annotations.secret\.kuadrant\.io/user-id}
+          x-monetization-plan:
+            plain: {selector: auth.metadata.subscription.plan}
       unauthenticated:
         code: 401
         headers: {content-type: {value: application/json}}
         body: {value: '{"error":"valid API key required"}'}
+      unauthorized:
+        code: 403
+        headers: {content-type: {value: application/json}}
+        body: {value: '{"error":"active subscription required"}'}
 ---
 apiVersion: kuadrant.io/v1
 kind: AuthPolicy
@@ -33,7 +55,7 @@ spec:
     authentication:
       keycloak:
         jwt:
-          jwksUrl: http://api-monetization-service.api-monetization-identity.svc.cluster.local:8080/realms/api-monetization/protocol/openid-connect/certs
+          issuerUrl: https://keycloak-api-monetization.apps.invalid/realms/api-monetization
     authorization:
       keycloak-issuer:
         patternMatching:
@@ -43,7 +65,30 @@ spec:
         patternMatching:
           patterns:
             - {selector: auth.identity.aud, operator: incl, value: api-monetization}
+      active-subscription:
+        patternMatching:
+          patterns:
+            - {selector: auth.metadata.subscription.status, operator: eq, value: active}
+    metadata:
+      subscription:
+        http:
+          method: GET
+          urlExpression: >-
+            'http://monetization-control.api-monetization-data.svc.cluster.local:8081/internal/entitlements/token/' +
+            auth.identity.sub + '/' + auth.identity.azp + '/${{ values.name }}'
     response:
+      success:
+        filters:
+          kuadrant:
+            json:
+              properties:
+                customer: {selector: auth.metadata.subscription.customerId}
+                plan: {selector: auth.metadata.subscription.plan}
+        headers:
+          x-monetization-customer:
+            plain: {selector: auth.metadata.subscription.customerId}
+          x-monetization-plan:
+            plain: {selector: auth.metadata.subscription.plan}
       unauthenticated:
         code: 401
         headers: {content-type: {value: application/json}}
@@ -51,5 +96,4 @@ spec:
       unauthorized:
         code: 403
         headers: {content-type: {value: application/json}}
-        body: {value: '{"error":"api-monetization audience required"}'}
-
+        body: {value: '{"error":"token audience and active subscription are required"}'}

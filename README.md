@@ -176,8 +176,11 @@ Kaoto-editable mapping route. Each scaffolder run creates and registers a
 dedicated GitHub repository containing application source, OpenAPI, tests,
 OpenShift builds, Service Mesh configuration, Gateway API routes, RHCL
 authentication and plan resources, APIProducts, TechDocs, and a restricted
-Argo CD bootstrap Application. New products start in Draft and require platform
-and commercial review before publication.
+Argo CD bootstrap Application. New products start in Draft. After review, the
+owner publishes from the Component Overview: Developer Hub validates the
+repository, applies cluster-specific gateway and identity settings through the
+restricted AppProject, and the control plane adds the product to consumer
+subscriptions only after its APIProduct and OpenAPI contract are ready.
 
 Developer Hub delegates login to the existing Red Hat build of Keycloak realm;
 Keycloak groups map to the Kuadrant consumer, owner, and administrator roles.

@@ -19,14 +19,208 @@ import (
 const selfServiceIdentityProvider = "keycloak-user"
 
 type productDefinition struct {
-	APIProduct string
-	Path       string
+	APIProduct  string
+	Path        string
+	DisplayName string
+	Description string
+	UnitName    string
+	Plans       []string
 }
 
-var selfServiceProducts = map[string]productDefinition{
-	"ai-chat":   {APIProduct: "ai-chat-api", Path: "/v1/chat/completions"},
-	"inventory": {APIProduct: "inventory-api", Path: "/inventory"},
-	"payments":  {APIProduct: "payments-api", Path: "/payments"},
+var builtInProductDefaults = map[string]productDefinition{
+	"ai-chat":   {APIProduct: "ai-chat-api", Path: "/v1/chat/completions", UnitName: "token"},
+	"inventory": {APIProduct: "inventory-api", Path: "/inventory", UnitName: "request"},
+	"payments":  {APIProduct: "payments-api", Path: "/payments", UnitName: "request"},
+}
+
+type discoveredAPIProductList struct {
+	Items []struct {
+		Metadata struct {
+			Name        string            `json:"name"`
+			Annotations map[string]string `json:"annotations"`
+		} `json:"metadata"`
+		Spec struct {
+			DisplayName   string `json:"displayName"`
+			Description   string `json:"description"`
+			PublishStatus string `json:"publishStatus"`
+		} `json:"spec"`
+		Status struct {
+			Conditions []struct {
+				Type   string `json:"type"`
+				Status string `json:"status"`
+			} `json:"conditions"`
+			DiscoveredPlans []struct {
+				Tier string `json:"tier"`
+			} `json:"discoveredPlans"`
+		} `json:"status"`
+	} `json:"items"`
+}
+
+func conditionTrue(conditions []struct {
+	Type   string `json:"type"`
+	Status string `json:"status"`
+}, expected string) bool {
+	for _, condition := range conditions {
+		if condition.Type == expected && condition.Status == "True" {
+			return true
+		}
+	}
+	return false
+}
+
+func containsString(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
+}
+
+func (k *kubeClient) publishedProductDefinitions(ctx context.Context, namespace string) (map[string]productDefinition, error) {
+	var products discoveredAPIProductList
+	path := fmt.Sprintf("/apis/devportal.kuadrant.io/v1alpha1/namespaces/%s/apiproducts", namespace)
+	if err := k.request(ctx, http.MethodGet, path, nil, &products); err != nil {
+		return nil, err
+	}
+	result := make(map[string]productDefinition)
+	for _, item := range products.Items {
+		product := item.Metadata.Annotations["monetization.arencloud.com/product"]
+		if !validIdentifier(product) || item.Metadata.Name != product+"-api" ||
+			item.Spec.PublishStatus != "Published" ||
+			!conditionTrue(item.Status.Conditions, "Ready") ||
+			!conditionTrue(item.Status.Conditions, "OpenAPISpecReady") {
+			continue
+		}
+		definition := builtInProductDefaults[product]
+		definition.APIProduct = item.Metadata.Name
+		if annotatedPath := item.Metadata.Annotations["monetization.arencloud.com/path"]; annotatedPath != "" {
+			definition.Path = annotatedPath
+		}
+		if definition.Path == "" || definition.Path[0] != '/' {
+			continue
+		}
+		definition.DisplayName = item.Spec.DisplayName
+		definition.Description = item.Spec.Description
+		if unit := item.Metadata.Annotations["monetization.arencloud.com/unit"]; unit != "" {
+			definition.UnitName = unit
+		}
+		if definition.UnitName == "" {
+			definition.UnitName = "request"
+		}
+		for _, plan := range item.Status.DiscoveredPlans {
+			if validIdentifier(plan.Tier) && !containsString(definition.Plans, plan.Tier) {
+				definition.Plans = append(definition.Plans, plan.Tier)
+			}
+		}
+		if len(definition.Plans) == 0 {
+			continue
+		}
+		result[product] = definition
+	}
+	return result, nil
+}
+
+func (a *app) selfServiceProduct(ctx context.Context, product string) (productDefinition, bool, error) {
+	definitions, err := a.kube.publishedProductDefinitions(ctx, a.apiKeyNS)
+	if err != nil {
+		return productDefinition{}, false, err
+	}
+	definition, available := definitions[product]
+	if !available {
+		return productDefinition{}, false, nil
+	}
+	commercialPlans, err := a.activeCommercialPlans(ctx)
+	if err != nil {
+		return productDefinition{}, false, err
+	}
+	definition.Plans = admittedCommercialPlans(definition.Plans, commercialPlans)
+	available = len(definition.Plans) > 0
+	return definition, available, nil
+}
+
+func (a *app) activeCommercialPlans(ctx context.Context) (map[string]bool, error) {
+	rows, err := a.db.Query(ctx, `SELECT id FROM monetization.plans WHERE active`)
+	if err != nil {
+		return nil, err
+	}
+	commercialPlans := make(map[string]bool)
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		commercialPlans[id] = true
+	}
+	if err = rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+	return commercialPlans, nil
+}
+
+func admittedCommercialPlans(discovered []string, commercialPlans map[string]bool) []string {
+	plans := make([]string, 0, len(discovered))
+	for _, plan := range discovered {
+		if commercialPlans[plan] {
+			plans = append(plans, plan)
+		}
+	}
+	return plans
+}
+
+func (a *app) syncPublishedProducts(ctx context.Context) (map[string]productDefinition, error) {
+	definitions, err := a.kube.publishedProductDefinitions(ctx, a.apiKeyNS)
+	if err != nil {
+		return nil, err
+	}
+	commercialPlans, err := a.activeCommercialPlans(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for id, definition := range definitions {
+		plans := admittedCommercialPlans(definition.Plans, commercialPlans)
+		if len(plans) == 0 {
+			delete(definitions, id)
+			continue
+		}
+		definition.Plans = plans
+		definitions[id] = definition
+	}
+	tx, err := a.db.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err = tx.Exec(ctx, `UPDATE monetization.api_products SET active=false`); err != nil {
+		return nil, err
+	}
+	for id, definition := range definitions {
+		if _, err = tx.Exec(ctx, `
+			INSERT INTO monetization.api_products (id, display_name, description, unit_name, active)
+			VALUES ($1, $2, $3, $4, true)
+			ON CONFLICT (id) DO UPDATE SET display_name=EXCLUDED.display_name,
+			  description=EXCLUDED.description, unit_name=EXCLUDED.unit_name, active=true`,
+			id, definition.DisplayName, definition.Description, definition.UnitName); err != nil {
+			return nil, err
+		}
+		if _, err = tx.Exec(ctx, `DELETE FROM monetization.api_product_plans WHERE api_product_id=$1`, id); err != nil {
+			return nil, err
+		}
+		for _, plan := range definition.Plans {
+			if _, err = tx.Exec(ctx, `
+				INSERT INTO monetization.api_product_plans (api_product_id, plan_id)
+				VALUES ($1, $2) ON CONFLICT DO NOTHING`, id, plan); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return definitions, nil
 }
 
 type developerCustomer struct {
@@ -58,6 +252,11 @@ func (a *app) me(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) catalog(w http.ResponseWriter, r *http.Request) {
+	definitions, err := a.syncPublishedProducts(r.Context())
+	if err != nil {
+		serverError(w, fmt.Errorf("discover published API products: %w", err))
+		return
+	}
 	products, err := a.db.Query(r.Context(), `
 		SELECT id, display_name, description, unit_name
 		FROM monetization.api_products WHERE active ORDER BY display_name`)
@@ -73,10 +272,10 @@ func (a *app) catalog(w http.ResponseWriter, r *http.Request) {
 			serverError(w, err)
 			return
 		}
-		_, available := selfServiceProducts[id]
+		definition, available := definitions[id]
 		result = append(result, map[string]any{
 			"id": id, "displayName": name, "description": description,
-			"unitName": unit, "available": available,
+			"unitName": unit, "available": available, "planIds": definition.Plans,
 		})
 	}
 	if err = products.Err(); err != nil {
@@ -175,7 +374,13 @@ func (a *app) subscribe(w http.ResponseWriter, r *http.Request) {
 	}
 	input.Product = strings.ToLower(strings.TrimSpace(input.Product))
 	input.Plan = strings.ToLower(strings.TrimSpace(input.Plan))
-	if _, available := selfServiceProducts[input.Product]; !available || !validIdentifier(input.Plan) {
+	definitions, discoveryErr := a.syncPublishedProducts(r.Context())
+	if discoveryErr != nil {
+		serverError(w, discoveryErr)
+		return
+	}
+	definition, available := definitions[input.Product]
+	if !available || !validIdentifier(input.Plan) || !containsString(definition.Plans, input.Plan) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "selected API product or plan is not available for self-service"})
 		return
 	}
@@ -238,7 +443,8 @@ func (a *app) subscribe(w http.ResponseWriter, r *http.Request) {
 func (a *app) changeMyPlan(w http.ResponseWriter, r *http.Request) {
 	claims, _ := authenticatedClaims(r.Context())
 	product := r.PathValue("product")
-	if claims.Subject == "" || !selfServiceProductAvailable(product) {
+	definition, available, discoveryErr := a.selfServiceProduct(r.Context(), product)
+	if claims.Subject == "" || discoveryErr != nil || !available {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid subscription"})
 		return
 	}
@@ -250,7 +456,7 @@ func (a *app) changeMyPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	input.Plan = strings.ToLower(strings.TrimSpace(input.Plan))
-	if !validIdentifier(input.Plan) {
+	if !validIdentifier(input.Plan) || !containsString(definition.Plans, input.Plan) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid plan"})
 		return
 	}
@@ -418,7 +624,7 @@ func (a *app) credentialStatus(w http.ResponseWriter, r *http.Request) {
 	if state.Approved && revealed {
 		status = "active"
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": status, "revealed": revealed, "endpoint": endpointFor(state.Hostname, subscription.Product)})
+	writeJSON(w, http.StatusOK, map[string]any{"status": status, "revealed": revealed, "endpoint": a.endpointFor(r.Context(), state.Hostname, subscription.Product)})
 }
 
 func (a *app) revealCredential(w http.ResponseWriter, r *http.Request) {
@@ -471,7 +677,7 @@ func (a *app) revealCredential(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status": "active", "revealed": true, "apiKey": apiKey,
-		"prefix": prefix, "endpoint": endpointFor(state.Hostname, subscription.Product),
+		"prefix": prefix, "endpoint": a.endpointFor(r.Context(), state.Hostname, subscription.Product),
 	})
 }
 
@@ -512,7 +718,8 @@ func (a *app) developerManagedSubscription(w http.ResponseWriter, r *http.Reques
 }
 
 func (a *app) developerSubscriptionByState(w http.ResponseWriter, r *http.Request, claims portalClaims, product string, includeSuspended bool) (developerCustomer, subscription, bool) {
-	if claims.Subject == "" || !selfServiceProductAvailable(product) {
+	_, available, discoveryErr := a.selfServiceProduct(r.Context(), product)
+	if claims.Subject == "" || discoveryErr != nil || !available {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid developer subscription"})
 		return developerCustomer{}, subscription{}, false
 	}
@@ -608,20 +815,19 @@ func selfServiceResourceNames(customer, product string) (string, string) {
 	return base, base + "-key"
 }
 
-func selfServiceProductAvailable(product string) bool {
-	_, available := selfServiceProducts[product]
-	return available
-}
-
-func endpointFor(hostname, product string) string {
+func endpointForDefinition(hostname string, definition productDefinition) string {
 	if hostname == "" {
 		return ""
 	}
-	definition, available := selfServiceProducts[product]
-	if !available {
+	return "https://" + hostname + definition.Path
+}
+
+func (a *app) endpointFor(ctx context.Context, hostname, product string) string {
+	definition, available, err := a.selfServiceProduct(ctx, product)
+	if err != nil || !available {
 		return ""
 	}
-	return "https://" + hostname + definition.Path
+	return endpointForDefinition(hostname, definition)
 }
 
 func (a *app) provisionDeveloperCredential(ctx context.Context, customer developerCustomer, item subscription) error {
@@ -648,7 +854,10 @@ func (a *app) provisionDeveloperCredential(ctx context.Context, customer develop
 			}}}},
 		},
 	}
-	definition, available := selfServiceProducts[item.Product]
+	definition, available, err := a.selfServiceProduct(ctx, item.Product)
+	if err != nil {
+		return err
+	}
 	if !available {
 		return fmt.Errorf("API product %q is not enabled for self-service", item.Product)
 	}

@@ -12,6 +12,7 @@ spec:
       name: api-monetization
       namespace: api-monetization-gateway
       sectionName: http
+  hostnames: [api-monetization.invalid]
   rules:
     - matches:
         - method: POST
@@ -33,10 +34,10 @@ spec:
       name: api-monetization
       namespace: api-monetization-gateway
       sectionName: http
+  hostnames: [jwt.api-monetization.invalid]
   rules:
     - matches:
         - method: POST
           path: {type: PathPrefix, value: '${{ values.apiPath }}'}
       backendRefs:
         - {group: '', kind: Service, name: '${{ values.name }}', port: 8080, weight: 1}
-

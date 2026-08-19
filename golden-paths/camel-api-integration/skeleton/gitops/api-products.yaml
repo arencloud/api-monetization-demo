@@ -20,7 +20,7 @@ spec:
   contact: {team: API Owners, email: api-owners@example.invalid}
   documentation:
     docsURL: https://github.com/${{ values.repoOwner }}/${{ values.name }}/blob/main/README.md
-    openAPISpecURL: http://${{ values.name }}.api-monetization-apps.svc.cluster.local:8080/openapi.yaml
+    openAPISpecURL: http://${{ values.name }}.api-monetization-apps.svc.cluster.local:8082/openapi.yaml
     gitRepository: https://github.com/${{ values.repoOwner }}/${{ values.name }}
 ---
 apiVersion: devportal.kuadrant.io/v1alpha1
@@ -45,5 +45,5 @@ spec:
   contact: {team: API Owners, email: api-owners@example.invalid}
   documentation:
     docsURL: https://github.com/${{ values.repoOwner }}/${{ values.name }}/blob/main/README.md
-    openAPISpecURL: http://${{ values.name }}.api-monetization-apps.svc.cluster.local:8080/openapi.yaml
+    openAPISpecURL: http://${{ values.name }}.api-monetization-apps.svc.cluster.local:8082/openapi.yaml
     gitRepository: https://github.com/${{ values.repoOwner }}/${{ values.name }}
