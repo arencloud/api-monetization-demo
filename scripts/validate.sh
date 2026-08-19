@@ -175,6 +175,16 @@ if (
 ):
     raise SystemExit("OpenShift Dev Spaces must automatically track the stable channel head")
 
+with open("gitops/applications/devspaces.yaml", encoding="utf-8") as stream:
+    devspaces_application = yaml.safe_load(stream)
+devspaces_sync_options = (
+    devspaces_application.get("spec", {})
+    .get("syncPolicy", {})
+    .get("syncOptions", [])
+)
+if "CreateNamespace=true" not in devspaces_sync_options:
+    raise SystemExit("OpenShift Dev Spaces must create its destination namespace before reconciliation")
+
 with open("platform/developer-hub/dynamic-plugins.yaml", encoding="utf-8") as stream:
     dynamic_plugins = yaml.safe_load(stream)
 plugin_by_package = {
