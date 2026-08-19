@@ -79,11 +79,11 @@ catalog:
           timeout: {minutes: 1}
   locations:
     - type: url
-      target: https://github.com/arencloud/api-monetization-demo/blob/main/golden-paths/api-interface/template.yaml
+      target: https://github.com/arencloud/api-monetization-demo/blob/feature/api-owner-golden-paths/golden-paths/api-interface/template.yaml
       rules:
         - allow: [Template]
     - type: url
-      target: https://github.com/arencloud/api-monetization-demo/blob/main/golden-paths/camel-api-integration/template.yaml
+      target: https://github.com/arencloud/api-monetization-demo/blob/feature/api-owner-golden-paths/golden-paths/camel-api-integration/template.yaml
       rules:
         - allow: [Template]
 
