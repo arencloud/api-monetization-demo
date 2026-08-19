@@ -56,6 +56,10 @@ kubernetes:
           title: API Monetization OpenShift
           url: https://kubernetes.default.svc
           authProvider: serviceAccount
+          # Kuadrant 0.4.0 requires this explicit field when the Kubernetes
+          # backend also uses a config locator. Kubernetes generates the
+          # credential in-cluster; no token value is stored in Git.
+          serviceAccountToken: ${K8S_SERVICE_ACCOUNT_TOKEN}
           skipTLSVerify: false
           skipMetricsLookup: true
           dashboardApp: openshift

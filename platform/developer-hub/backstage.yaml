@@ -63,6 +63,12 @@ spec:
                     readOnly: true
             containers:
               - name: backstage-backend
+                env:
+                  - name: K8S_SERVICE_ACCOUNT_TOKEN
+                    valueFrom:
+                      secretKeyRef:
+                        name: api-monetization-rhdh-service-account-token
+                        key: token
                 resources:
                   requests:
                     cpu: 500m

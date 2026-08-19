@@ -167,6 +167,9 @@ if [[ -z $ingress_certificate ]]; then
 fi
 
 echo "waiting for Red Hat Developer Hub and Kuadrant plugin runtime"
+oc wait --for=jsonpath='{.data.token}' \
+  secret/api-monetization-rhdh-service-account-token \
+  -n api-monetization-developer-hub --timeout=5m
 oc wait --for=jsonpath='{.status.chePhase}'=Active \
   checluster.org.eclipse.che/devspaces -n openshift-devspaces --timeout=25m
 devspaces_url=$(oc get checluster.org.eclipse.che devspaces \
@@ -213,6 +216,10 @@ if ! grep -qi "loaded dynamic backend plugin 'backstage-plugin-kubernetes-backen
 fi
 if ! grep -qi "Loaded dynamic frontend plugin 'backstage-community-plugin-topology'" <<<"$rhdh_logs"; then
   echo "error: Developer Hub did not load the Topology source editor" >&2
+  exit 1
+fi
+if grep -q "Missing required config value at 'kubernetes.clusterLocatorMethods\[0\].clusters\[0\].serviceAccountToken'" <<<"$rhdh_logs"; then
+  echo "error: Developer Hub did not receive its cluster-generated Kubernetes credential" >&2
   exit 1
 fi
 if [[ $(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
