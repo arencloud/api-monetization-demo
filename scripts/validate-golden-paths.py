@@ -320,8 +320,8 @@ def assert_rendered_project(kind: str, project: pathlib.Path) -> None:
     component = next(document for document in catalog_documents if document.get("kind") == "Component")
     if any(document.get("kind") == "API" for document in catalog_documents):
         fail(f"{kind}: generated repositories must let Kuadrant publish API catalog entities")
-    if component.get("spec", {}).get("providesApis") != ["orders-edge-api", "orders-edge-api-jwt"]:
-        fail(f"{kind}: catalog Component must relate to both Kuadrant-published APIProducts")
+    if "providesApis" in component.get("spec", {}):
+        fail(f"{kind}: catalog Component must not expose a relation hidden from API consumers")
     if component.get("metadata", {}).get("annotations", {}).get("backstage.io/kubernetes-id") != "orders-edge":
         fail(f"{kind}: catalog Component is not mapped to its OpenShift workload")
     component_links = component.get("metadata", {}).get("links", [])

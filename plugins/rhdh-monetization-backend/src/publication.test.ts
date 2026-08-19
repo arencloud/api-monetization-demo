@@ -11,7 +11,6 @@ metadata:
     github.com/project-slug: arencloud/time
 spec:
   owner: group:default/api-owners
-  providesApis: ['time-api', 'time-api-jwt']
 `,
   kustomization: `
 resources:
@@ -132,5 +131,15 @@ describe('generated API publication validation', () => {
       ...files,
       catalog: `${files.catalog}\n---\napiVersion: backstage.io/v1alpha1\nkind: API\nmetadata:\n  name: time\n`,
     })).toThrow('must not define static API entities');
+  });
+
+  it('rejects a Component relation that consumers cannot resolve', () => {
+    expect(() => validateGeneratedProject('arencloud', 'arencloud', 'time', {
+      ...files,
+      catalog: files.catalog.replace(
+        '  owner: group:default/api-owners',
+        "  owner: group:default/api-owners\n  providesApis: ['time-api', 'time-api-jwt']",
+      ),
+    })).toThrow('consumers cannot read owner Components');
   });
 });

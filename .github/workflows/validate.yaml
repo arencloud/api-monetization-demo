@@ -66,4 +66,4 @@ jobs:
         run: make rhdh-plugin-test
 
       - name: Verify the committed RHDH plugin artifacts
-        run: git diff --exit-code -- platform/developer-hub/arencloud-rhdh-monetization-backend-dynamic-0.1.0.tgz platform/developer-hub/arencloud-rhdh-policy-catalog-dynamic-0.1.0.tgz
+        run: git diff --exit-code -- platform/developer-hub/arencloud-rhdh-monetization-backend-dynamic-0.1.4.tgz platform/developer-hub/arencloud-rhdh-policy-catalog-dynamic-0.1.6.tgz

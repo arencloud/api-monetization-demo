@@ -19,6 +19,5 @@ spec:
   type: service
   lifecycle: ${{ values.lifecycle }}
   owner: ${{ values.owner }}
-  # Kuadrant creates these catalog API entities only after the corresponding
-  # APIProducts are Published. Do not define duplicate static API entities here.
-  providesApis: ['${{ values.name }}-api', '${{ values.name }}-api-jwt']
+  # Kuadrant creates the consumer-facing API entities after publication. Keep
+  # them unrelated here because consumers intentionally cannot read Components.

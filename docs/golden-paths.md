@@ -51,6 +51,9 @@ register a duplicate static `API` entity. The Kuadrant catalog provider creates
 the API-key and Keycloak JWT API entities only from admitted APIProducts whose
 `publishStatus` is `Published`, adding the `kuadrant.io/namespace` and
 `kuadrant.io/apiproduct` references used by the API Product Information card.
+The Component deliberately omits `providesApis`: consumers are denied Component
+access, so that relation would point at an entity they cannot read and Backstage
+would display a misleading missing-entity warning on the published API page.
 Consumers therefore cannot discover a draft Golden Path API. After publication,
 they see the two authoritative API entities and must subscribe before opening
 either one.
