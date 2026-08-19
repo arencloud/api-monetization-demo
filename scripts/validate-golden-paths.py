@@ -128,11 +128,11 @@ def assert_platform_configuration() -> None:
         if location.get("type") == "url"
     }
     expected = {
-        "https://github.com/arencloud/api-monetization-demo/blob/main/golden-paths/api-interface/template.yaml",
-        "https://github.com/arencloud/api-monetization-demo/blob/main/golden-paths/camel-api-integration/template.yaml",
+        "https://github.com/arencloud/api-monetization-demo/blob/${GITOPS_SOURCE_REVISION}/golden-paths/api-interface/template.yaml",
+        "https://github.com/arencloud/api-monetization-demo/blob/${GITOPS_SOURCE_REVISION}/golden-paths/camel-api-integration/template.yaml",
     }
     if not expected.issubset(locations):
-        fail("RHDH catalog does not register both Golden Paths from the delivery branch")
+        fail("RHDH catalog does not register both Golden Paths from the reconciled commit")
     github_integrations = app_config.get("integrations", {}).get("github", [])
     if not any(integration.get("host") == "github.com" for integration in github_integrations):
         fail("RHDH must recognize github.com for catalog and publish actions")
