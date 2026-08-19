@@ -24,7 +24,7 @@ spec:
     type: Git
     git:
       uri: https://github.com/arencloud/api-monetization-demo.git
-      ref: feature/api-owner-golden-paths
+      ref: main
   strategy:
     type: Docker
     dockerStrategy:
