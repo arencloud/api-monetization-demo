@@ -206,7 +206,7 @@ if ! grep -q "Loaded dynamic frontend plugin '@arencloud/rhdh-policy-catalog-dyn
   echo "error: Developer Hub did not load the effective-policy catalog plugin" >&2
   exit 1
 fi
-if ! grep -qi "loaded dynamic backend plugin '@arencloud/rhdh-monetization-backend-dynamic'.*0.1.0" <<<"$rhdh_logs"; then
+if ! grep -qi "loaded dynamic backend plugin '@arencloud/rhdh-monetization-backend-dynamic'.*0.1.1" <<<"$rhdh_logs"; then
   echo "error: Developer Hub did not load the permission-controlled monetization backend plugin" >&2
   exit 1
 fi
@@ -232,6 +232,18 @@ if [[ $(curl --silent --show-error --output /dev/null --write-out '%{http_code}'
   --connect-to "$rhdh_hostname:443:$rhdh_router_hostname:443" \
   "https://$rhdh_hostname/healthcheck") != "200" ]]; then
   echo "error: Developer Hub health endpoint is unavailable" >&2
+  exit 1
+fi
+devspaces_url=$(oc get checluster devspaces -n openshift-devspaces \
+  -o jsonpath='{.status.cheURL}')
+devspaces_location=$(curl --silent --show-error --head \
+  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+  --connect-to "$rhdh_hostname:443:$rhdh_router_hostname:443" \
+  "https://$rhdh_hostname/api/api-monetization/devspaces/open?owner=arencloud&repo=verification-api" \
+  | tr -d '\r' | awk -F': ' 'tolower($1) == "location" {print $2}')
+if [[ $devspaces_location != "${devspaces_url%/}#https://github.com/arencloud/verification-api" ]]; then
+  echo "error: Developer Hub did not return the portable Dev Spaces factory redirect" >&2
   exit 1
 fi
 echo "Developer Hub: https://$rhdh_hostname (Keycloak and Kuadrant integration ready)"

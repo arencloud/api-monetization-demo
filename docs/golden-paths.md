@@ -10,9 +10,11 @@ Red Hat Developer Hub exposes two governed Software Templates to members of the
 
 Every run creates a dedicated repository in the approved `arencloud` GitHub
 organization, registers its `catalog-info.yaml` in Developer Hub, and returns
-an **Open in OpenShift Dev Spaces** link. The link starts a workspace from the
-new repository and its generated `devfile.yaml`; it does not add generated
-source to this platform repository.
+an **Open in OpenShift Dev Spaces** link. Developer Hub resolves that link
+through its runtime configuration, then starts a workspace from the new
+repository and its generated `devfile.yaml`. The same action remains available
+under **Links** on the generated Component page; generated source is not added
+to this platform repository.
 
 ## Owner workflow
 

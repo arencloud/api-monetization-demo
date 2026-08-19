@@ -264,23 +264,23 @@ if hashlib.sha256(frontend_plugin_path.read_bytes()).hexdigest() != (
     raise SystemExit("effective-policy plugin artifact checksum changed; rebuild and review it")
 
 backend_plugin_path = pathlib.Path(
-    "platform/developer-hub/arencloud-rhdh-monetization-backend-dynamic-0.1.0.tgz"
+    "platform/developer-hub/arencloud-rhdh-monetization-backend-dynamic-0.1.1.tgz"
 )
 backend_plugin_package = (
     "/opt/app-root/src/local-plugins/"
-    "arencloud-rhdh-monetization-backend-dynamic-0.1.0.tgz"
+    "arencloud-rhdh-monetization-backend-dynamic-0.1.1.tgz"
 )
 backend_plugin = plugin_by_package.get(backend_plugin_package, {})
 if (
     backend_plugin.get("disabled") is not False
     or backend_plugin.get("integrity")
-    != "sha512-W+mm0icsCnBcOhuw9Y+SRz6XRhKryFzWHtH1yqRxhpBp1zLjnEwMnpxjabvuDcc2qiJqesBeKA4kmScSoy9wyA=="
+    != "sha512-rVilmImxg+Qdw9y5xtnfbIUoKDF1tTKZEkG127lwu6dws3iJo9hR93+jxFEToXk793K5AC6T3WA4jjpjXSVbSA=="
 ):
     raise SystemExit("monetization RHDH backend plugin is not checksum-pinned")
 if not backend_plugin_path.is_file() or backend_plugin_path.stat().st_size >= 700_000:
     raise SystemExit("monetization backend artifact is missing or too large for its ConfigMap")
 if hashlib.sha256(backend_plugin_path.read_bytes()).hexdigest() != (
-    "1707fe3185d23f6d7206974072abefa0c835b7b84ab29384fc65697cf393bc7e"
+    "9be4d80ccc79a3c5501e476eca47f420d4e2ec6f09bb521951dfe9b67a984fbc"
 ):
     raise SystemExit("monetization backend artifact checksum changed; rebuild and review it")
 if frontend_plugin_path.stat().st_size + backend_plugin_path.stat().st_size >= 1_000_000:
@@ -331,6 +331,8 @@ devspaces_environment = (
 )
 if devspaces_environment != "${DEV_SPACES_URL}":
     raise SystemExit("RHDH scaffolder must consume the discovered Dev Spaces URL")
+if rhdh_config.get("apiMonetization", {}).get("devSpacesBaseUrl") != "${DEV_SPACES_URL}":
+    raise SystemExit("RHDH backend must consume the discovered Dev Spaces URL")
 kubernetes_config = rhdh_config.get("kubernetes", {})
 clusters = kubernetes_config.get("clusterLocatorMethods", [{}])[0].get("clusters", [])
 if not any(

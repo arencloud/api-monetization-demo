@@ -97,11 +97,25 @@ def assert_template(path: pathlib.Path) -> None:
         None,
     )
     expected_devspaces_link = (
-        "${{ environment.parameters.devSpacesBaseUrl }}#"
-        "${{ steps.publish.output.remoteUrl }}"
+        "/api/api-monetization/devspaces/open?"
+        "owner=${{ parameters.repoOwner }}&repo=${{ parameters.name }}"
     )
     if not devspaces_link or devspaces_link.get("url") != expected_devspaces_link:
-        fail(f"{path}: must return the portable Dev Spaces factory URL")
+        fail(f"{path}: must return the validated Dev Spaces redirect")
+
+    repository_link = next(
+        (link for link in output_links if link.get("title") == "Dedicated GitHub repository"),
+        {},
+    ).get("url")
+    bootstrap_link = next(
+        (link for link in output_links if link.get("title") == "Bootstrap with OpenShift GitOps"),
+        {},
+    ).get("url")
+    expected_repository = "https://github.com/${{ parameters.repoOwner }}/${{ parameters.name }}"
+    if repository_link != expected_repository:
+        fail(f"{path}: repository link must not contain a Git transport suffix")
+    if bootstrap_link != f"{expected_repository}/blob/main/bootstrap/argocd-application.yaml":
+        fail(f"{path}: GitOps bootstrap link must address the GitHub web interface")
 
 
 def assert_platform_configuration() -> None:
@@ -128,6 +142,8 @@ def assert_platform_configuration() -> None:
     )
     if devspaces_environment != "${DEV_SPACES_URL}":
         fail("RHDH must inject the discovered Dev Spaces URL into every Golden Path")
+    if app_config.get("apiMonetization", {}).get("devSpacesBaseUrl") != "${DEV_SPACES_URL}":
+        fail("RHDH monetization backend must consume the discovered Dev Spaces URL")
     custom_resources = {
         (resource.get("group"), resource.get("apiVersion"), resource.get("plural"))
         for resource in app_config.get("kubernetes", {}).get("customResources", [])
@@ -255,6 +271,15 @@ def assert_rendered_project(kind: str, project: pathlib.Path) -> None:
     component = next(document for document in catalog_documents if document.get("kind") == "Component")
     if component.get("metadata", {}).get("annotations", {}).get("backstage.io/kubernetes-id") != "orders-edge":
         fail(f"{kind}: catalog Component is not mapped to its OpenShift workload")
+    component_links = component.get("metadata", {}).get("links", [])
+    devspaces_link = next(
+        (link for link in component_links if link.get("title") == "Open in OpenShift Dev Spaces"),
+        {},
+    )
+    if devspaces_link.get("url") != (
+        "/api/api-monetization/devspaces/open?owner=arencloud&repo=orders-edge"
+    ):
+        fail(f"{kind}: catalog Component is missing its reusable Dev Spaces action")
     deployment = yaml.safe_load((project / "gitops/deployment.yaml").read_text(encoding="utf-8"))
     annotations = deployment.get("metadata", {}).get("annotations", {})
     if annotations.get("app.openshift.io/vcs-uri") != "https://github.com/arencloud/orders-edge.git":

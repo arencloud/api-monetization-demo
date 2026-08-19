@@ -3,7 +3,7 @@ import {
   PermissionsService,
   RootConfigService,
 } from '@backstage/backend-plugin-api';
-import { NotAllowedError } from '@backstage/errors';
+import { InputError, NotAllowedError } from '@backstage/errors';
 import { AuthorizeResult, BasicPermission } from '@backstage/plugin-permission-common';
 import express from 'express';
 import Router from 'express-promise-router';
@@ -30,6 +30,42 @@ const permissionByAccess: Record<ControlAccess, BasicPermission> = {
   'delete-own': subscriptionDeleteOwnPermission,
   'read-all': billingReadAllPermission,
 };
+
+const githubSegment = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,99})$/;
+
+export function buildDevSpacesFactoryUrl(
+  devSpacesBaseUrl: string,
+  owner: unknown,
+  repository: unknown,
+): string {
+  if (
+    typeof owner !== 'string' ||
+    typeof repository !== 'string' ||
+    !githubSegment.test(owner) ||
+    !githubSegment.test(repository)
+  ) {
+    throw new InputError('valid GitHub owner and repository are required');
+  }
+
+  let parsedBaseUrl: URL;
+  try {
+    parsedBaseUrl = new URL(devSpacesBaseUrl);
+  } catch {
+    throw new InputError('apiMonetization.devSpacesBaseUrl must be a valid URL');
+  }
+  if (
+    parsedBaseUrl.protocol !== 'https:' ||
+    parsedBaseUrl.username ||
+    parsedBaseUrl.password ||
+    parsedBaseUrl.search ||
+    parsedBaseUrl.hash
+  ) {
+    throw new InputError('apiMonetization.devSpacesBaseUrl must be a plain HTTPS URL');
+  }
+
+  const normalizedBaseUrl = devSpacesBaseUrl.replace(/\/+$/, '');
+  return `${normalizedBaseUrl}#https://github.com/${owner}/${repository}`;
+}
 
 async function requirePermission(
   req: express.Request,
@@ -87,8 +123,17 @@ export async function createRouter({
   const router = Router();
   const controlBaseUrl = config.getOptionalString('apiMonetization.controlBaseUrl') ||
     'http://monetization-control.api-monetization-data.svc.cluster.local:8080';
+  const devSpacesBaseUrl = config.getString('apiMonetization.devSpacesBaseUrl');
 
   router.use(express.json());
+
+  router.get('/devspaces/open', (req, res) => {
+    res.redirect(302, buildDevSpacesFactoryUrl(
+      devSpacesBaseUrl,
+      req.query.owner,
+      req.query.repo,
+    ));
+  });
 
   router.get('/tokenratelimitpolicies', async (req, res) => {
     await requirePermission(req, httpAuth, permissions, tokenRateLimitPolicyListPermission);

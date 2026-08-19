@@ -6,7 +6,7 @@ metadata:
   description: Create a contract-first API with RHCL policies, plans, OpenShift builds, and GitOps.
   annotations:
     backstage.io/techdocs-ref: dir:.
-    backstage.io/template-version: 1.1.0
+    backstage.io/template-version: 1.1.1
   tags:
     - api
     - gateway-api
@@ -158,10 +158,10 @@ spec:
   output:
     links:
       - title: Dedicated GitHub repository
-        url: ${{ steps.publish.output.remoteUrl }}
+        url: https://github.com/${{ parameters.repoOwner }}/${{ parameters.name }}
       - title: Open in the catalog
         entityRef: ${{ steps.register.output.entityRef }}
       - title: Open in OpenShift Dev Spaces
-        url: "${{ environment.parameters.devSpacesBaseUrl }}#${{ steps.publish.output.remoteUrl }}"
+        url: /api/api-monetization/devspaces/open?owner=${{ parameters.repoOwner }}&repo=${{ parameters.name }}
       - title: Bootstrap with OpenShift GitOps
-        url: ${{ steps.publish.output.remoteUrl }}/blob/main/bootstrap/argocd-application.yaml
+        url: https://github.com/${{ parameters.repoOwner }}/${{ parameters.name }}/blob/main/bootstrap/argocd-application.yaml

@@ -14,6 +14,10 @@ export const apiMonetizationPlugin = createBackendPlugin({
         permissions: coreServices.permissions,
       },
       async init({ config, httpAuth, httpRouter, permissions }) {
+        httpRouter.addAuthPolicy({
+          path: '/devspaces/open',
+          allow: 'unauthenticated',
+        });
         httpRouter.use(createPermissionIntegrationRouter({
           permissions: apiMonetizationPermissions,
         }));
