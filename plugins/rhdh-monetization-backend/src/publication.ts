@@ -320,10 +320,23 @@ function applicationFor(
         server: 'https://kubernetes.default.svc',
         namespace: workloadNamespace,
       },
+      ignoreDifferences: [{
+        group: 'apps',
+        kind: 'Deployment',
+        name: repository,
+        namespace: workloadNamespace,
+        jqPathExpressions: [
+          '.spec.template.spec.containers[] | select(.name == "api").image',
+        ],
+      }],
       syncPolicy: {
         automated: { prune: true, selfHeal: true },
         retry: { limit: 10, backoff: { duration: '10s', factor: 2, maxDuration: '2m' } },
-        syncOptions: ['ServerSideApply=true', 'SkipDryRunOnMissingResource=true'],
+        syncOptions: [
+          'ServerSideApply=true',
+          'SkipDryRunOnMissingResource=true',
+          'RespectIgnoreDifferences=true',
+        ],
       },
     },
   };
