@@ -101,8 +101,8 @@ def assert_platform_configuration() -> None:
         if location.get("type") == "url"
     }
     expected = {
-        "https://github.com/arencloud/api-monetization-demo/blob/feature/api-owner-golden-paths/golden-paths/api-interface/template.yaml",
-        "https://github.com/arencloud/api-monetization-demo/blob/feature/api-owner-golden-paths/golden-paths/camel-api-integration/template.yaml",
+        "https://github.com/arencloud/api-monetization-demo/blob/golden-path-test/golden-paths/api-interface/template.yaml",
+        "https://github.com/arencloud/api-monetization-demo/blob/golden-path-test/golden-paths/camel-api-integration/template.yaml",
     }
     if not expected.issubset(locations):
         fail("RHDH catalog does not register both Golden Paths from the delivery branch")
