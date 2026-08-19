@@ -36,7 +36,7 @@ configMapGenerator:
     namespace: openshift-gitops
     literals:
       - repoURL=https://github.com/arencloud/api-monetization-demo.git
-      - targetRevision=main
+      - targetRevision=feature/api-owner-golden-paths
 generatorOptions:
   disableNameSuffixHash: true
 replacements:
