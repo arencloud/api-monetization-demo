@@ -1196,15 +1196,39 @@ identity_job = next(
     and resource.get("metadata", {}).get("name") == "api-monetization-portal-identity"
 )
 identity_script = identity_job["spec"]["template"]["spec"]["containers"][0]["command"][-1]
+identity_init_script = "\n".join(
+    argument
+    for container in identity_job["spec"]["template"]["spec"].get("initContainers", [])
+    for argument in container.get("command", [])
+)
+if (
+    "keycloakrealmimport.k8s.keycloak.org/api-monetization-realm" not in identity_init_script
+    or "--for=condition=Done=True" not in identity_init_script
+):
+    raise SystemExit(
+        "Keycloak identity reconciliation must wait for the realm import to finish"
+    )
 for required_identity_fragment in (
     'run_kcadm delete "users/$admin_user_id/groups/$consumer_group_id"',
     'run_kcadm update "users/$developer_user_id/groups/$consumer_group_id"',
+    'Portal administrator still belongs to api-consumers',
 ):
     if required_identity_fragment not in identity_script:
         raise SystemExit(
             "Keycloak identity reconciliation must keep elevated Golden Path users "
             "out of the consumer-only catalog policy"
         )
+admin_cleanup_position = identity_script.index(
+    'run_kcadm delete "users/$admin_user_id/groups/$consumer_group_id"'
+)
+consumer_default_position = identity_script.index(
+    '-s \'defaultGroups=["/api-consumers"]\''
+)
+developer_position = identity_script.index('echo "Configuring portal developer"')
+if not admin_cleanup_position < consumer_default_position < developer_position:
+    raise SystemExit(
+        "Keycloak must enable the consumer default only after verifying the administrator"
+    )
 developer_client_match = re.search(
     r"cat >/tmp/developer-automation-client.json <<JSON\n(.*?)\n[ \t]*JSON",
     identity_script,

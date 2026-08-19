@@ -63,6 +63,14 @@ rules:
       - get
       - patch
       - update
+  - apiGroups:
+      - k8s.keycloak.org
+    resources:
+      - keycloakrealmimports
+    resourceNames:
+      - api-monetization-realm
+    verbs:
+      - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -186,6 +194,34 @@ spec:
     spec:
       serviceAccountName: api-monetization-portal-identity
       restartPolicy: Never
+      initContainers:
+        - name: wait-for-realm-import
+          image: registry.redhat.io/openshift4/ose-cli-rhel9:v4.22
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -Eeuo
+            - pipefail
+            - -c
+            - |
+              oc wait --for=condition=Done=True \
+                keycloakrealmimport.k8s.keycloak.org/api-monetization-realm \
+                --timeout=10m
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
       containers:
         - name: configure
           image: registry.redhat.io/rhbk/keycloak-rhel9:26.6
@@ -554,8 +590,7 @@ spec:
               owner_group_id=$(ensure_group api-owners)
               admin_group_id=$(ensure_group api-admins)
               run_kcadm update "realms/$realm" --config /tmp/kcadm.config \
-                -s registrationAllowed=true \
-                -s 'defaultGroups=["/api-consumers"]'
+                -s registrationAllowed=true
 
               echo "Configuring portal administrator"
               admin_user_id=$(run_kcadm get users -r "$realm" --config /tmp/kcadm.config \
@@ -591,13 +626,30 @@ spec:
               # basic allow, so an administrator must not retain the default
               # api-consumers membership or Golden Path Template entities are
               # filtered even though the administrator is also an API owner.
+              for attempt in $(seq 1 5); do
+                if ! run_kcadm get "users/$admin_user_id/groups" -r "$realm" \
+                  --config /tmp/kcadm.config --fields id \
+                  | jq -e --arg id "$consumer_group_id" \
+                    'any(.[]; .id == $id)' >/dev/null; then
+                  break
+                fi
+                run_kcadm delete "users/$admin_user_id/groups/$consumer_group_id" \
+                  -r "$realm" --config /tmp/kcadm.config
+                sleep 2
+              done
               if run_kcadm get "users/$admin_user_id/groups" -r "$realm" \
                 --config /tmp/kcadm.config --fields id \
                 | jq -e --arg id "$consumer_group_id" \
                   'any(.[]; .id == $id)' >/dev/null; then
-                run_kcadm delete "users/$admin_user_id/groups/$consumer_group_id" \
-                  -r "$realm" --config /tmp/kcadm.config
+                echo "Portal administrator still belongs to api-consumers" >&2
+                exit 1
               fi
+
+              # Enable the consumer default only after creating and verifying
+              # the elevated administrator. New self-registered users and the
+              # demo developer still receive the consumer role automatically.
+              run_kcadm update "realms/$realm" --config /tmp/kcadm.config \
+                -s 'defaultGroups=["/api-consumers"]'
 
               echo "Configuring portal developer"
               # Keycloak username searches are partial by default. The exact
