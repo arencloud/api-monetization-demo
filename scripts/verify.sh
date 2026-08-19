@@ -168,7 +168,7 @@ fi
 
 echo "waiting for Red Hat Developer Hub and Kuadrant plugin runtime"
 oc wait --for=jsonpath='{.status.chePhase}'=Active \
-  checluster.org.eclipse.che/devspaces -n openshift-devspaces --timeout=15m
+  checluster.org.eclipse.che/devspaces -n openshift-devspaces --timeout=25m
 devspaces_url=$(oc get checluster.org.eclipse.che devspaces \
   -n openshift-devspaces -o jsonpath='{.status.cheURL}')
 if [[ $devspaces_url != https://* ]]; then

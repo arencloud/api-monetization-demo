@@ -193,7 +193,7 @@ metadata:
   labels:
     app.kubernetes.io/part-of: api-monetization
 spec:
-  activeDeadlineSeconds: 960
+  activeDeadlineSeconds: 1800
   backoffLimit: 2
   template:
     metadata:
@@ -213,7 +213,7 @@ spec:
               keycloak_hostname=""
               devspaces_url=""
               devspaces_phase=""
-              for _ in $(seq 1 180); do
+              for _ in $(seq 1 300); do
                 apps_domain=$(oc get ingress.config.openshift.io cluster \
                   -o jsonpath='{.spec.domain}' 2>/dev/null || true)
                 keycloak_hostname=$(oc get route api-monetization-keycloak \
