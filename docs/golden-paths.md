@@ -46,6 +46,15 @@ to this platform repository.
 Draft is the safe default: consumers do not receive a production product or
 credentials before governance and billing onboarding are complete.
 
+The generated repository registers only its software `Component`; it does not
+register a duplicate static `API` entity. The Kuadrant catalog provider creates
+the API-key and Keycloak JWT API entities only from admitted APIProducts whose
+`publishStatus` is `Published`, adding the `kuadrant.io/namespace` and
+`kuadrant.io/apiproduct` references used by the API Product Information card.
+Consumers therefore cannot discover a draft Golden Path API. After publication,
+they see the two authoritative API entities and must subscribe before opening
+either one.
+
 ## GitHub credential
 
 The form treats the token as a Developer Hub scaffolder secret. The token is

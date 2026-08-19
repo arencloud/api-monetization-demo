@@ -11,6 +11,7 @@ metadata:
     github.com/project-slug: arencloud/time
 spec:
   owner: group:default/api-owners
+  providesApis: ['time-api', 'time-api-jwt']
 `,
   kustomization: `
 resources:
@@ -124,5 +125,12 @@ describe('generated API publication validation', () => {
       ...files,
       apiProducts: files.apiProducts.replaceAll('Published', 'Draft'),
     })).toThrow('both APIProducts must be Published');
+  });
+
+  it('rejects a duplicate static API catalog entity', () => {
+    expect(() => validateGeneratedProject('arencloud', 'arencloud', 'time', {
+      ...files,
+      catalog: `${files.catalog}\n---\napiVersion: backstage.io/v1alpha1\nkind: API\nmetadata:\n  name: time\n`,
+    })).toThrow('must not define static API entities');
   });
 });

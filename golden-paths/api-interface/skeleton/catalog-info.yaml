@@ -19,18 +19,6 @@ spec:
   type: service
   lifecycle: ${{ values.lifecycle }}
   owner: ${{ values.owner }}
-  providesApis: ['${{ values.name }}']
----
-apiVersion: backstage.io/v1alpha1
-kind: API
-metadata:
-  name: ${{ values.name }}
-  title: ${{ values.displayName }}
-  description: ${{ values.description }}
-  tags: [gateway-api, kuadrant, monetized]
-spec:
-  type: openapi
-  lifecycle: ${{ values.lifecycle }}
-  owner: ${{ values.owner }}
-  definition:
-    $text: ./openapi/openapi.yaml
+  # Kuadrant creates these catalog API entities only after the corresponding
+  # APIProducts are Published. Do not define duplicate static API entities here.
+  providesApis: ['${{ values.name }}-api', '${{ values.name }}-api-jwt']

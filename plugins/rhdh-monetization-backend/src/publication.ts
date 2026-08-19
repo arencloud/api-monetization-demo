@@ -110,9 +110,15 @@ export function validateGeneratedProject(
   const component = namedDocument(files.catalog, 'Component', repository);
   if (
     !new RegExp(`github[.]com/project-slug:\\s*${escapeRegExp(owner)}/${escapeRegExp(repository)}\\s*$`, 'm').test(component) ||
-    !/^\s*owner:\s*group:default\/api-owners\s*$/m.test(component)
+    !/^\s*owner:\s*group:default\/api-owners\s*$/m.test(component) ||
+    !new RegExp(`providesApis:\\s*\\[[^\\]]*['"]${escapeRegExp(repository)}-api['"][^\\]]*['"]${escapeRegExp(repository)}-api-jwt['"][^\\]]*\\]`, 'm').test(component)
   ) {
-    throw new InputError('catalog component must be owned by api-owners and reference the requested repository');
+    throw new InputError('catalog component must be owned by api-owners and reference the repository plus both published APIProducts');
+  }
+  if (documents(files.catalog).some(document => /^kind:\s*API\s*$/m.test(document))) {
+    throw new InputError(
+      'catalog-info.yaml must not define static API entities; Kuadrant publishes them from admitted APIProducts',
+    );
   }
 
   const requiredResources = [
