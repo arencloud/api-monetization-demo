@@ -65,5 +65,7 @@ jobs:
       - name: Build and test the RHDH monetization plugins
         run: make rhdh-plugin-test
 
-      - name: Verify the committed RHDH plugin artifacts
-        run: git diff --exit-code -- platform/developer-hub/arencloud-rhdh-monetization-backend-dynamic-0.1.4.tgz platform/developer-hub/arencloud-rhdh-policy-catalog-dynamic-0.1.6.tgz
+      - name: Verify the reproducible RHDH backend artifact
+        # The frontend Scalprum packer embeds build metadata; its committed
+        # artifact is instead size-, SHA256-, and integrity-checked by validate.
+        run: git diff --exit-code -- platform/developer-hub/arencloud-rhdh-monetization-backend-dynamic-0.1.4.tgz
