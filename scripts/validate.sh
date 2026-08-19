@@ -1337,6 +1337,7 @@ theme_css = pathlib.Path(
 if (
     "registry.redhat.io/rhbk/keycloak-rhel9:26.6" not in theme_containerfile
     or "/opt/keycloak/bin/kc.sh build" not in theme_containerfile
+    or "KC_TRANSACTION_XA_ENABLED=false" not in theme_containerfile
     or "parent=keycloak.v2" not in pathlib.Path(
         "platform/identity/theme/api-monetization/login/theme.properties"
     ).read_text()

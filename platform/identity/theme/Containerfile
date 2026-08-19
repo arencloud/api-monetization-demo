@@ -6,5 +6,6 @@ COPY --chown=keycloak:root api-monetization/ /opt/keycloak/themes/api-monetizati
 # health, and metrics build-time configuration.
 ENV KC_DB=postgres \
     KC_HEALTH_ENABLED=true \
-    KC_METRICS_ENABLED=true
+    KC_METRICS_ENABLED=true \
+    KC_TRANSACTION_XA_ENABLED=false
 RUN /opt/keycloak/bin/kc.sh build
