@@ -87,6 +87,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.annotations['api-monetization.demo/source-revision']
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           command:
             - /bin/bash
             - -Eeuo
@@ -126,13 +130,18 @@ spec:
               digest=$(oc get "imagestreamtag/$app:$immutable_tag" \
                 -o jsonpath='{.image.metadata.name}')
               restart_required=false
-              while read -r pod image_id; do
+              internal_image="image-registry.openshift-image-registry.svc:5000/$POD_NAMESPACE/$app"
+              while read -r pod image_ref image_id; do
                 [[ -z $pod || $image_id == *"$digest"* ]] && continue
+                if [[ $image_ref != "$internal_image"* ]]; then
+                  echo "leaving $pod for the Keycloak Operator's first themed-image rollout"
+                  continue
+                fi
                 echo "restarting $pod to load Keycloak theme image $digest"
                 restart_required=true
                 oc delete pod "$pod" --wait=false
               done < <(oc get pods -l app=keycloak \
-                -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.containerStatuses[0].imageID}{"\n"}{end}')
+                -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.containers[0].image}{" "}{.status.containerStatuses[0].imageID}{"\n"}{end}')
               if $restart_required; then
                 for attempt in $(seq 1 180); do
                   matching_pod=false
