@@ -30,6 +30,25 @@ for timeout_value in \
 done
 
 cleanup_failed=false
+platform_operator_packages=(
+  "api-monetization-identity|rhbk-operator"
+  "cert-manager-operator|openshift-cert-manager-operator"
+  "external-secrets-operator|openshift-external-secrets-operator"
+  "kuadrant-system|rhcl-operator"
+  "kuadrant-system|authorino-operator"
+  "kuadrant-system|dns-operator"
+  "kuadrant-system|limitador-operator"
+  "openshift-opentelemetry-operator|opentelemetry-product"
+  "openshift-operators|cloudnative-pg"
+  "openshift-operators|servicemeshoperator3"
+  "openshift-tempo-operator|tempo-product"
+  "openshift-operators|grafana-operator"
+  "redhat-ods-operator|rhods-operator"
+  "rhdh-operator|rhdh"
+  "openshift-operators|devspaces"
+  "openshift-operators|devworkspace-operator"
+)
+gitops_operator_package="openshift-gitops-operator|openshift-gitops-operator"
 
 warn() {
   echo "warning: $*" >&2
@@ -166,6 +185,7 @@ remove_operator() {
   local subscription=$2
   local package=${3:-$subscription}
   local csvs=""
+  local -a csv_names=()
 
   if oc get subscription "$subscription" -n "$namespace" >/dev/null 2>&1; then
     csvs=$(oc get subscription "$subscription" -n "$namespace" \
@@ -179,11 +199,67 @@ remove_operator() {
   delete_with_finalizer_recovery subscriptions.operators.coreos.com \
     "$subscription" "$namespace" "Subscription $namespace/$subscription" || true
 
-  while IFS= read -r csv; do
+  local csv
+  mapfile -t csv_names < <(awk 'NF && !seen[$0]++' <<<"$csvs")
+  for csv in "${csv_names[@]}"; do
     [[ -z $csv ]] && continue
     delete_with_finalizer_recovery clusterserviceversions.operators.coreos.com \
       "$csv" "$namespace" "CSV $namespace/$csv" || true
-  done < <(awk 'NF && !seen[$0]++' <<<"$csvs")
+  done
+
+  local copy_namespace
+  for csv in "${csv_names[@]}"; do
+    while IFS= read -r copy_namespace; do
+      [[ -z $copy_namespace || $copy_namespace == "$namespace" ]] && continue
+      delete_with_finalizer_recovery clusterserviceversions.operators.coreos.com \
+        "$csv" "$copy_namespace" "copied CSV $copy_namespace/$csv" || true
+    done < <(
+      oc get clusterserviceversions.operators.coreos.com -A -o json 2>/dev/null \
+        | jq -r --arg csv "$csv" --arg source "$namespace" '
+          .items[]?
+          | select(.metadata.name == $csv)
+          | select(.metadata.labels["olm.copiedFrom"] == $source)
+          | .metadata.namespace' || true
+    )
+  done
+}
+
+remove_operator_package() {
+  local namespace=$1
+  local package=$2
+  local subscription
+  local subscriptions=""
+
+  subscriptions=$(oc get subscriptions.operators.coreos.com -n "$namespace" \
+    -o json 2>/dev/null | jq -r --arg package "$package" '
+      .items[]? | select(.spec.name == $package) | .metadata.name' || true)
+  if [[ -z $subscriptions ]]; then
+    remove_operator "$namespace" "$package" "$package"
+    return
+  fi
+  while IFS= read -r subscription; do
+    [[ -z $subscription ]] && continue
+    remove_operator "$namespace" "$subscription" "$package"
+  done <<<"$subscriptions"
+}
+
+delete_operator_crds() {
+  local namespace=$1
+  local package=$2
+  local ownership_label="operators.coreos.com/$package.$namespace"
+  local crd
+
+  while IFS= read -r crd; do
+    [[ -z $crd ]] && continue
+    delete_with_finalizer_recovery customresourcedefinitions.apiextensions.k8s.io \
+      "$crd" "" "CRD $crd owned by $package" || true
+  done < <(
+    oc get customresourcedefinitions.apiextensions.k8s.io -o json 2>/dev/null \
+      | jq -r --arg label "$ownership_label" '
+        .items[]?
+        | select((.metadata.labels // {}) | has($label))
+        | .metadata.name' || true
+  )
 }
 
 sweep_terminating_namespace() {
@@ -345,21 +421,10 @@ delete_with_finalizer_recovery certmanagers.operator.openshift.io \
   cluster "" "cert-manager operand" || true
 
 echo "uninstalling application and platform Operators"
-remove_operator api-monetization-identity rhbk-operator
-remove_operator cert-manager-operator openshift-cert-manager-operator
-remove_operator external-secrets-operator openshift-external-secrets-operator
-remove_operator kuadrant-system rhcl-operator
-remove_operator kuadrant-system authorino-operator-stable-redhat-operators-openshift-marketplace
-remove_operator kuadrant-system dns-operator-stable-redhat-operators-openshift-marketplace
-remove_operator kuadrant-system limitador-operator-stable-redhat-operators-openshift-marketplace
-remove_operator openshift-opentelemetry-operator opentelemetry-product
-remove_operator openshift-operators cloudnative-pg
-remove_operator openshift-operators servicemeshoperator3
-remove_operator openshift-tempo-operator tempo-product
-remove_operator openshift-operators grafana-operator
-remove_operator redhat-ods-operator rhods-operator
-remove_operator rhdh-operator rhdh
-remove_operator openshift-operators devspaces
+for operator_package in "${platform_operator_packages[@]}"; do
+  IFS='|' read -r namespace package <<<"$operator_package"
+  remove_operator_package "$namespace" "$package"
+done
 
 echo "removing known operator-generated orphan resources"
 delete_with_finalizer_recovery mutatingwebhookconfigurations.admissionregistration.k8s.io \
@@ -430,7 +495,7 @@ is_demo_namespace() {
 echo "uninstalling OpenShift GitOps last"
 delete_with_finalizer_recovery gitopsservices.pipelines.openshift.io \
   cluster "" "OpenShift GitOps service" || true
-remove_operator openshift-gitops-operator openshift-gitops-operator
+remove_operator_package openshift-gitops-operator openshift-gitops-operator
 delete_namespace_with_recovery openshift-gitops || true
 delete_namespace_with_recovery openshift-gitops-operator || true
 
@@ -448,6 +513,36 @@ done < <(
       | [.metadata.name, .spec.claimRef.namespace]
       | @tsv' || true
 )
+
+echo "removing CRDs owned by demo-installed Operators"
+for operator_package in \
+  "${platform_operator_packages[@]}" "$gitops_operator_package"; do
+  IFS='|' read -r namespace package <<<"$operator_package"
+  delete_operator_crds "$namespace" "$package"
+done
+
+echo "removing OpenShift AI managed-component CRDs"
+for crd in \
+  accounts.nim.opendatahub.io \
+  clusterstoragecontainers.serving.kserve.io \
+  inferencegraphs.serving.kserve.io \
+  inferencemodelrewrites.inference.networking.x-k8s.io \
+  inferenceobjectives.inference.networking.x-k8s.io \
+  inferencepoolimports.inference.networking.x-k8s.io \
+  inferencepools.inference.networking.k8s.io \
+  inferencepools.inference.networking.x-k8s.io \
+  inferenceservices.serving.kserve.io \
+  llminferenceserviceconfigs.serving.kserve.io \
+  llminferenceservices.serving.kserve.io \
+  odhapplications.dashboard.opendatahub.io \
+  odhdashboardconfigs.opendatahub.io \
+  odhdocuments.dashboard.opendatahub.io \
+  odhquickstarts.console.openshift.io \
+  servingruntimes.serving.kserve.io \
+  trainedmodels.serving.kserve.io; do
+  delete_with_finalizer_recovery customresourcedefinitions.apiextensions.k8s.io \
+    "$crd" "" "OpenShift AI managed-component CRD $crd" || true
+done
 
 remaining=()
 for namespace in "${demo_namespaces[@]}" openshift-gitops openshift-gitops-operator; do
@@ -481,33 +576,32 @@ done < <(
       | [.metadata.name, .spec.claimRef.namespace]
       | @tsv' || true
 )
-while IFS='|' read -r namespace subscription package; do
-  if oc get subscriptions.operators.coreos.com "$subscription" \
-    -n "$namespace" >/dev/null 2>&1; then
+for operator_package in \
+  "${platform_operator_packages[@]}" "$gitops_operator_package"; do
+  IFS='|' read -r namespace package <<<"$operator_package"
+  while IFS= read -r subscription; do
+    [[ -z $subscription ]] && continue
     remaining+=("subscription/$namespace/$subscription")
-  fi
+  done < <(
+    oc get subscriptions.operators.coreos.com -n "$namespace" -o json \
+      2>/dev/null | jq -r --arg package "$package" '
+        .items[]? | select(.spec.name == $package) | .metadata.name' || true
+  )
   while IFS= read -r csv; do
     [[ -z $csv ]] && continue
     remaining+=("csv/$namespace/$csv")
-  done < <(list_operator_csvs "$namespace" "$subscription" "$package")
-done <<'EOF'
-api-monetization-identity|rhbk-operator|rhbk-operator
-cert-manager-operator|openshift-cert-manager-operator|openshift-cert-manager-operator
-external-secrets-operator|openshift-external-secrets-operator|openshift-external-secrets-operator
-kuadrant-system|rhcl-operator|rhcl-operator
-kuadrant-system|authorino-operator-stable-redhat-operators-openshift-marketplace|authorino-operator-stable-redhat-operators-openshift-marketplace
-kuadrant-system|dns-operator-stable-redhat-operators-openshift-marketplace|dns-operator-stable-redhat-operators-openshift-marketplace
-kuadrant-system|limitador-operator-stable-redhat-operators-openshift-marketplace|limitador-operator-stable-redhat-operators-openshift-marketplace
-openshift-opentelemetry-operator|opentelemetry-product|opentelemetry-product
-openshift-operators|cloudnative-pg|cloudnative-pg
-openshift-operators|servicemeshoperator3|servicemeshoperator3
-openshift-tempo-operator|tempo-product|tempo-product
-openshift-operators|grafana-operator|grafana-operator
-redhat-ods-operator|rhods-operator|rhods-operator
-rhdh-operator|rhdh|rhdh
-openshift-operators|devspaces|devspaces
-openshift-gitops-operator|openshift-gitops-operator|openshift-gitops-operator
-EOF
+  done < <(list_operator_csvs "$namespace" "$package" "$package")
+  while IFS= read -r crd; do
+    [[ -z $crd ]] && continue
+    remaining+=("crd/$crd")
+  done < <(
+    oc get customresourcedefinitions.apiextensions.k8s.io -o json 2>/dev/null \
+      | jq -r --arg label "operators.coreos.com/$package.$namespace" '
+        .items[]?
+        | select((.metadata.labels // {}) | has($label))
+        | .metadata.name' || true
+  )
+done
 
 if [[ $cleanup_failed == true || ${#remaining[@]} -gt 0 ]]; then
   echo "error: API Monetization removal completed with unresolved resources" >&2
@@ -517,4 +611,4 @@ if [[ $cleanup_failed == true || ${#remaining[@]} -gt 0 ]]; then
 fi
 
 echo "API Monetization removal complete"
-echo "Operator CRDs and the integrated image registry are retained intentionally"
+echo "The integrated image registry is retained intentionally"

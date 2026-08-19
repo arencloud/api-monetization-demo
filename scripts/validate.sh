@@ -84,7 +84,11 @@ required_uninstall_fragments = (
     "api-monetization-api-owners",
     "is_demo_namespace()",
     "PersistentVolume $volume from $claim_namespace",
-    "Operator CRDs and the integrated image registry are retained intentionally",
+    "devworkspace-operator",
+    "delete_operator_crds()",
+    "operators.coreos.com/$package.$namespace",
+    "OpenShift AI managed-component CRD",
+    "The integrated image registry is retained intentionally",
 )
 for fragment in required_uninstall_fragments:
     if fragment not in uninstall_script:
@@ -94,8 +98,8 @@ for fragment in required_uninstall_fragments:
 for forbidden_fragment in (
     "oc delete namespace --all",
     "oc delete namespaces --all",
-    "oc delete customresourcedefinition",
-    "oc delete crd",
+    "oc delete customresourcedefinition --all",
+    "oc delete crd --all",
 ):
     if forbidden_fragment in uninstall_script:
         raise SystemExit(
