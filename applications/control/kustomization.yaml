@@ -4,6 +4,7 @@ resources:
   - build.yaml
   - source-build.yaml
   - rbac.yaml
+  - identity-secret-store.yaml
   - deployment.yaml
   - service.yaml
   - route.yaml
@@ -17,7 +18,10 @@ configMapGenerator:
       - billing.go
       - main.go
       - main_test.go
+      - keycloak_admin.go
+      - keycloak_admin_test.go
       - migrations.go
+      - owner_access.go
       - selfservice.go
       - web/index.html
     options:

@@ -132,7 +132,11 @@ oc wait --for=condition=Ready externalsecret/monetization-developer-credentials 
   -n api-monetization-identity --timeout=5m
 oc wait --for=condition=Ready externalsecret/grafana-keycloak-client \
   -n api-monetization-identity --timeout=5m
+oc wait --for=condition=Ready externalsecret/monetization-owner-approval-keycloak-client \
+  -n api-monetization-identity --timeout=5m
 oc wait --for=condition=Ready externalsecret/subscriptions-db-credentials \
+  -n api-monetization-data --timeout=5m
+oc wait --for=condition=Ready externalsecret/monetization-owner-approval-keycloak \
   -n api-monetization-data --timeout=5m
 oc wait --for=condition=Ready externalsecret/demo-inventory-api-key \
   -n api-monetization-apps --timeout=5m
@@ -154,8 +158,17 @@ oc wait --for=condition=Ready clusters.postgresql.cnpg.io/api-monetization-rhdh-
   -n api-monetization-developer-hub --timeout=10m
 
 echo "waiting for Red Hat build of Keycloak"
+wait_for_image_stream_tag api-monetization-keycloak:demo api-monetization-identity
 oc wait --for=condition=Ready keycloaks.k8s.keycloak.org/api-monetization \
   -n api-monetization-identity --timeout=10m
+keycloak_theme_digest=$(oc get imagestreamtag/api-monetization-keycloak:demo \
+  -n api-monetization-identity -o jsonpath='{.image.metadata.name}')
+keycloak_running_image=$(oc get pods -n api-monetization-identity -l app=keycloak \
+  -o jsonpath='{.items[0].status.containerStatuses[0].imageID}')
+if [[ -z $keycloak_theme_digest || $keycloak_running_image != *"$keycloak_theme_digest"* ]]; then
+  echo "error: running Keycloak does not use the GitOps-built login-theme digest" >&2
+  exit 1
+fi
 oc wait --for=condition=Done keycloakrealmimports.k8s.keycloak.org/api-monetization-realm \
   -n api-monetization-identity --timeout=10m
 oc wait route/api-monetization-keycloak -n api-monetization-identity \
@@ -202,11 +215,11 @@ if ! grep -q "Loaded dynamic frontend plugin '@kuadrant/kuadrant-backstage-plugi
   echo "error: Developer Hub did not load the tested Kuadrant 0.4.0 frontend plugin" >&2
   exit 1
 fi
-if ! grep -q "Loaded dynamic frontend plugin '@arencloud/rhdh-policy-catalog-dynamic'.*0.1.6" <<<"$rhdh_logs"; then
+if ! grep -q "Loaded dynamic frontend plugin '@arencloud/rhdh-policy-catalog-dynamic'.*0.1.7" <<<"$rhdh_logs"; then
   echo "error: Developer Hub did not load the effective-policy catalog plugin" >&2
   exit 1
 fi
-if ! grep -qi "loaded dynamic backend plugin '@arencloud/rhdh-monetization-backend-dynamic'.*0.1.4" <<<"$rhdh_logs"; then
+if ! grep -qi "loaded dynamic backend plugin '@arencloud/rhdh-monetization-backend-dynamic'.*0.1.5" <<<"$rhdh_logs"; then
   echo "error: Developer Hub did not load the permission-controlled monetization backend plugin" >&2
   exit 1
 fi
@@ -236,6 +249,26 @@ if [[ $(curl --silent --show-error --output /dev/null --write-out '%{http_code}'
   --connect-to "$rhdh_hostname:443:$rhdh_router_hostname:443" \
   "https://$rhdh_hostname/healthcheck") != "200" ]]; then
   echo "error: Developer Hub health endpoint is unavailable" >&2
+  exit 1
+fi
+keycloak_hostname=$(oc get route api-monetization-keycloak \
+  -n api-monetization-identity -o jsonpath='{.status.ingress[0].host}')
+keycloak_router_hostname=$(oc get route api-monetization-keycloak \
+  -n api-monetization-identity -o jsonpath='{.status.ingress[0].routerCanonicalHostname}')
+login_html=$(curl --silent --show-error \
+  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+  --connect-to "$keycloak_hostname:443:$keycloak_router_hostname:443" \
+  --get "https://$keycloak_hostname/realms/api-monetization/protocol/openid-connect/auth" \
+  --data-urlencode client_id=rhdh \
+  --data-urlencode "redirect_uri=https://$rhdh_hostname/api/auth/oidc/handler/frame" \
+  --data-urlencode response_type=code \
+  --data-urlencode scope=openid \
+  --data-urlencode code_challenge=0123456789012345678901234567890123456789012 \
+  --data-urlencode code_challenge_method=S256)
+if ! grep -q 'login/api-monetization/css/login.css' <<<"$login_html" \
+  || ! grep -q 'Create developer account' <<<"$login_html"; then
+  echo "error: branded Keycloak consumer registration is not active" >&2
   exit 1
 fi
 devspaces_url=$(oc get checluster devspaces -n openshift-devspaces \

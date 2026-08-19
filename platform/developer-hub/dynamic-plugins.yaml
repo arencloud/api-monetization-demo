@@ -68,11 +68,11 @@ plugins:
                 config:
                   layout: {gridColumn: "1 / -1"}
                   if: {allOf: [{isKind: api}]}
-  - package: /opt/app-root/src/local-plugins/arencloud-rhdh-monetization-backend-dynamic-0.1.4.tgz
-    integrity: sha512-hJ/Mmw87jleNPOjvJWsYsR6BoJjEijcvYPCVOhg0F8NpFpDs5TeMkAJ2KoFCAWMhLs+B8DBqteRl2OOc4rbmUw==
+  - package: /opt/app-root/src/local-plugins/arencloud-rhdh-monetization-backend-dynamic-0.1.5.tgz
+    integrity: sha512-KgtFFDf5J+IjYdrQ18OqEsMJTpr0Yd2mC1zXKygWjt9v1ROevPr6MeiLQ31Tyh+uRDtxRqQft6FhT3nJW+EzKw==
     disabled: false
-  - package: /opt/app-root/src/local-plugins/arencloud-rhdh-policy-catalog-dynamic-0.1.6.tgz
-    integrity: sha512-Um1Vu1snxx733lux3R2+IJCtfMWC404J6QYIdTXk0NGDuTDqmJ51XzX2H2HBpCLzm0F56rUyTqOKMXf6l3ci7Q==
+  - package: /opt/app-root/src/local-plugins/arencloud-rhdh-policy-catalog-dynamic-0.1.7.tgz
+    integrity: sha512-JNedD9pt/KV/qqWC5djZ4QIGpHfaf50IOS/pnUm0sTcJyMovIUVHrDzUlbORyPY15MjFxQEsrmbUnX1nsaX2Ag==
     disabled: false
     pluginConfig:
       dynamicPlugins:
@@ -85,7 +85,7 @@ plugins:
                 importName: ApiProductsPage
               - path: /billing
                 importName: MonetizationPage
-                menuItem: {icon: kuadrantIcon, text: Billing}
+                menuItem: {icon: kuadrantIcon, text: Subscriptions & Access}
               - path: /monetized-apis
                 importName: MonetizedApisPage
             mountPoints:

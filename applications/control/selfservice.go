@@ -248,6 +248,7 @@ func (a *app) me(w http.ResponseWriter, r *http.Request) {
 		"roles":     claims.RealmAccess.Roles,
 		"admin":     contains(claims.RealmAccess.Roles, portalAdminRole),
 		"developer": contains(claims.RealmAccess.Roles, portalDeveloperRole),
+		"owner":     contains(claims.RealmAccess.Roles, portalOwnerRole),
 	})
 }
 

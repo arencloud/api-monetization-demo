@@ -138,16 +138,29 @@ detail links remain unavailable, while the subscription action stays active.
 Confirm unsubscribed production entries are greyed and cannot open their
 catalog details. This view is subject-scoped; it is not only a visual copy of
 the shared catalog.
-Open **Billing**, subscribe to a plan, wait
+Open **Subscriptions & Access**, subscribe to a plan, wait
 for the operator-backed credential to become ready, and reveal it once. Return
 to **APIs** and confirm both the API-key and JWT presentations show
 **Subscribed**, return to their normal styling, and expose their detail links.
 Cancellation immediately restores the grey subscription-required state and
 denies both credential forms. API-key reveal and rotation, Keycloak token
-issuance, and credential status remain on the corresponding **Billing**
+issuance, and credential status remain on the corresponding **Subscriptions & Access**
 subscription. No raw API-key creation or approval page is exposed.
+
+To demonstrate onboarding rather than using the generated account, sign out,
+select **Register** on the branded Keycloak page, and create a consumer. After
+sign-in, **Subscriptions & Access** identifies the account as a consumer and
+offers the same subject-scoped subscription workflow. In its **API owner
+onboarding** panel, submit a short ownership justification. Sign in as
+`demo-admin`, open **Subscriptions & Access**, approve the pending request, and
+then sign back in as the new user. The user now receives Golden Paths and owner
+publication capabilities and no longer receives the consumer-only catalog
+filter. Reauthentication is intentional: the browser access token must be
+reissued after Keycloak group membership changes.
+
 Sign in as `demo-admin` to show the cross-customer commercial view. The custom portal
-remains available as a rollback path and for the AI playground. Open **Billing**
+remains available as a rollback path and for the AI playground. Open
+**Subscriptions & Access**
 in RHDH to show the permission-scoped subscription, accepted usage,
 AI token totals, projected revenue, and persisted invoices. A developer sees
 only the PostgreSQL customer mapped to their Keycloak subject; `demo-admin`

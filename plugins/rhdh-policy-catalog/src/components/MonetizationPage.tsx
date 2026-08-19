@@ -15,6 +15,7 @@ import {
   MenuItem,
   Paper,
   Select,
+  TextField,
   Table,
   TableBody,
   TableCell,
@@ -28,6 +29,8 @@ import {
   BillingSummary,
   CredentialState,
   Invoice,
+  OwnerAccessRequest,
+  OwnerAccessState,
   PortalIdentity,
   ProductCatalog,
   Subscription,
@@ -43,6 +46,8 @@ interface MonetizationView {
   preview?: Invoice;
   catalog?: ProductCatalog;
   credentials: Record<string, CredentialState>;
+  ownerAccess?: OwnerAccessState;
+  ownerRequests?: OwnerAccessRequest[];
 }
 
 interface JwtCredential {
@@ -82,6 +87,7 @@ export const MonetizationPage = () => {
   const [revealedJwts, setRevealedJwts] = useState<Record<string, JwtCredential>>({});
   const [pending, setPending] = useState<string>();
   const [notice, setNotice] = useState<{ message: string; error: boolean }>();
+  const [ownerJustification, setOwnerJustification] = useState('');
 
   const request = useCallback(async <T,>(
     scope: 'user' | 'admin',
@@ -111,15 +117,16 @@ export const MonetizationPage = () => {
     void refresh;
     const identity = await request<PortalIdentity>('user', 'me');
     if (identity.admin) {
-      const [subscriptions, usage, invoices] = await Promise.all([
+      const [subscriptions, usage, invoices, ownerRequests] = await Promise.all([
         request<Subscription[]>('admin', 'subscriptions'),
         request<UsageSummary[]>('admin', 'usage'),
         request<Invoice[]>('admin', 'invoices'),
+        request<OwnerAccessRequest[]>('admin', 'owner-access-requests'),
       ]);
-      return { identity, subscriptions, usage, invoices, credentials: {} };
+      return { identity, subscriptions, usage, invoices, ownerRequests, credentials: {} };
     }
 
-    const [catalog, subscriptions, usage, billing] = await Promise.all([
+    const [catalog, subscriptions, usage, billing, ownerAccess] = await Promise.all([
       request<ProductCatalog>('user', 'catalog'),
       request<Subscription[]>('user', 'me/subscriptions'),
       request<UsageSummary[]>('user', 'me/usage'),
@@ -127,6 +134,7 @@ export const MonetizationPage = () => {
         preview: undefined,
         invoices: [],
       } as unknown as BillingSummary)),
+      request<OwnerAccessState>('user', 'me/owner-access'),
     ]);
     const credentialEntries = await Promise.all(
       subscriptions
@@ -147,6 +155,7 @@ export const MonetizationPage = () => {
       invoices: billing.invoices || [],
       preview: billing.preview,
       credentials: Object.fromEntries(credentialEntries),
+      ownerAccess,
     };
   }, [request, refresh]);
 
@@ -214,6 +223,133 @@ export const MonetizationPage = () => {
             <Grid item xs={12} sm={6} md={3}><Metric title="AI tokens" value={(totals.promptTokens + totals.completionTokens).toLocaleString()} detail={`${totals.promptTokens.toLocaleString()} prompt · ${totals.completionTokens.toLocaleString()} completion`} /></Grid>
             <Grid item xs={12} sm={6} md={3}><Metric title={state.value.identity.admin ? 'Projected revenue' : 'Current estimate'} value={currency(totals.revenue)} /></Grid>
           </Grid>
+
+          {!state.value.identity.admin && state.value.ownerAccess && (
+            <Box mt={3}>
+              <Paper variant="outlined" data-testid="owner-access-panel">
+                <Box p={3} style={{ borderTop: '4px solid #ee0000' }}>
+                  <Typography variant="overline" style={{ color: '#c9190b', fontWeight: 700 }}>
+                    API OWNER ONBOARDING
+                  </Typography>
+                  <Typography variant="h5" gutterBottom>
+                    {state.value.ownerAccess.owner ? 'API owner access active' : 'Build and publish governed APIs'}
+                  </Typography>
+                  {state.value.ownerAccess.owner ? (
+                    <Typography variant="body2" color="textSecondary">
+                      Your approved owner identity can use Golden Paths, OpenShift Dev Spaces and the governed publication workflow.
+                    </Typography>
+                  ) : state.value.ownerAccess.request?.status === 'pending' ? (
+                    <>
+                      <Chip size="small" label="Approval pending" color="secondary" />
+                      <Box mt={1}>
+                        <Typography variant="body2" color="textSecondary">
+                          Submitted {new Date(state.value.ownerAccess.request.createdAt).toLocaleString()}. An API administrator must approve publisher access.
+                        </Typography>
+                      </Box>
+                    </>
+                  ) : (
+                    <>
+                      <Typography variant="body2" color="textSecondary">
+                        Owner access is privileged. Describe the API domain you will own and an administrator will review the request.
+                      </Typography>
+                      {state.value.ownerAccess.request?.status === 'rejected' && (
+                        <Box mt={1}>
+                          <Typography color="error">
+                            Previous request rejected{state.value.ownerAccess.request.decisionReason ? `: ${state.value.ownerAccess.request.decisionReason}` : '.'}
+                          </Typography>
+                        </Box>
+                      )}
+                      <Box mt={2} display="flex" style={{ gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                        <TextField
+                          variant="outlined"
+                          size="small"
+                          multiline
+                          minRows={2}
+                          label="Ownership justification"
+                          placeholder="Example: I own the customer profile domain and need to publish its supported API contract."
+                          value={ownerJustification}
+                          onChange={event => setOwnerJustification(event.target.value)}
+                          inputProps={{ maxLength: 1000 }}
+                          style={{ minWidth: 320, flex: 1 }}
+                        />
+                        <Button
+                          color="primary"
+                          variant="contained"
+                          disabled={Boolean(pending) || ownerJustification.trim().length < 10}
+                          onClick={() => runAction('owner-request', async () => {
+                            await request('user', 'me/owner-access', {
+                              method: 'POST', body: { justification: ownerJustification.trim() },
+                            });
+                            setOwnerJustification('');
+                            setNotice({ message: 'API owner access request submitted for administrator review.', error: false });
+                          })}
+                        >{pending === 'owner-request' ? 'Submitting…' : 'Request owner access'}</Button>
+                      </Box>
+                    </>
+                  )}
+                </Box>
+              </Paper>
+            </Box>
+          )}
+
+          {state.value.identity.admin && (
+            <Box mt={3}>
+              <Typography variant="h5" gutterBottom>API owner access approvals</Typography>
+              <Typography variant="body2" color="textSecondary">
+                Approval adds the user to the Keycloak API owner group, removes the consumer-only catalog restriction and preserves an auditable decision.
+              </Typography>
+              <Box mt={1}>
+                <TableContainer component={Paper} variant="outlined">
+                  <Table aria-label="API owner access requests">
+                    <TableHead><TableRow><TableCell>Applicant</TableCell><TableCell>Justification</TableCell><TableCell>Status</TableCell><TableCell>Submitted</TableCell><TableCell align="right">Decision</TableCell></TableRow></TableHead>
+                    <TableBody>
+                      {(state.value.ownerRequests || []).length === 0 && <TableRow><TableCell colSpan={5}>No API owner access requests.</TableCell></TableRow>}
+                      {(state.value.ownerRequests || []).map(item => (
+                        <TableRow key={item.id}>
+                          <TableCell><Typography variant="body2">{item.username}</Typography><Typography variant="caption" color="textSecondary">{item.email}</Typography></TableCell>
+                          <TableCell>{item.justification}{item.decisionReason ? <Typography variant="caption" display="block" color="textSecondary">Decision: {item.decisionReason}</Typography> : null}</TableCell>
+                          <TableCell><Chip size="small" label={item.status} color={item.status === 'approved' ? 'primary' : item.status === 'rejected' ? 'secondary' : 'default'} /></TableCell>
+                          <TableCell>{new Date(item.createdAt).toLocaleString()}</TableCell>
+                          <TableCell align="right">
+                            {item.status === 'pending' ? (
+                              <Box display="flex" justifyContent="flex-end" style={{ gap: 8 }}>
+                                <Button
+                                  size="small"
+                                  color="primary"
+                                  variant="contained"
+                                  disabled={Boolean(pending)}
+                                  onClick={() => runAction(`approve-${item.id}`, async () => {
+                                    await request('admin', `owner-access-requests/${item.id}/decision`, {
+                                      method: 'POST', body: { decision: 'approved', reason: 'Approved by API platform administrator' },
+                                    });
+                                    setNotice({ message: `${item.username} approved as an API owner. Ask the user to sign out and back in.`, error: false });
+                                  })}
+                                >Approve</Button>
+                                <Button
+                                  size="small"
+                                  color="secondary"
+                                  variant="outlined"
+                                  disabled={Boolean(pending)}
+                                  onClick={() => runAction(`reject-${item.id}`, async () => {
+                                    const reason = window.prompt('Reason for rejecting API owner access:')?.trim();
+                                    if (!reason) return;
+                                    await request('admin', `owner-access-requests/${item.id}/decision`, {
+                                      method: 'POST', body: { decision: 'rejected', reason },
+                                    });
+                                    setNotice({ message: `${item.username} owner request rejected.`, error: false });
+                                  })}
+                                >Reject</Button>
+                              </Box>
+                            ) : item.reviewedBy || '—'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            </Box>
+          )}
 
           {!state.value.identity.admin && state.value.catalog && (
             <Box mt={3}>

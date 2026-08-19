@@ -17,6 +17,7 @@ const (
 	portalClientID        = "monetization-portal"
 	portalAdminRole       = "monetization-admin"
 	portalDeveloperRole   = "monetization-developer"
+	portalOwnerRole       = "monetization-owner"
 	keycloakNamespace     = "api-monetization-identity"
 	keycloakRouteName     = "api-monetization-keycloak"
 	keycloakInternalURL   = "http://api-monetization-service.api-monetization-identity.svc.cluster.local:8080"

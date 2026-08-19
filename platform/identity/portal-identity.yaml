@@ -280,6 +280,11 @@ spec:
                 secretKeyRef:
                   name: rhdh-keycloak-client
                   key: client-secret
+            - name: OWNER_APPROVAL_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: monetization-owner-approval-keycloak-client
+                  key: client-secret
             - name: PORTAL_ORIGIN
               valueFrom:
                 configMapKeyRef:
@@ -327,6 +332,7 @@ spec:
               realm=api-monetization
               admin_role=monetization-admin
               developer_role=monetization-developer
+              owner_role=monetization-owner
 
               for attempt in $(seq 1 60); do
                 if run_kcadm config credentials --config /tmp/kcadm.config \
@@ -367,6 +373,12 @@ spec:
                 run_kcadm create roles -r "$realm" --config /tmp/kcadm.config \
                   -s name="$developer_role" \
                   -s description='Developer who can subscribe to API products and manage credentials'
+              fi
+              if ! run_kcadm get "roles/$owner_role" -r "$realm" \
+                --config /tmp/kcadm.config >/dev/null 2>&1; then
+                run_kcadm create roles -r "$realm" --config /tmp/kcadm.config \
+                  -s name="$owner_role" \
+                  -s description='Approved API owner who can publish governed API products'
               fi
 
               cat >/tmp/portal-client.json <<JSON
@@ -552,6 +564,23 @@ spec:
               }
               JSON
 
+              cat >/tmp/owner-approval-client.json <<JSON
+              {
+                "clientId": "monetization-owner-approvals",
+                "name": "API Owner Approval Service",
+                "description": "Least-privilege service identity used to apply approved API owner group membership",
+                "enabled": true,
+                "protocol": "openid-connect",
+                "publicClient": false,
+                "clientAuthenticatorType": "client-secret",
+                "secret": "$OWNER_APPROVAL_CLIENT_SECRET",
+                "serviceAccountsEnabled": true,
+                "standardFlowEnabled": false,
+                "directAccessGrantsEnabled": false,
+                "fullScopeAllowed": true
+              }
+              JSON
+
               upsert_client() {
                 local client_id=$1
                 local definition=$2
@@ -574,9 +603,10 @@ spec:
               developer_automation_client_uuid=$(upsert_client monetization-developer-automation /tmp/developer-automation-client.json)
               grafana_client_uuid=$(upsert_client api-monetization-grafana /tmp/grafana-client.json)
               rhdh_client_uuid=$(upsert_client rhdh /tmp/rhdh-client.json)
+              owner_approval_client_uuid=$(upsert_client monetization-owner-approvals /tmp/owner-approval-client.json)
               if [[ -z $portal_client_uuid || -z $automation_client_uuid || \
                 -z $developer_automation_client_uuid || -z $grafana_client_uuid || \
-                -z $rhdh_client_uuid ]]; then
+                -z $rhdh_client_uuid || -z $owner_approval_client_uuid ]]; then
                 echo "Portal OIDC clients were not created" >&2
                 exit 1
               fi
@@ -603,7 +633,21 @@ spec:
               owner_group_id=$(ensure_group api-owners)
               admin_group_id=$(ensure_group api-admins)
               run_kcadm update "realms/$realm" --config /tmp/kcadm.config \
-                -s registrationAllowed=true
+                -s registrationAllowed=true \
+                -s displayName='API Monetization Developer Hub' \
+                -s loginTheme=api-monetization
+
+              # Group membership is the single source of truth for both RHDH
+              # authorization and control-plane realm roles. This makes every
+              # self-registered consumer usable without one-off user grants.
+              run_kcadm add-roles -r "$realm" --config /tmp/kcadm.config \
+                --gid "$consumer_group_id" --rolename "$developer_role"
+              run_kcadm add-roles -r "$realm" --config /tmp/kcadm.config \
+                --gid "$owner_group_id" --rolename "$developer_role"
+              run_kcadm add-roles -r "$realm" --config /tmp/kcadm.config \
+                --gid "$owner_group_id" --rolename "$owner_role"
+              run_kcadm add-roles -r "$realm" --config /tmp/kcadm.config \
+                --gid "$admin_group_id" --rolename "$admin_role"
 
               echo "Configuring portal administrator"
               admin_user_id=$(run_kcadm get users -r "$realm" --config /tmp/kcadm.config \
@@ -719,6 +763,18 @@ spec:
               for management_role in view-users query-users query-groups; do
                 run_kcadm add-roles -r "$realm" --config /tmp/kcadm.config \
                   --uid "$rhdh_service_user_id" --cclientid realm-management \
+                  --rolename "$management_role"
+              done
+              owner_approval_service_user_id=$(run_kcadm get \
+                "clients/$owner_approval_client_uuid/service-account-user" \
+                -r "$realm" --config /tmp/kcadm.config --fields id | json_id)
+              if [[ -z $owner_approval_service_user_id ]]; then
+                echo "Owner approval service account was not created" >&2
+                exit 1
+              fi
+              for management_role in manage-users query-users query-groups; do
+                run_kcadm add-roles -r "$realm" --config /tmp/kcadm.config \
+                  --uid "$owner_approval_service_user_id" --cclientid realm-management \
                   --rolename "$management_role"
               done
               echo "Keycloak portal, Grafana, and Developer Hub identities are configured"

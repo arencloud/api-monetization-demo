@@ -1,6 +1,9 @@
 app:
   title: API Monetization Developer Hub
   baseUrl: ${RHDH_BASE_URL}
+  branding:
+    fullLogo: data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzNDAiIGhlaWdodD0iNTYiIHZpZXdCb3g9IjAgMCAzNDAgNTYiIHJvbGU9ImltZyIgYXJpYS1sYWJlbD0iQVBJIE1vbmV0aXphdGlvbiBEZXZlbG9wZXIgSHViIj4KICA8cmVjdCB3aWR0aD0iNTYiIGhlaWdodD0iNTYiIHJ4PSI4IiBmaWxsPSIjZWUwMDAwIi8+CiAgPHBhdGggZmlsbD0iI2ZmZiIgZD0iTTE1IDE3aDI2djZIMTV6bTAgMTBoMTh2NkgxNXptMCAxMGgyNnY2SDE1eiIvPgogIDx0ZXh0IHg9IjcyIiB5PSIyNCIgZm9udC1mYW1pbHk9IlJlZCBIYXQgRGlzcGxheSxBcmlhbCxzYW5zLXNlcmlmIiBmb250LXNpemU9IjE4IiBmb250LXdlaWdodD0iNzAwIiBmaWxsPSIjMTUxNTE1Ij5BUEkgTW9uZXRpemF0aW9uPC90ZXh0PgogIDx0ZXh0IHg9IjcyIiB5PSI0NCIgZm9udC1mYW1pbHk9IlJlZCBIYXQgVGV4dCxBcmlhbCxzYW5zLXNlcmlmIiBmb250LXNpemU9IjE1IiBmaWxsPSIjNGY1MjU1Ij5EZXZlbG9wZXIgSHViPC90ZXh0Pgo8L3N2Zz4K
+    iconLogo: data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1NiIgaGVpZ2h0PSI1NiIgdmlld0JveD0iMCAwIDU2IDU2IiByb2xlPSJpbWciIGFyaWEtbGFiZWw9IkFQSSBNb25ldGl6YXRpb24iPgogIDxyZWN0IHdpZHRoPSI1NiIgaGVpZ2h0PSI1NiIgcng9IjgiIGZpbGw9IiNlZTAwMDAiLz4KICA8cGF0aCBmaWxsPSIjZmZmIiBkPSJNMTUgMTdoMjZ2NkgxNXptMCAxMGgxOHY2SDE1em0wIDEwaDI2djZIMTV6Ii8+Cjwvc3ZnPgo=
 
 organization:
   name: API Monetization
@@ -97,8 +100,10 @@ catalog:
         clientId: ${KEYCLOAK_CLIENT_ID}
         clientSecret: ${KEYCLOAK_CLIENT_SECRET}
         schedule:
-          frequency: {minutes: 1}
-          initialDelay: {seconds: 15}
+          # Keep registration usable without bypassing catalog-backed RBAC:
+          # the first retry after Keycloak creates a user resolves in <=10s.
+          frequency: {seconds: 10}
+          initialDelay: {seconds: 5}
           timeout: {minutes: 1}
   locations:
     - type: url

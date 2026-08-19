@@ -11,6 +11,8 @@ p, role:default/api-consumer, api-monetization.billing.read.own, read, allow
 p, role:default/api-consumer, api-monetization.subscription.create.own, create, allow
 p, role:default/api-consumer, api-monetization.subscription.update.own, update, allow
 p, role:default/api-consumer, api-monetization.subscription.delete.own, delete, allow
+p, role:default/api-consumer, api-monetization.owner-access.read.own, read, allow
+p, role:default/api-consumer, api-monetization.owner-access.request, create, allow
 
 # API owners publish products; credentials remain subscription-controlled.
 p, role:default/api-owner, kuadrant.planpolicy.read, read, allow
@@ -39,6 +41,7 @@ p, role:default/api-owner, api-monetization.billing.read.own, read, allow
 p, role:default/api-owner, api-monetization.subscription.create.own, create, allow
 p, role:default/api-owner, api-monetization.subscription.update.own, update, allow
 p, role:default/api-owner, api-monetization.subscription.delete.own, delete, allow
+p, role:default/api-owner, api-monetization.owner-access.read.own, read, allow
 
 # API administrators manage API products; credentials remain subscription-controlled.
 p, role:default/api-admin, kuadrant.planpolicy.read, read, allow
@@ -70,6 +73,8 @@ p, role:default/api-admin, api-monetization.billing.read.all, read, allow
 p, role:default/api-admin, api-monetization.subscription.create.own, create, allow
 p, role:default/api-admin, api-monetization.subscription.update.own, update, allow
 p, role:default/api-admin, api-monetization.subscription.delete.own, delete, allow
+p, role:default/api-admin, api-monetization.owner-access.read.own, read, allow
+p, role:default/api-admin, api-monetization.owner-access.review, update, allow
 
 g, group:default/api-consumers, role:default/api-consumer
 g, group:default/api-owners, role:default/api-owner

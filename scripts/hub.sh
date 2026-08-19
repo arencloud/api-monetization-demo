@@ -31,5 +31,7 @@ printf 'Developer username: demo-developer\n'
 printf 'Developer password: %s\n' "$developer_password"
 printf 'Admin username:     demo-admin\n'
 printf 'Admin password:     %s\n' "$admin_password"
-printf '\nConsumer pages: /monetized-apis, /billing\n'
+printf '\nConsumer pages: /monetized-apis, /billing (Subscriptions & Access)\n'
+printf 'New consumers: select Register on the Keycloak sign-in page\n'
+printf 'New owners: request access in Subscriptions & Access; demo-admin reviews it there\n'
 printf 'Technical policy view (not in navigation): /kuadrant/api-products\n'

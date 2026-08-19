@@ -1,0 +1,173 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: api-monetization-keycloak-builder
+  namespace: api-monetization-identity
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: api-monetization-keycloak-builder
+  namespace: api-monetization-identity
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+rules:
+  - apiGroups: [build.openshift.io]
+    resources: [buildconfigs]
+    resourceNames: [api-monetization-keycloak]
+    verbs: [get]
+  - apiGroups: [build.openshift.io]
+    resources: [buildconfigs/instantiate]
+    resourceNames: [api-monetization-keycloak]
+    verbs: [create]
+  - apiGroups: [build.openshift.io]
+    resources: [builds]
+    verbs: [get, list, watch]
+  - apiGroups: [image.openshift.io]
+    resources: [imagestreams]
+    resourceNames: [api-monetization-keycloak]
+    verbs: [get, update]
+  - apiGroups: [image.openshift.io]
+    resources: [imagestreamtags]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: api-monetization-keycloak-builder
+  namespace: api-monetization-identity
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: api-monetization-keycloak-builder
+subjects:
+  - kind: ServiceAccount
+    name: api-monetization-keycloak-builder
+    namespace: api-monetization-identity
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: api-monetization-keycloak-source-build
+  namespace: api-monetization-identity
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "-15"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  activeDeadlineSeconds: 1200
+  backoffLimit: 1
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "false"
+    spec:
+      serviceAccountName: api-monetization-keycloak-builder
+      restartPolicy: Never
+      containers:
+        - name: build
+          image: registry.redhat.io/openshift4/ose-cli-rhel9:v4.22
+          env:
+            - name: SOURCE_REVISION
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['api-monetization.demo/source-revision']
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          command:
+            - /bin/bash
+            - -Eeuo
+            - pipefail
+            - -c
+            - |
+              app=api-monetization-keycloak
+              if [[ ! $SOURCE_REVISION =~ ^[0-9a-f]{40}$ ]]; then
+                echo "Argo CD did not inject a full Git revision" >&2
+                exit 1
+              fi
+              immutable_tag="git-${SOURCE_REVISION:0:12}"
+              if ! oc get "imagestreamtag/$app:$immutable_tag" >/dev/null 2>&1; then
+                echo "building the Red Hat Developer Hub login theme from $SOURCE_REVISION"
+                build_name=$(oc start-build "$app" --commit="$SOURCE_REVISION" -o name)
+                while true; do
+                  phase=$(oc get "$build_name" -o jsonpath='{.status.phase}')
+                  case "$phase" in
+                    Complete) break ;;
+                    Failed|Error|Cancelled)
+                      oc logs "$build_name" || true
+                      echo "error: $build_name ended in phase $phase" >&2
+                      exit 1
+                      ;;
+                  esac
+                  sleep 5
+                done
+                actual_revision=$(oc get "$build_name" -o jsonpath='{.spec.revision.git.commit}')
+                digest=$(oc get "$build_name" -o jsonpath='{.status.output.to.imageDigest}')
+                if [[ $actual_revision != "$SOURCE_REVISION" || $digest != sha256:* ]]; then
+                  echo "Keycloak theme build provenance is invalid" >&2
+                  exit 1
+                fi
+                oc tag "$app@$digest" "$app:$immutable_tag"
+              fi
+              oc tag "$app:$immutable_tag" "$app:demo"
+              digest=$(oc get "imagestreamtag/$app:$immutable_tag" \
+                -o jsonpath='{.image.metadata.name}')
+              restart_required=false
+              internal_image="image-registry.openshift-image-registry.svc:5000/$POD_NAMESPACE/$app"
+              while read -r pod image_ref image_id; do
+                [[ -z $pod || $image_id == *"$digest"* ]] && continue
+                if [[ $image_ref != "$internal_image"* ]]; then
+                  echo "leaving $pod for the Keycloak Operator's first themed-image rollout"
+                  continue
+                fi
+                echo "restarting $pod to load Keycloak theme image $digest"
+                restart_required=true
+                oc delete pod "$pod" --wait=false
+              done < <(oc get pods -l app=keycloak \
+                -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.containers[0].image}{" "}{.status.containerStatuses[0].imageID}{"\n"}{end}')
+              if $restart_required; then
+                for attempt in $(seq 1 180); do
+                  matching_pod=false
+                  while read -r image_id ready; do
+                    if [[ $image_id == *"$digest"* && $ready == True ]]; then
+                      matching_pod=true
+                    fi
+                  done < <(oc get pods -l app=keycloak \
+                    -o jsonpath='{range .items[*]}{.status.containerStatuses[0].imageID}{" "}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' \
+                    2>/dev/null || true)
+                  if $matching_pod; then
+                    echo "Keycloak is ready on theme image $digest"
+                    break
+                  fi
+                  if (( attempt == 180 )); then
+                    echo "error: Keycloak did not roll to theme image $digest" >&2
+                    exit 1
+                  fi
+                  sleep 5
+                done
+              fi
+          resources:
+            requests: {cpu: 10m, memory: 64Mi}
+            limits: {cpu: 200m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+            runAsNonRoot: true
+            seccompProfile: {type: RuntimeDefault}
