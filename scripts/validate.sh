@@ -63,7 +63,48 @@ import json
 import hashlib
 import pathlib
 import re
+import stat
 import yaml
+
+uninstall_path = pathlib.Path("scripts/uninstall.sh")
+uninstall_script = uninstall_path.read_text(encoding="utf-8")
+if not uninstall_path.stat().st_mode & stat.S_IXUSR:
+    raise SystemExit("scripts/uninstall.sh must remain executable")
+required_uninstall_fragments = (
+    "UNINSTALL_DELETE_TIMEOUT_SECONDS",
+    "UNINSTALL_FINALIZER_TIMEOUT_SECONDS",
+    "UNINSTALL_NAMESPACE_TIMEOUT_SECONDS",
+    "delete_with_finalizer_recovery()",
+    "sweep_terminating_namespace()",
+    'if [[ -z $(jq -r \'.metadata.deletionTimestamp // empty\' <<<"$object_json") ]]',
+    'oc replace --raw "/api/v1/namespaces/$namespace/finalize"',
+    "dscinitializations.dscinitialization.opendatahub.io",
+    "redhat-ods-applications",
+    "redhat-ods-monitoring",
+    "api-monetization-api-owners",
+    "is_demo_namespace()",
+    "PersistentVolume $volume from $claim_namespace",
+    "devworkspace-operator",
+    "delete_operator_crds()",
+    "operators.coreos.com/$package.$namespace",
+    "OpenShift AI managed-component CRD",
+    "The integrated image registry is retained intentionally",
+)
+for fragment in required_uninstall_fragments:
+    if fragment not in uninstall_script:
+        raise SystemExit(
+            f"uninstall recovery contract is missing required behavior: {fragment}"
+        )
+for forbidden_fragment in (
+    "oc delete namespace --all",
+    "oc delete namespaces --all",
+    "oc delete customresourcedefinition --all",
+    "oc delete crd --all",
+):
+    if forbidden_fragment in uninstall_script:
+        raise SystemExit(
+            f"uninstall must not use broad destructive cleanup: {forbidden_fragment}"
+        )
 
 with open("bootstrap/root/application.yaml", encoding="utf-8") as stream:
     root = yaml.safe_load(stream)
