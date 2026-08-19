@@ -110,6 +110,21 @@ def assert_platform_configuration() -> None:
     if not any(integration.get("host") == "github.com" for integration in github_integrations):
         fail("RHDH must recognize github.com for catalog and publish actions")
 
+    dynamic_plugins = yaml.safe_load(
+        (ROOT / "platform/developer-hub/dynamic-plugins.yaml").read_text(encoding="utf-8")
+    )
+    github_scaffolder = next(
+        (
+            plugin
+            for plugin in dynamic_plugins.get("plugins", [])
+            if plugin.get("package")
+            == "./dynamic-plugins/dist/backstage-plugin-scaffolder-backend-module-github-dynamic"
+        ),
+        None,
+    )
+    if not github_scaffolder or github_scaffolder.get("disabled") is not False:
+        fail("RHDH must enable the GitHub scaffolder module that provides publish:github")
+
     policy = (ROOT / "platform/developer-hub/rbac-policy.csv").read_text(encoding="utf-8")
     permissions = (
         ("scaffolder.template.parameter.read", "read"),
