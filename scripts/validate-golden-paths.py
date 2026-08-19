@@ -139,6 +139,24 @@ def assert_platform_configuration() -> None:
     if allowed & forbidden or spec.get("clusterResourceWhitelist"):
         fail("API-owner repositories must not create secrets, RBAC, or cluster resources")
 
+    rendered = subprocess.check_output(
+        ["oc", "kustomize", "gitops/applications"], cwd=ROOT, text=True
+    )
+    rendered_project = next(
+        (
+            resource
+            for resource in yaml.safe_load_all(rendered)
+            if isinstance(resource, dict)
+            and resource.get("kind") == "AppProject"
+            and resource.get("metadata", {}).get("name") == "api-monetization-api-owners"
+        ),
+        None,
+    )
+    if not rendered_project or rendered_project.get("spec", {}).get("sourceRepos") != [
+        "https://github.com/arencloud/*.git"
+    ]:
+        fail("rendering must preserve the dedicated API-owner repository allowlist")
+
 
 def assert_rendered_project(kind: str, project: pathlib.Path) -> None:
     unresolved = []

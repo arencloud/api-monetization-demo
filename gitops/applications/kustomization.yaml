@@ -51,6 +51,7 @@ replacements:
           - spec.source.repoURL
       - select:
           kind: AppProject
+          name: api-monetization
         fieldPaths:
           - spec.sourceRepos.0
   - source:
