@@ -75,8 +75,7 @@ metadata:
 spec:
   selector:
     matchLabels: {app.kubernetes.io/name: time}
-  mtls:
-    mode: STRICT
+  mtls: {mode: STRICT}
   portLevelMtls:
     "8082": {mode: DISABLE}
 `,

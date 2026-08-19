@@ -145,7 +145,7 @@ export function validateGeneratedProject(
     files.peerAuthentication, 'PeerAuthentication', repository,
   );
   if (
-    !/^\s*mode:\s*STRICT\s*$/m.test(peerAuthentication) ||
+    !/^\s*mtls:\s*(?:\{\s*)?mode:\s*STRICT/m.test(peerAuthentication) ||
     !/^\s*["']?8082["']?:\s*(?:\{\s*)?mode:\s*DISABLE/m.test(peerAuthentication) ||
     !new RegExp(`app[.]kubernetes[.]io/name:\\s*['"]?${escapeRegExp(repository)}['"]?`, 'm').test(peerAuthentication)
   ) {

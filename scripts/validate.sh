@@ -288,13 +288,13 @@ backend_plugin = plugin_by_package.get(backend_plugin_package, {})
 if (
     backend_plugin.get("disabled") is not False
     or backend_plugin.get("integrity")
-    != "sha512-q6n/XqTogbMyGGTwttl2hhS89D4y4e0Lb3vBs/fH8TeKll1vITq3m4bxTlpyGKnGcg62matP0sCLM5x+95wKQg=="
+    != "sha512-NAk0C5idOoPk3tnaPABBmTzuuoHeeZnAHdDekHdHXweVN9wT4+YsrXK3xw3InxvA3r8sbBBKu/u3lu6kL6vIzg=="
 ):
     raise SystemExit("monetization RHDH backend plugin is not checksum-pinned")
 if not backend_plugin_path.is_file() or backend_plugin_path.stat().st_size >= 700_000:
     raise SystemExit("monetization backend artifact is missing or too large for its ConfigMap")
 if hashlib.sha256(backend_plugin_path.read_bytes()).hexdigest() != (
-    "dbbc5207bbb8980f21cabcaea4f3ef3042c9bb3b945ef0a09b3568a7a74de847"
+    "8ea81762eb147c5b9689869146f52bcfad0f15dcd8d675774d8fcef046bdfa67"
 ):
     raise SystemExit("monetization backend artifact checksum changed; rebuild and review it")
 if frontend_plugin_path.stat().st_size + backend_plugin_path.stat().st_size >= 1_000_000:
