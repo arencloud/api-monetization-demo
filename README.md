@@ -73,6 +73,7 @@ The first profile follows the RHCL 1.4 support matrix:
 | cert-manager Operator for Red Hat OpenShift | 1.19 |
 | Red Hat build of Keycloak | 26.6 |
 | Red Hat Developer Hub | 1.10 z-stream (`fast-1.10`) |
+| Red Hat OpenShift Dev Spaces | Latest `stable` channel z-stream |
 | Kuadrant Developer Hub plugin | 0.4.0, integrity-pinned |
 | Effective-policy catalog plugin | 0.1.0, source-controlled local TGZ |
 | Red Hat OpenShift GitOps | Latest catalog channel, automatic upgrades |
@@ -101,7 +102,8 @@ cluster has three 4-vCPU/16-GiB control-plane nodes and two schedulable
 8-vCPU/32-GiB workers and at least 100 GiB of provisionable persistent
 capacity. The registry consumes a one-replica 50-GiB persistent volume; the
 subscription and Keycloak PostgreSQL clusters consume 2 GiB each, and the
-Developer Hub PostgreSQL cluster consumes 5 GiB. See
+Developer Hub PostgreSQL cluster consumes 5 GiB, and the first Dev Spaces user
+workspace consumes a default 10-GiB persistent volume. See
 [the deployment sizing profiles](docs/deployment.md#cluster-sizing) for
 Minimum, Recommended, Large showcase, and single-node requirements, and use
 [the runbook resource gate](docs/demo-runbook.md#select-and-verify-the-cluster-profile)

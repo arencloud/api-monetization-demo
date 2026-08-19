@@ -1,0 +1,16 @@
+apiVersion: org.eclipse.che/v2
+kind: CheCluster
+metadata:
+  name: devspaces
+  namespace: openshift-devspaces
+  labels:
+    app.kubernetes.io/name: devspaces
+    app.kubernetes.io/part-of: api-monetization
+    app.kubernetes.io/component: cloud-development-environment
+    component: che
+spec:
+  components: {}
+  containerRegistry: {}
+  devEnvironments: {}
+  gitServices: {}
+  networking: {}

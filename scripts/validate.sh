@@ -161,6 +161,20 @@ if (
 ):
     raise SystemExit("RHDH must track automatic 1.10 z-stream updates on fast-1.10")
 
+with open("operators/devspaces/subscription.yaml", encoding="utf-8") as stream:
+    devspaces_subscription = yaml.safe_load(stream)
+devspaces_spec = devspaces_subscription.get("spec", {})
+if (
+    devspaces_subscription.get("metadata", {}).get("namespace") != "openshift-operators"
+    or devspaces_spec.get("name") != "devspaces"
+    or devspaces_spec.get("channel") != "stable"
+    or devspaces_spec.get("source") != "redhat-operators"
+    or devspaces_spec.get("sourceNamespace") != "openshift-marketplace"
+    or devspaces_spec.get("installPlanApproval") != "Automatic"
+    or "startingCSV" in devspaces_spec
+):
+    raise SystemExit("OpenShift Dev Spaces must automatically track the stable channel head")
+
 with open("platform/developer-hub/dynamic-plugins.yaml", encoding="utf-8") as stream:
     dynamic_plugins = yaml.safe_load(stream)
 plugin_by_package = {
@@ -176,6 +190,13 @@ for package, integrity in expected_kuadrant_plugins.items():
     plugin = plugin_by_package.get(package, {})
     if plugin.get("disabled") is not False or plugin.get("integrity") != integrity:
         raise SystemExit(f"{package}: Kuadrant plugin version or integrity is not reproducibly pinned")
+
+for package in (
+    "./dynamic-plugins/dist/backstage-plugin-kubernetes-backend-dynamic",
+    "./dynamic-plugins/dist/backstage-community-plugin-topology",
+):
+    if plugin_by_package.get(package, {}).get("disabled") is not False:
+        raise SystemExit(f"{package}: Dev Spaces topology integration must be enabled")
 
 kuadrant_frontend = (
     plugin_by_package["@kuadrant/kuadrant-backstage-plugin-frontend@v0.4.0"]
@@ -292,6 +313,28 @@ if resolvers != [{"resolver": "oidcSubClaimMatchingKeycloakUserId"}]:
     raise SystemExit("RHDH must use the non-bypass Keycloak user-ID sign-in resolver")
 if not rhdh_config.get("permission", {}).get("enabled"):
     raise SystemExit("RHDH permission framework must be enabled for Kuadrant RBAC")
+devspaces_environment = (
+    rhdh_config.get("scaffolder", {})
+    .get("defaultEnvironment", {})
+    .get("parameters", {})
+    .get("devSpacesBaseUrl")
+)
+if devspaces_environment != "${DEV_SPACES_URL}":
+    raise SystemExit("RHDH scaffolder must consume the discovered Dev Spaces URL")
+kubernetes_config = rhdh_config.get("kubernetes", {})
+clusters = kubernetes_config.get("clusterLocatorMethods", [{}])[0].get("clusters", [])
+if not any(
+    cluster.get("authProvider") == "serviceAccount"
+    and "serviceAccountToken" not in cluster
+    for cluster in clusters
+):
+    raise SystemExit("RHDH topology must use its rotating in-cluster ServiceAccount token")
+custom_resources = {
+    (resource.get("group"), resource.get("apiVersion"), resource.get("plural"))
+    for resource in kubernetes_config.get("customResources", [])
+}
+if ("org.eclipse.che", "v2", "checlusters") not in custom_resources:
+    raise SystemExit("RHDH topology must discover the OpenShift Dev Spaces CheCluster")
 
 rhdh_rbac = pathlib.Path("platform/developer-hub/rbac-policy.csv").read_text()
 for permission, action in (

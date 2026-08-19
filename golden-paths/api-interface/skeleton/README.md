@@ -17,6 +17,10 @@ surface:
 
 ## Develop
 
+The Golden Path completion page opens this repository directly in Red Hat
+OpenShift Dev Spaces. The checked-in `devfile.yaml` provides **test** and
+**run** commands in the workspace task menu. The same commands work locally:
+
 ```bash
 go test ./...
 go run .

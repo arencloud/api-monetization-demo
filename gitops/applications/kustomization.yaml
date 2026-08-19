@@ -13,11 +13,13 @@ resources:
   - service-mesh-operator.yaml
   - keycloak-operator.yaml
   - rhdh-operator.yaml
+  - devspaces-operator.yaml
   - openshift-ai-operator.yaml
   - external-secrets.yaml
   - demo-secrets.yaml
   - database.yaml
   - identity.yaml
+  - devspaces.yaml
   - developer-hub.yaml
   - ai-chat.yaml
   - inventory.yaml

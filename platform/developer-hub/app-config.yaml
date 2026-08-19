@@ -46,7 +46,26 @@ auth:
 
 signInPage: oidc
 
-kubernetes: null
+kubernetes:
+  serviceLocatorMethod:
+    type: multiTenant
+  clusterLocatorMethods:
+    - type: config
+      clusters:
+        - name: openshift
+          title: API Monetization OpenShift
+          url: https://kubernetes.default.svc
+          authProvider: serviceAccount
+          skipTLSVerify: false
+          skipMetricsLookup: true
+          dashboardApp: openshift
+  customResources:
+    - group: route.openshift.io
+      apiVersion: v1
+      plural: routes
+    - group: org.eclipse.che
+      apiVersion: v2
+      plural: checlusters
 
 integrations:
   github:
@@ -92,6 +111,9 @@ scaffolder:
     name: API Monetization Developer Hub
     email: api-platform@example.invalid
   defaultCommitMessage: Bootstrap from an API-owner Golden Path
+  defaultEnvironment:
+    parameters:
+      devSpacesBaseUrl: ${DEV_SPACES_URL}
 
 permission:
   enabled: true

@@ -10,6 +10,10 @@ OpenShift GitOps bootstrap Application.
 
 ## Develop and map
 
+The Golden Path completion page opens this repository directly in Red Hat
+OpenShift Dev Spaces. The checked-in `devfile.yaml` provides **test** and
+**run** commands in the workspace task menu. The same commands work locally:
+
 ```bash
 mvn quarkus:dev
 curl -X POST http://localhost:8080${{ values.apiPath }} \

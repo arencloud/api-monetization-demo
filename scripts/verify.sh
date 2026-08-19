@@ -101,6 +101,8 @@ for application_name in \
   api-monetization-demo-secrets \
   api-monetization-database \
   api-monetization-identity \
+  api-monetization-devspaces-operator \
+  api-monetization-devspaces \
   api-monetization-developer-hub \
   api-monetization-ai-chat \
   api-monetization-inventory \
@@ -165,6 +167,15 @@ if [[ -z $ingress_certificate ]]; then
 fi
 
 echo "waiting for Red Hat Developer Hub and Kuadrant plugin runtime"
+oc wait --for=jsonpath='{.status.chePhase}'=Active \
+  checluster.org.eclipse.che/devspaces -n openshift-devspaces --timeout=15m
+devspaces_url=$(oc get checluster.org.eclipse.che devspaces \
+  -n openshift-devspaces -o jsonpath='{.status.cheURL}')
+if [[ $devspaces_url != https://* ]]; then
+  echo "error: OpenShift Dev Spaces did not publish an HTTPS dashboard URL" >&2
+  exit 1
+fi
+echo "OpenShift Dev Spaces: $devspaces_url"
 oc rollout status deployment/backstage-api-monetization \
   -n api-monetization-developer-hub --timeout=15m
 oc wait route/backstage-api-monetization -n api-monetization-developer-hub \
@@ -194,6 +205,14 @@ if ! grep -q "Loaded dynamic frontend plugin '@arencloud/rhdh-policy-catalog-dyn
 fi
 if ! grep -qi "loaded dynamic backend plugin '@arencloud/rhdh-monetization-backend-dynamic'.*0.1.0" <<<"$rhdh_logs"; then
   echo "error: Developer Hub did not load the permission-controlled monetization backend plugin" >&2
+  exit 1
+fi
+if ! grep -qi "loaded dynamic backend plugin 'backstage-plugin-kubernetes-backend-dynamic'" <<<"$rhdh_logs"; then
+  echo "error: Developer Hub did not load the Kubernetes backend required by Topology" >&2
+  exit 1
+fi
+if ! grep -qi "Loaded dynamic frontend plugin 'backstage-community-plugin-topology'" <<<"$rhdh_logs"; then
+  echo "error: Developer Hub did not load the Topology source editor" >&2
   exit 1
 fi
 if [[ $(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \

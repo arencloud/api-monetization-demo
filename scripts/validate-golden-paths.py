@@ -91,6 +91,17 @@ def assert_template(path: pathlib.Path) -> None:
         fail(f"{path}: publish action does not create one repository per API")
     if publish.get("token") != "${{ secrets.githubToken }}":
         fail(f"{path}: publish action must consume, but never persist, the task token")
+    output_links = spec.get("output", {}).get("links", [])
+    devspaces_link = next(
+        (link for link in output_links if link.get("title") == "Open in OpenShift Dev Spaces"),
+        None,
+    )
+    expected_devspaces_link = (
+        "${{ environment.parameters.devSpacesBaseUrl }}#"
+        "${{ steps.publish.output.remoteUrl }}"
+    )
+    if not devspaces_link or devspaces_link.get("url") != expected_devspaces_link:
+        fail(f"{path}: must return the portable Dev Spaces factory URL")
 
 
 def assert_platform_configuration() -> None:
@@ -109,6 +120,20 @@ def assert_platform_configuration() -> None:
     github_integrations = app_config.get("integrations", {}).get("github", [])
     if not any(integration.get("host") == "github.com" for integration in github_integrations):
         fail("RHDH must recognize github.com for catalog and publish actions")
+    devspaces_environment = (
+        app_config.get("scaffolder", {})
+        .get("defaultEnvironment", {})
+        .get("parameters", {})
+        .get("devSpacesBaseUrl")
+    )
+    if devspaces_environment != "${DEV_SPACES_URL}":
+        fail("RHDH must inject the discovered Dev Spaces URL into every Golden Path")
+    custom_resources = {
+        (resource.get("group"), resource.get("apiVersion"), resource.get("plural"))
+        for resource in app_config.get("kubernetes", {}).get("customResources", [])
+    }
+    if ("org.eclipse.che", "v2", "checlusters") not in custom_resources:
+        fail("RHDH topology must discover the Operator-managed CheCluster")
 
     dynamic_plugins = yaml.safe_load(
         (ROOT / "platform/developer-hub/dynamic-plugins.yaml").read_text(encoding="utf-8")
@@ -124,6 +149,17 @@ def assert_platform_configuration() -> None:
     )
     if not github_scaffolder or github_scaffolder.get("disabled") is not False:
         fail("RHDH must enable the GitHub scaffolder module that provides publish:github")
+    enabled_packages = {
+        plugin.get("package")
+        for plugin in dynamic_plugins.get("plugins", [])
+        if plugin.get("disabled") is False
+    }
+    for package in (
+        "./dynamic-plugins/dist/backstage-plugin-kubernetes-backend-dynamic",
+        "./dynamic-plugins/dist/backstage-community-plugin-topology",
+    ):
+        if package not in enabled_packages:
+            fail(f"RHDH must enable {package} for the Dev Spaces source editor")
 
     policy = (ROOT / "platform/developer-hub/rbac-policy.csv").read_text(encoding="utf-8")
     permissions = (
@@ -201,6 +237,32 @@ def assert_rendered_project(kind: str, project: pathlib.Path) -> None:
         fail(f"{kind}: generated API repositories require reviewed promotion")
     if app_spec.get("destination", {}).get("namespace") != "api-monetization-apps":
         fail(f"{kind}: generated Application targets an unapproved namespace")
+
+    devfile = yaml.safe_load((project / "devfile.yaml").read_text(encoding="utf-8"))
+    if devfile.get("schemaVersion") != "2.2.2":
+        fail(f"{kind}: generated project must provide a Dev Spaces devfile")
+    commands = {
+        command.get("id")
+        for command in devfile.get("commands", [])
+        if isinstance(command, dict)
+    }
+    if commands != {"test", "run"}:
+        fail(f"{kind}: Dev Spaces must expose test and run commands")
+
+    catalog_documents = list(
+        yaml.safe_load_all((project / "catalog-info.yaml").read_text(encoding="utf-8"))
+    )
+    component = next(document for document in catalog_documents if document.get("kind") == "Component")
+    if component.get("metadata", {}).get("annotations", {}).get("backstage.io/kubernetes-id") != "orders-edge":
+        fail(f"{kind}: catalog Component is not mapped to its OpenShift workload")
+    deployment = yaml.safe_load((project / "gitops/deployment.yaml").read_text(encoding="utf-8"))
+    annotations = deployment.get("metadata", {}).get("annotations", {})
+    if annotations.get("app.openshift.io/vcs-uri") != "https://github.com/arencloud/orders-edge.git":
+        fail(f"{kind}: workload is missing its Dev Spaces Git source annotation")
+    if annotations.get("app.openshift.io/vcs-ref") != "main":
+        fail(f"{kind}: workload is missing its Dev Spaces Git branch annotation")
+    if deployment.get("metadata", {}).get("labels", {}).get("backstage.io/kubernetes-id") != "orders-edge":
+        fail(f"{kind}: workload is not discoverable by RHDH Topology")
 
     for suffix in ("api-key", "jwt"):
         if not (project / "gitops/api-products.yaml").read_text(encoding="utf-8").count(f"orders-edge-{suffix}"):

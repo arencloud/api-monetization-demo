@@ -62,6 +62,7 @@ delete_package applications/ai-chat
 delete_package applications/inventory
 delete_package applications/payments
 delete_package platform/developer-hub
+delete_package platform/devspaces
 delete_package platform/ai-model
 delete_package platform/gateway
 delete_package platform/identity
@@ -114,6 +115,7 @@ remove_operator openshift-tempo-operator tempo-product
 remove_operator openshift-operators grafana-operator
 remove_operator redhat-ods-operator rhods-operator
 remove_operator rhdh-operator rhdh
+remove_operator openshift-operators devspaces
 
 oc delete mutatingwebhookconfiguration,validatingwebhookconfiguration \
   -l app.kubernetes.io/instance=cert-manager \

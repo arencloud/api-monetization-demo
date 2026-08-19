@@ -1,0 +1,29 @@
+schemaVersion: 2.2.2
+metadata:
+  name: ${{ values.name }}
+components:
+  - name: tools
+    container:
+      image: registry.redhat.io/devspaces/udi-rhel9:3.29
+      memoryRequest: 1Gi
+      memoryLimit: 2Gi
+      cpuRequest: 200m
+      cpuLimit: "2"
+      endpoints:
+        - name: api
+          targetPort: 8080
+          exposure: public
+          protocol: https
+commands:
+  - id: test
+    exec:
+      component: tools
+      commandLine: go test ./...
+      workingDir: ${PROJECT_SOURCE}
+      group: {kind: test, isDefault: true}
+  - id: run
+    exec:
+      component: tools
+      commandLine: go run .
+      workingDir: ${PROJECT_SOURCE}
+      group: {kind: run, isDefault: true}

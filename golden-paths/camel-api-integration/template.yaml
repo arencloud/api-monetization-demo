@@ -6,7 +6,7 @@ metadata:
   description: Create a Red Hat Camel Quarkus mapping/orchestration API with RHCL plans and GitOps.
   annotations:
     backstage.io/techdocs-ref: dir:.
-    backstage.io/template-version: 1.0.0
+    backstage.io/template-version: 1.1.0
   tags:
     - api
     - camel
@@ -163,5 +163,7 @@ spec:
         url: ${{ steps.publish.output.remoteUrl }}
       - title: Open in the catalog
         entityRef: ${{ steps.register.output.entityRef }}
+      - title: Open in OpenShift Dev Spaces
+        url: "${{ environment.parameters.devSpacesBaseUrl }}#${{ steps.publish.output.remoteUrl }}"
       - title: Bootstrap with OpenShift GitOps
         url: ${{ steps.publish.output.remoteUrl }}/blob/main/bootstrap/argocd-application.yaml

@@ -9,8 +9,10 @@ Red Hat Developer Hub exposes two governed Software Templates to members of the
 | Monetized Camel API integration | Mapping, enriching, routing, or orchestrating between complex interfaces | Red Hat build of Camel for Quarkus, Java 21, Kaoto-editable YAML route, OpenAPI, tests, and the same platform resources |
 
 Every run creates a dedicated repository in the approved `arencloud` GitHub
-organization and registers its `catalog-info.yaml` in Developer Hub. It does
-not add generated source to this platform repository.
+organization, registers its `catalog-info.yaml` in Developer Hub, and returns
+an **Open in OpenShift Dev Spaces** link. The link starts a workspace from the
+new repository and its generated `devfile.yaml`; it does not add generated
+source to this platform repository.
 
 ## Owner workflow
 
@@ -23,8 +25,8 @@ not add generated source to this platform repository.
    model are reviewed.
 6. Provide a GitHub token for this task. The portable profile creates a public
    repository so catalog registration and OpenShift builds work immediately.
-7. Open the generated repository or its newly registered catalog entity from
-   the task output.
+7. Select **Open in OpenShift Dev Spaces** from the task output. Dev Spaces
+   clones the new repository and offers the generated test and run commands.
 8. Develop through pull requests and let the repository's validation workflow
    test the application and render its GitOps resources.
 9. Ask the API Platform team to review
@@ -68,6 +70,11 @@ organization.
 The generated Application intentionally omits automated sync. Repository
 creation and catalog registration are self-service; promotion into the shared
 runtime namespace is a reviewed platform operation.
+
+After promotion, the generated Deployment labels associate the workload with
+its Developer Hub Component. The RHDH Topology source-code action uses the
+official `app.openshift.io/vcs-uri` and `app.openshift.io/vcs-ref` annotations
+to reopen the same repository in Dev Spaces.
 
 ## Plans and commercial onboarding
 

@@ -6,6 +6,7 @@ resources:
   - database.yaml
   - runtime-config.yaml
   - kuadrant-access.yaml
+  - topology-access.yaml
   - backstage.yaml
 configMapGenerator:
   - name: api-monetization-rhdh-app-config
