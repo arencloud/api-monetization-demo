@@ -364,6 +364,20 @@ custom_resources = {
 }
 if ("org.eclipse.che", "v2", "checlusters") not in custom_resources:
     raise SystemExit("RHDH topology must discover the OpenShift Dev Spaces CheCluster")
+catalog_location_targets = {
+    location.get("target")
+    for location in rhdh_config.get("catalog", {}).get("locations", [])
+}
+expected_golden_path_targets = {
+    "https://github.com/arencloud/api-monetization-demo/blob/"
+    "${GITOPS_SOURCE_REVISION}/golden-paths/api-interface/template.yaml",
+    "https://github.com/arencloud/api-monetization-demo/blob/"
+    "${GITOPS_SOURCE_REVISION}/golden-paths/camel-api-integration/template.yaml",
+}
+if not expected_golden_path_targets.issubset(catalog_location_targets):
+    raise SystemExit(
+        "RHDH Golden Path locations must use the exact GitOps commit revision"
+    )
 
 rhdh_rbac = pathlib.Path("platform/developer-hub/rbac-policy.csv").read_text()
 consumer_catalog_allow = "p, role:default/api-consumer, catalog.entity.read, read, allow"
@@ -469,6 +483,38 @@ if (
     or "cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt" not in runtime_config
 ):
     raise SystemExit("RHDH's trusted bundle must include the OpenShift Kubernetes API CA")
+runtime_resources = [
+    resource for resource in yaml.safe_load_all(runtime_config) if resource
+]
+runtime_role = next(
+    resource for resource in runtime_resources
+    if resource.get("kind") == "Role"
+    and resource.get("metadata", {}).get("name") == "api-monetization-rhdh-runtime-config"
+)
+runtime_job = next(
+    resource for resource in runtime_resources
+    if resource.get("kind") == "Job"
+    and resource.get("metadata", {}).get("name") == "api-monetization-rhdh-runtime-config"
+)
+if not any(
+    "jobs" in rule.get("resources", [])
+    and "api-monetization-rhdh-runtime-config" in rule.get("resourceNames", [])
+    and "get" in rule.get("verbs", [])
+    for rule in runtime_role.get("rules", [])
+):
+    raise SystemExit("RHDH runtime discovery must read only its own Argo-annotated Job")
+runtime_command = "\n".join(
+    runtime_job["spec"]["template"]["spec"]["containers"][0].get("args", [])
+)
+for required_fragment in (
+    'api-monetization.demo/source-revision',
+    '^[0-9a-f]{40}$',
+    '--from-literal="GITOPS_SOURCE_REVISION=$gitops_source_revision"',
+):
+    if required_fragment not in runtime_command:
+        raise SystemExit(
+            f"RHDH runtime discovery is missing Git revision behavior {required_fragment}"
+        )
 plugin_volume = next(
     (
         volume for volume in pod_spec.get("volumes", [])
@@ -666,6 +712,20 @@ promoted_applications = {
     "inventory": "inventory-api",
     "payments": "payments-api",
 }
+with open("gitops/applications/developer-hub.yaml", encoding="utf-8") as stream:
+    developer_hub_application = yaml.safe_load(stream)
+developer_hub_kustomize = (
+    developer_hub_application.get("spec", {}).get("source", {}).get("kustomize", {})
+)
+if (
+    developer_hub_kustomize.get("commonAnnotationsEnvsubst") is not True
+    or developer_hub_kustomize.get("commonAnnotations", {}).get(
+        "api-monetization.demo/source-revision"
+    ) != "${ARGOCD_APP_REVISION}"
+):
+    raise SystemExit(
+        "Developer Hub must inject its resolved Git commit into Golden Path discovery"
+    )
 for application_directory, workload_name in promoted_applications.items():
     with open(f"gitops/applications/{application_directory}.yaml", encoding="utf-8") as stream:
         application = yaml.safe_load(stream)

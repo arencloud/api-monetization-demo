@@ -162,6 +162,10 @@ rules:
   - apiGroups: [""]
     resources: [configmaps]
     verbs: [create]
+  - apiGroups: [batch]
+    resources: [jobs]
+    resourceNames: [api-monetization-rhdh-runtime-config]
+    verbs: [get]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -213,6 +217,13 @@ spec:
               keycloak_hostname=""
               devspaces_url=""
               devspaces_phase=""
+              gitops_source_revision=$(oc get job api-monetization-rhdh-runtime-config \
+                -n api-monetization-developer-hub \
+                -o go-template='{{index .metadata.annotations "api-monetization.demo/source-revision"}}')
+              if [[ ! $gitops_source_revision =~ ^[0-9a-f]{40}$ ]]; then
+                echo "Argo CD did not inject a resolved Git commit for the RHDH catalog" >&2
+                exit 1
+              fi
               for _ in $(seq 1 300); do
                 apps_domain=$(oc get ingress.config.openshift.io cluster \
                   -o jsonpath='{.spec.domain}' 2>/dev/null || true)
@@ -252,6 +263,7 @@ spec:
                 --from-literal="DEV_SPACES_URL=$devspaces_url" \
                 --from-literal="KEYCLOAK_SERVER_URL=$keycloak_server_url" \
                 --from-literal="KEYCLOAK_BASE_URL=$keycloak_server_url/realms/api-monetization" \
+                --from-literal="GITOPS_SOURCE_REVISION=$gitops_source_revision" \
                 --dry-run=client -o yaml \
                 | oc apply --server-side --field-manager=api-monetization-rhdh-config -f -
               echo "Developer Hub URL is $rhdh_base_url"

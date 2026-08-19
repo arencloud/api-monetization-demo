@@ -58,6 +58,12 @@ Consumers therefore cannot discover a draft Golden Path API. After publication,
 they see the two authoritative API entities and must subscribe before opening
 either one.
 
+The two Golden Path template locations use the resolved commit SHA injected by
+Argo CD into the Developer Hub runtime configuration. Consequently a deployment
+from `main`, a release tag, or a feature branch imports the templates from the
+same immutable revision as the running platform; it never silently falls back
+to templates from another branch.
+
 ## GitHub credential
 
 The form treats the token as a Developer Hub scaffolder secret. The token is
