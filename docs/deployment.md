@@ -415,10 +415,31 @@ CONFIRM_UNINSTALL=api-monetization make uninstall
 
 The workflow stops Argo CD reconciliation, removes operands before their
 Operators, removes cert-manager's separately managed operand, deletes the demo
-namespaces, and uninstalls OpenShift GitOps last. The infrastructure registry and
-its data are preserved. OLM-installed CRDs are retained
-to avoid destructive cluster-wide data removal and to support clean
-reinstallation.
+namespaces, and uninstalls OpenShift GitOps last. Deletions are bounded: if an
+exact demo-owned resource is already terminating, the workflow clears its
+orphaned finalizers; if an allowlisted demo namespace is stuck, it sweeps its
+remaining objects and uses the namespace finalization API. Operator-generated
+OpenShift AI namespaces, stale console plugins, Argo CD projects, and persistent
+volumes claimed by demo namespaces are included in the final audit. Any resource
+that cannot be removed is reported and makes the command fail instead of waiting
+indefinitely.
+
+The normal object, finalizer-recovery, and namespace waits default to 120, 30,
+and 180 seconds. They can be adjusted for a slow cluster without editing the
+script:
+
+```bash
+CONFIRM_UNINSTALL=api-monetization \
+UNINSTALL_DELETE_TIMEOUT_SECONDS=180 \
+UNINSTALL_FINALIZER_TIMEOUT_SECONDS=60 \
+UNINSTALL_NAMESPACE_TIMEOUT_SECONDS=300 \
+make uninstall
+```
+
+The integrated image registry and its data are preserved. OLM-installed CRDs
+are retained to avoid destructive cluster-wide data removal and to support clean
+reinstallation. The cleanup does not remove unrelated namespaces or persistent
+volumes whose claim did not belong to an explicit demo namespace.
 
 ## Product references
 
