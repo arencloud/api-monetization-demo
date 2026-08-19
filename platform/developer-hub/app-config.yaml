@@ -48,6 +48,10 @@ signInPage: oidc
 
 kubernetes: null
 
+integrations:
+  github:
+    - host: github.com
+
 catalog:
   rules:
     - allow:
@@ -73,6 +77,21 @@ catalog:
           frequency: {minutes: 1}
           initialDelay: {seconds: 15}
           timeout: {minutes: 1}
+  locations:
+    - type: url
+      target: https://github.com/arencloud/api-monetization-demo/blob/main/golden-paths/api-interface/template.yaml
+      rules:
+        - allow: [Template]
+    - type: url
+      target: https://github.com/arencloud/api-monetization-demo/blob/main/golden-paths/camel-api-integration/template.yaml
+      rules:
+        - allow: [Template]
+
+scaffolder:
+  defaultAuthor:
+    name: API Monetization Developer Hub
+    email: api-platform@example.invalid
+  defaultCommitMessage: Bootstrap from an API-owner Golden Path
 
 permission:
   enabled: true
@@ -89,6 +108,12 @@ dynamicPlugins:
           icon: extension
           to: monetized-apis
           priority: 70
+          enabled: true
+        default.create:
+          title: Golden Paths
+          icon: add
+          to: create
+          priority: 65
           enabled: true
 
 apiMonetization:

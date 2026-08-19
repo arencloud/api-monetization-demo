@@ -1,0 +1,49 @@
+apiVersion: devportal.kuadrant.io/v1alpha1
+kind: APIProduct
+metadata:
+  name: ${{ values.name }}-api
+  namespace: api-monetization-apps
+  annotations:
+    argocd.argoproj.io/sync-wave: "40"
+    backstage.io/owner: ${{ values.owner }}
+    monetization.arencloud.com/product: ${{ values.name }}
+    monetization.arencloud.com/path: ${{ values.apiPath }}
+    monetization.arencloud.com/unit: request
+spec:
+  displayName: ${{ values.displayName }}
+  description: ${{ values.description }}
+  version: v1
+  approvalMode: ${{ values.approvalMode }}
+  publishStatus: ${{ values.publishStatus }}
+  targetRef: {group: gateway.networking.k8s.io, kind: HTTPRoute, name: '${{ values.name }}-api-key'}
+  tags: [camel, integration, monetized, generated]
+  contact: {team: API Owners, email: api-owners@example.invalid}
+  documentation:
+    docsURL: https://github.com/${{ values.repoOwner }}/${{ values.name }}/blob/main/README.md
+    openAPISpecURL: http://${{ values.name }}.api-monetization-apps.svc.cluster.local:8080/openapi.yaml
+    gitRepository: https://github.com/${{ values.repoOwner }}/${{ values.name }}
+---
+apiVersion: devportal.kuadrant.io/v1alpha1
+kind: APIProduct
+metadata:
+  name: ${{ values.name }}-api-jwt
+  namespace: api-monetization-apps
+  annotations:
+    argocd.argoproj.io/sync-wave: "40"
+    backstage.io/owner: ${{ values.owner }}
+    monetization.arencloud.com/product: ${{ values.name }}
+    monetization.arencloud.com/path: ${{ values.apiPath }}
+    monetization.arencloud.com/unit: request
+spec:
+  displayName: ${{ values.displayName }} (Keycloak JWT)
+  description: ${{ values.description }}
+  version: v1
+  approvalMode: ${{ values.approvalMode }}
+  publishStatus: ${{ values.publishStatus }}
+  targetRef: {group: gateway.networking.k8s.io, kind: HTTPRoute, name: '${{ values.name }}-jwt'}
+  tags: [camel, integration, oidc, keycloak, monetized, generated]
+  contact: {team: API Owners, email: api-owners@example.invalid}
+  documentation:
+    docsURL: https://github.com/${{ values.repoOwner }}/${{ values.name }}/blob/main/README.md
+    openAPISpecURL: http://${{ values.name }}.api-monetization-apps.svc.cluster.local:8080/openapi.yaml
+    gitRepository: https://github.com/${{ values.repoOwner }}/${{ values.name }}

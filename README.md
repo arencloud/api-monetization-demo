@@ -54,6 +54,7 @@ trust boundaries.
 | `operators/` | OLM subscriptions and operator groups |
 | `platform/` | Operator-managed platform operands and shared namespaces |
 | `applications/` | Inventory, Payment, and monetization control-plane source/builds |
+| `golden-paths/` | RHDH Software Templates and standalone API project skeletons for API owners |
 | `policies/` | Gateway, authentication, authorization, and limit policies |
 | `dashboards/` | Business and platform observability assets |
 | `environments/` | Environment-specific composition and configuration |
@@ -165,6 +166,17 @@ and installs the OpenShift router CA into the RHCL OIDC components, so the same
 catalog works on a fresh cluster with a different applications domain.
 The default RHDH Lightspeed flavour is disabled because the solution already
 contains its independently governed OpenShift AI chat product.
+
+Members of the `api-owners` group also receive two governed
+[Golden Paths](docs/golden-paths.md). The standard path creates a contract-first
+Go API and the integration path creates a Red Hat Camel Quarkus API with a
+Kaoto-editable mapping route. Each scaffolder run creates and registers a
+dedicated GitHub repository containing application source, OpenAPI, tests,
+OpenShift builds, Service Mesh configuration, Gateway API routes, RHCL
+authentication and plan resources, APIProducts, TechDocs, and a restricted
+Argo CD bootstrap Application. New products start in Draft and require platform
+and commercial review before publication.
+
 Developer Hub delegates login to the existing Red Hat build of Keycloak realm;
 Keycloak groups map to the Kuadrant consumer, owner, and administrator roles.
 The source-controlled RHDH extension resolves effective `PlanPolicy`, direct

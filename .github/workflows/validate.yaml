@@ -37,6 +37,13 @@ jobs:
           cache: pip
           cache-dependency-path: .github/requirements-ci.txt
 
+      - name: Set up Java for Red Hat Camel
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
       - name: Install Python validation dependencies
         run: python -m pip install --requirement .github/requirements-ci.txt
 
@@ -51,6 +58,9 @@ jobs:
 
       - name: Run unit tests
         run: make test
+
+      - name: Render and build the Golden Path projects
+        run: make golden-path-test
 
       - name: Build and test the RHDH monetization plugins
         run: make rhdh-plugin-test

@@ -1,0 +1,31 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: ${{ values.name }}
+  title: ${{ values.displayName }}
+  description: ${{ values.description }}
+  annotations:
+    github.com/project-slug: ${{ values.repoOwner }}/${{ values.name }}
+    argocd/app-name: ${{ values.name }}
+    backstage.io/source-template: template:default/monetized-api-interface
+    backstage.io/template-version: 1.0.0
+  tags: [api, kuadrant, monetized, openshift]
+spec:
+  type: service
+  lifecycle: ${{ values.lifecycle }}
+  owner: ${{ values.owner }}
+  providesApis: ['${{ values.name }}']
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: ${{ values.name }}
+  title: ${{ values.displayName }}
+  description: ${{ values.description }}
+  tags: [gateway-api, kuadrant, monetized]
+spec:
+  type: openapi
+  lifecycle: ${{ values.lifecycle }}
+  owner: ${{ values.owner }}
+  definition:
+    $text: ./openapi/openapi.yaml

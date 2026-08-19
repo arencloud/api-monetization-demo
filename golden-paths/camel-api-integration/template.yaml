@@ -1,0 +1,167 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: monetized-camel-api-integration
+  title: Monetized Camel API integration
+  description: Create a Red Hat Camel Quarkus mapping/orchestration API with RHCL plans and GitOps.
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+    backstage.io/template-version: 1.0.0
+  tags:
+    - api
+    - camel
+    - integration
+    - kaoto
+    - kuadrant
+    - monetization
+    - openshift
+spec:
+  owner: group:default/api-owners
+  type: service
+  parameters:
+    - title: Integration API identity
+      required: [name, displayName, description, apiPath, owner]
+      properties:
+        name:
+          title: Project and product ID
+          type: string
+          description: Lowercase DNS-safe name used for the repository and Kubernetes resources.
+          pattern: '^[a-z][a-z0-9-]{2,39}$'
+          maxLength: 40
+          ui:autofocus: true
+        displayName:
+          title: Display name
+          type: string
+          maxLength: 80
+        description:
+          title: Integration purpose
+          type: string
+          maxLength: 240
+          ui:widget: textarea
+          ui:options: {rows: 3}
+        apiPath:
+          title: Public API path
+          type: string
+          description: A unique Gateway API path beginning with a slash, for example /partner-orders.
+          pattern: '^/[a-z0-9][a-z0-9/_-]*$'
+          default: /integration
+        owner:
+          title: Catalog owner
+          type: string
+          default: group:default/api-owners
+          ui:field: OwnerPicker
+          ui:options:
+            allowedKinds: [Group]
+        lifecycle:
+          title: Lifecycle
+          type: string
+          default: production
+          enum: [experimental, production]
+          enumNames: [Experimental, Production]
+        approvalMode:
+          title: Subscription approval
+          type: string
+          default: automatic
+          enum: [automatic, manual]
+          enumNames: [Automatic, Manual]
+        publishStatus:
+          title: API catalog status
+          type: string
+          description: Draft keeps the product unavailable until platform and commercial review is complete.
+          default: Draft
+          enum: [Draft, Published]
+    - title: RHCL plan limits
+      description: Configure limits enforced by Connectivity Link. Commercial prices remain centrally governed by Billing.
+      required:
+        - freeRequestsPerMinute
+        - freeMonthlyQuota
+        - developerRequestsPerMinute
+        - developerMonthlyQuota
+      properties:
+        freeRequestsPerMinute:
+          title: Free requests per minute
+          type: integer
+          default: 10
+          minimum: 1
+          maximum: 10000
+        freeMonthlyQuota:
+          title: Free monthly request quota
+          type: integer
+          default: 1000
+          minimum: 1
+        developerRequestsPerMinute:
+          title: Developer requests per minute
+          type: integer
+          default: 1000
+          minimum: 1
+        developerMonthlyQuota:
+          title: Developer monthly request quota
+          type: integer
+          default: 1000000
+          minimum: 1
+    - title: Dedicated GitHub repository
+      required: [repoOwner, repoVisibility, githubToken]
+      properties:
+        repoOwner:
+          title: Approved GitHub organization
+          type: string
+          default: arencloud
+          enum: [arencloud]
+        repoVisibility:
+          title: Repository visibility
+          type: string
+          default: public
+          description: Public is the portable profile; private repositories require a centrally configured GitHub App and Git read credentials.
+          enum: [public]
+        githubToken:
+          title: GitHub access token
+          type: string
+          description: Used only by this scaffolder task. It needs permission to create repositories and write contents.
+          ui:field: Secret
+  steps:
+    - id: render
+      name: Render the Camel integration project
+      action: fetch:template
+      input:
+        url: ./skeleton
+        copyWithoutRender:
+          - .github/workflows/**
+        values:
+          name: ${{ parameters.name }}
+          displayName: ${{ parameters.displayName }}
+          description: ${{ parameters.description }}
+          apiPath: ${{ parameters.apiPath }}
+          owner: ${{ parameters.owner }}
+          lifecycle: ${{ parameters.lifecycle }}
+          approvalMode: ${{ parameters.approvalMode }}
+          publishStatus: ${{ parameters.publishStatus }}
+          freeRequestsPerMinute: ${{ parameters.freeRequestsPerMinute }}
+          freeMonthlyQuota: ${{ parameters.freeMonthlyQuota }}
+          developerRequestsPerMinute: ${{ parameters.developerRequestsPerMinute }}
+          developerMonthlyQuota: ${{ parameters.developerMonthlyQuota }}
+          repoOwner: ${{ parameters.repoOwner }}
+    - id: publish
+      name: Create the dedicated GitHub repository
+      action: publish:github
+      input:
+        repoUrl: github.com?owner=${{ parameters.repoOwner }}&repo=${{ parameters.name }}
+        token: ${{ secrets.githubToken }}
+        description: ${{ parameters.description }}
+        defaultBranch: main
+        repoVisibility: ${{ parameters.repoVisibility }}
+        protectDefaultBranch: false
+        gitCommitMessage: Bootstrap ${{ parameters.displayName }} from the Camel API Golden Path
+    - id: register
+      name: Register the generated integration
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps.publish.output.repoContentsUrl }}
+        catalogInfoPath: /catalog-info.yaml
+  output:
+    links:
+      - title: Dedicated GitHub repository
+        url: ${{ steps.publish.output.remoteUrl }}
+      - title: Open in the catalog
+        entityRef: ${{ steps.register.output.entityRef }}
+      - title: Bootstrap with OpenShift GitOps
+        url: ${{ steps.publish.output.remoteUrl }}/blob/main/bootstrap/argocd-application.yaml

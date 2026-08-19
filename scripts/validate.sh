@@ -1080,7 +1080,7 @@ for pattern in ("*.yaml", "*.yml"):
         if any(part in {"node_modules", "dist", "dist-dynamic"} for part in path.parts):
             continue
         for resource in yaml.safe_load_all(path.read_text(encoding="utf-8")):
-            if not resource or resource.get("kind") != "Secret":
+            if not isinstance(resource, dict) or resource.get("kind") != "Secret":
                 continue
             service_account_token = (
                 resource.get("type") == "kubernetes.io/service-account-token"
@@ -1105,5 +1105,7 @@ if rg -n --glob '!**/node_modules/**' --glob '*.yaml' --glob '*.yml' --glob '*.m
   echo "error: text files must not contain trailing whitespace" >&2
   exit 1
 fi
+
+./scripts/validate-golden-paths.py
 
 echo "validated $package_count Kustomize packages"

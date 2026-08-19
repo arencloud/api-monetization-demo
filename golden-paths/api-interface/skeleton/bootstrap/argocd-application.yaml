@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ${{ values.name }}
+  namespace: openshift-gitops
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+    monetization.arencloud.com/generated-by: monetized-api-interface
+spec:
+  project: api-monetization-api-owners
+  source:
+    repoURL: https://github.com/${{ values.repoOwner }}/${{ values.name }}.git
+    targetRevision: main
+    path: gitops
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: api-monetization-apps
+  syncPolicy:
+    syncOptions: [ServerSideApply=true, SkipDryRunOnMissingResource=true]

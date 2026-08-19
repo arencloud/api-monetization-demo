@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${{ values.name }}
+  namespace: api-monetization-apps
+  annotations:
+    image.openshift.io/triggers: >-
+      [{"from":{"kind":"ImageStreamTag","name":"${{ values.name }}:latest","namespace":"api-monetization-apps"},"fieldPath":"spec.template.spec.containers[?(@.name==\"camel\")].image","paused":false}]
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app.kubernetes.io/name: '${{ values.name }}'}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ${{ values.name }}
+        app.kubernetes.io/component: integration-api
+        sidecar.istio.io/inject: "true"
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: camel
+          image: image-registry.openshift-image-registry.svc:5000/api-monetization-apps/${{ values.name }}:latest
+          imagePullPolicy: Always
+          ports: [{name: http, containerPort: 8080}]
+          readinessProbe:
+            httpGet: {path: /q/health/ready, port: http}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /q/health/live, port: http}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "1", memory: 768Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+            readOnlyRootFilesystem: true
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {app.kubernetes.io/name: '${{ values.name }}'}
+
