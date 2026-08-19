@@ -585,6 +585,19 @@ spec:
                 -r "$realm" --config /tmp/kcadm.config -n
               run_kcadm update "users/$admin_user_id/groups/$admin_group_id" \
                 -r "$realm" --config /tmp/kcadm.config -n
+              # The consumer role has a conditional catalog policy that is
+              # intentionally limited to API and Group entities. Red Hat
+              # Developer Hub gives conditional policies precedence over a
+              # basic allow, so an administrator must not retain the default
+              # api-consumers membership or Golden Path Template entities are
+              # filtered even though the administrator is also an API owner.
+              if run_kcadm get "users/$admin_user_id/groups" -r "$realm" \
+                --config /tmp/kcadm.config --fields id \
+                | jq -e --arg id "$consumer_group_id" \
+                  'any(.[]; .id == $id)' >/dev/null; then
+                run_kcadm delete "users/$admin_user_id/groups/$consumer_group_id" \
+                  -r "$realm" --config /tmp/kcadm.config
+              fi
 
               echo "Configuring portal developer"
               # Keycloak username searches are partial by default. The exact

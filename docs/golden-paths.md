@@ -64,6 +64,13 @@ from `main`, a release tag, or a feature branch imports the templates from the
 same immutable revision as the running platform; it never silently falls back
 to templates from another branch.
 
+Golden Paths are visible to members of `api-owners` and `api-admins`. The
+identity reconciler removes elevated demo administrators from the default
+`api-consumers` group because the consumer catalog policy intentionally exposes
+only API and Group entities. This also avoids a Red Hat Developer Hub policy
+conflict in which that conditional consumer filter takes precedence over an
+owner's basic catalog allow.
+
 ## GitHub credential
 
 The form treats the token as a Developer Hub scaffolder secret. The token is
