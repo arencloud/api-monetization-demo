@@ -204,9 +204,22 @@ spec:
             - pipefail
             - -c
             - |
-              oc wait --for=condition=Done=True \
-                keycloakrealmimport.k8s.keycloak.org/api-monetization-realm \
-                --timeout=10m
+              realm_import=keycloakrealmimport.k8s.keycloak.org/api-monetization-realm
+              for attempt in $(seq 1 120); do
+                done_status=$(oc get "$realm_import" \
+                  -o jsonpath='{.status.conditions[?(@.type=="Done")].status}' \
+                  2>/dev/null || true)
+                if [[ $done_status == "True" ]]; then
+                  echo "Keycloak realm import completed"
+                  exit 0
+                fi
+                if (( attempt == 120 )); then
+                  echo "Keycloak realm import did not complete within 10 minutes" >&2
+                  oc get "$realm_import" -o yaml >&2 || true
+                  exit 1
+                fi
+                sleep 5
+              done
           resources:
             requests:
               cpu: 10m
@@ -627,20 +640,20 @@ spec:
               # api-consumers membership or Golden Path Template entities are
               # filtered even though the administrator is also an API owner.
               for attempt in $(seq 1 5); do
-                if ! run_kcadm get "users/$admin_user_id/groups" -r "$realm" \
-                  --config /tmp/kcadm.config --fields id \
-                  | jq -e --arg id "$consumer_group_id" \
-                    'any(.[]; .id == $id)' >/dev/null; then
+                admin_group_ids=$(run_kcadm get "users/$admin_user_id/groups" \
+                  -r "$realm" --config /tmp/kcadm.config --fields id \
+                  | sed -n 's/.*"id" *: *"\([^"]*\)".*/\1/p')
+                if ! grep -Fxq "$consumer_group_id" <<<"$admin_group_ids"; then
                   break
                 fi
                 run_kcadm delete "users/$admin_user_id/groups/$consumer_group_id" \
                   -r "$realm" --config /tmp/kcadm.config
                 sleep 2
               done
-              if run_kcadm get "users/$admin_user_id/groups" -r "$realm" \
-                --config /tmp/kcadm.config --fields id \
-                | jq -e --arg id "$consumer_group_id" \
-                  'any(.[]; .id == $id)' >/dev/null; then
+              admin_group_ids=$(run_kcadm get "users/$admin_user_id/groups" \
+                -r "$realm" --config /tmp/kcadm.config --fields id \
+                | sed -n 's/.*"id" *: *"\([^"]*\)".*/\1/p')
+              if grep -Fxq "$consumer_group_id" <<<"$admin_group_ids"; then
                 echo "Portal administrator still belongs to api-consumers" >&2
                 exit 1
               fi

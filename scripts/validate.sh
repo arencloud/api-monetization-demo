@@ -1195,6 +1195,29 @@ identity_job = next(
     if resource.get("kind") == "Job"
     and resource.get("metadata", {}).get("name") == "api-monetization-portal-identity"
 )
+identity_role = next(
+    resource
+    for resource in identity_resources
+    if resource.get("kind") == "Role"
+    and resource.get("metadata", {}).get("name")
+    == "api-monetization-portal-route-config"
+)
+realm_import_rules = [
+    rule
+    for rule in identity_role.get("rules", [])
+    if "keycloakrealmimports" in rule.get("resources", [])
+]
+if realm_import_rules != [
+    {
+        "apiGroups": ["k8s.keycloak.org"],
+        "resources": ["keycloakrealmimports"],
+        "resourceNames": ["api-monetization-realm"],
+        "verbs": ["get"],
+    }
+]:
+    raise SystemExit(
+        "Keycloak realm-import readiness access must remain restricted to get on the exact resource"
+    )
 identity_script = identity_job["spec"]["template"]["spec"]["containers"][0]["command"][-1]
 identity_init_script = "\n".join(
     argument
@@ -1203,14 +1226,18 @@ identity_init_script = "\n".join(
 )
 if (
     "keycloakrealmimport.k8s.keycloak.org/api-monetization-realm" not in identity_init_script
-    or "--for=condition=Done=True" not in identity_init_script
+    or 'oc get "$realm_import"' not in identity_init_script
+    or '.status.conditions[?(@.type=="Done")].status' not in identity_init_script
+    or "seq 1 120" not in identity_init_script
+    or "oc wait" in identity_init_script
 ):
     raise SystemExit(
-        "Keycloak identity reconciliation must wait for the realm import to finish"
+        "Keycloak identity reconciliation must poll the exact realm import with bounded, get-only access"
     )
 for required_identity_fragment in (
     'run_kcadm delete "users/$admin_user_id/groups/$consumer_group_id"',
     'run_kcadm update "users/$developer_user_id/groups/$consumer_group_id"',
+    'grep -Fxq "$consumer_group_id" <<<"$admin_group_ids"',
     'Portal administrator still belongs to api-consumers',
 ):
     if required_identity_fragment not in identity_script:
@@ -1218,6 +1245,8 @@ for required_identity_fragment in (
             "Keycloak identity reconciliation must keep elevated Golden Path users "
             "out of the consumer-only catalog policy"
         )
+if "jq " in identity_script or "| jq" in identity_script:
+    raise SystemExit("Keycloak identity reconciliation must not depend on jq")
 admin_cleanup_position = identity_script.index(
     'run_kcadm delete "users/$admin_user_id/groups/$consumer_group_id"'
 )
