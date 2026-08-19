@@ -23,6 +23,9 @@ import {
   tokenRateLimitPolicyListPermission,
   publicationCreatePermission,
   publicationReadPermission,
+  ownerAccessReadOwnPermission,
+  ownerAccessRequestPermission,
+  ownerAccessReviewPermission,
 } from './permissions';
 import { publicationStatus, publishGeneratedProject } from './publication';
 
@@ -32,6 +35,9 @@ const permissionByAccess: Record<ControlAccess, BasicPermission> = {
   'update-own': subscriptionUpdateOwnPermission,
   'delete-own': subscriptionDeleteOwnPermission,
   'read-all': billingReadAllPermission,
+  'read-owner': ownerAccessReadOwnPermission,
+  'request-owner': ownerAccessRequestPermission,
+  'review-owner': ownerAccessReviewPermission,
 };
 
 const githubSegment = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,99})$/;
@@ -172,12 +178,13 @@ export async function createRouter({
     await proxyControl(req, res, controlBaseUrl, resource);
   });
 
-  router.get('/control/admin/:resource(*)', async (req, res) => {
-    await requirePermission(req, httpAuth, permissions, billingReadAllPermission);
+  router.all('/control/admin/:resource(*)', async (req, res) => {
     const resource = normalizeControlResource(req.params.resource);
-    if (!resolveControlAccess('admin', req.method, resource)) {
+    const access = resolveControlAccess('admin', req.method, resource);
+    if (!access) {
       throw new NotAllowedError('control-plane resource is not available through the administrator API');
     }
+    await requirePermission(req, httpAuth, permissions, permissionByAccess[access]);
     await proxyControl(req, res, controlBaseUrl, resource);
   });
 

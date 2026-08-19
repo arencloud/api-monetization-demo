@@ -40,6 +40,21 @@ export const publicationCreatePermission = createPermission({
   attributes: { action: 'create' },
 });
 
+export const ownerAccessReadOwnPermission = createPermission({
+  name: 'api-monetization.owner-access.read.own',
+  attributes: { action: 'read' },
+});
+
+export const ownerAccessRequestPermission = createPermission({
+  name: 'api-monetization.owner-access.request',
+  attributes: { action: 'create' },
+});
+
+export const ownerAccessReviewPermission = createPermission({
+  name: 'api-monetization.owner-access.review',
+  attributes: { action: 'update' },
+});
+
 export const apiMonetizationPermissions = [
   tokenRateLimitPolicyListPermission,
   billingReadOwnPermission,
@@ -49,4 +64,7 @@ export const apiMonetizationPermissions = [
   subscriptionDeleteOwnPermission,
   publicationReadPermission,
   publicationCreatePermission,
+  ownerAccessReadOwnPermission,
+  ownerAccessRequestPermission,
+  ownerAccessReviewPermission,
 ];

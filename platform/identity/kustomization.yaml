@@ -1,6 +1,8 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
+  - theme-build.yaml
+  - theme-source-build.yaml
   - keycloak.yaml
   - route.yaml
   - realm-import.yaml
@@ -10,6 +12,10 @@ configMapGenerator:
     namespace: api-monetization-identity
     files:
       - portal-identity.yaml
+      - theme/Containerfile
+      - theme/api-monetization/login/theme.properties
+      - theme/api-monetization/login/messages/messages_en.properties
+      - theme/api-monetization/login/resources/css/login.css
     options:
       annotations:
         argocd.argoproj.io/sync-wave: "5"

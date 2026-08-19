@@ -42,9 +42,10 @@ commercial authority across two backends.
 
 - A new developer can register in Keycloak and is synchronized into RHDH as an
   API consumer.
-- API owners and administrators receive explicit Keycloak group membership and
-  product-management RBAC permissions; there is no guest or resolver-bypass
-  login and no interactive role can bypass subscriptions by mutating API keys.
+- API owners receive reviewed Keycloak group membership, while administrators
+  receive explicit bootstrap membership and product-management RBAC
+  permissions; there is no guest or resolver-bypass login and no interactive
+  role can bypass subscriptions by mutating API keys.
 - APIProduct resources must declare `backstage.io/owner` or the Kuadrant catalog
   provider intentionally skips them.
 - RHDH, the Kuadrant 0.4.0 plugins, and the effective-policy extension are

@@ -5,6 +5,7 @@ const userReadPaths = new Set([
   'me/usage',
   'me/billing',
   'me/audit',
+  'me/owner-access',
 ]);
 
 const adminReadPaths = new Set([
@@ -12,6 +13,7 @@ const adminReadPaths = new Set([
   'subscriptions',
   'usage',
   'invoices',
+  'owner-access-requests',
 ]);
 
 const productResource = '[a-z0-9](?:[a-z0-9-]*[a-z0-9])?';
@@ -21,6 +23,7 @@ const userRequestRules: Array<{
   access: ControlAccess;
 }> = [
   { method: 'POST', pattern: /^me\/subscriptions$/, access: 'create-own' },
+  { method: 'POST', pattern: /^me\/owner-access$/, access: 'request-owner' },
   {
     method: 'POST',
     pattern: new RegExp(`^me/subscriptions/${productResource}/plan$`),
@@ -48,7 +51,10 @@ export type ControlAccess =
   | 'create-own'
   | 'update-own'
   | 'delete-own'
-  | 'read-all';
+  | 'read-all'
+  | 'read-owner'
+  | 'request-owner'
+  | 'review-owner';
 
 export const normalizeControlResource = (value: unknown): string =>
   String(value || '').replace(/^\/+|\/+$/g, '');
@@ -60,12 +66,19 @@ export const resolveControlAccess = (
 ): ControlAccess | undefined => {
   const normalizedMethod = method.toUpperCase();
   if (scope === 'admin') {
-    return normalizedMethod === 'GET' && adminReadPaths.has(resource)
-      ? 'read-all'
-      : undefined;
+    if (normalizedMethod === 'GET' && adminReadPaths.has(resource)) {
+      return resource === 'owner-access-requests' ? 'review-owner' : 'read-all';
+    }
+    if (
+      normalizedMethod === 'POST' &&
+      /^owner-access-requests\/[0-9a-f-]+\/decision$/.test(resource)
+    ) {
+      return 'review-owner';
+    }
+    return undefined;
   }
   if (normalizedMethod === 'GET' && userReadPaths.has(resource)) {
-    return 'read-own';
+    return resource === 'me/owner-access' ? 'read-owner' : 'read-own';
   }
   return userRequestRules.find(
     rule => rule.method === normalizedMethod && rule.pattern.test(resource),

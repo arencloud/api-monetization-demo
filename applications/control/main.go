@@ -28,6 +28,7 @@ type app struct {
 	db             *pgxpool.Pool
 	kube           *kubeClient
 	auth           *portalAuthenticator
+	ownerApproval  *keycloakAdminClient
 	apiKeyName     string
 	apiKeyNS       string
 	upgradeCounter atomic.Uint64
@@ -74,12 +75,17 @@ func main() {
 	if err != nil {
 		fatal("portal identity configuration failed", err)
 	}
+	ownerApproval, err := newKeycloakAdminClient(requiredEnv("OWNER_APPROVAL_CLIENT_SECRET"))
+	if err != nil {
+		fatal("owner approval identity configuration failed", err)
+	}
 	application := &app{
-		db:         pool,
-		kube:       kube,
-		auth:       auth,
-		apiKeyName: env("DEMO_APIKEY_NAME", "demo-inventory-key"),
-		apiKeyNS:   env("DEMO_APIKEY_NAMESPACE", "api-monetization-apps"),
+		db:            pool,
+		kube:          kube,
+		auth:          auth,
+		ownerApproval: ownerApproval,
+		apiKeyName:    env("DEMO_APIKEY_NAME", "demo-inventory-key"),
+		apiKeyNS:      env("DEMO_APIKEY_NAMESPACE", "api-monetization-apps"),
 	}
 	recorder := telemetry.New("monetization-control")
 	mux := http.NewServeMux()
@@ -90,6 +96,8 @@ func main() {
 	mux.HandleFunc("GET /readyz", application.ready)
 	mux.HandleFunc("GET /api/config", application.portalConfig)
 	mux.Handle("GET /api/me", auth.requireAuthenticated(http.HandlerFunc(application.me)))
+	mux.Handle("GET /api/me/owner-access", auth.requireAuthenticated(http.HandlerFunc(application.myOwnerAccess)))
+	mux.Handle("POST /api/me/owner-access", auth.requireAuthenticated(http.HandlerFunc(application.requestOwnerAccess)))
 	mux.Handle("GET /api/catalog", auth.requireAuthenticated(http.HandlerFunc(application.catalog)))
 	mux.Handle("GET /api/me/subscriptions", auth.requireDeveloper(http.HandlerFunc(application.mySubscriptions)))
 	mux.Handle("GET /api/me/usage", auth.requireDeveloper(http.HandlerFunc(application.myUsage)))
@@ -106,6 +114,8 @@ func main() {
 	mux.Handle("GET /api/subscriptions", auth.requireAdmin(http.HandlerFunc(application.subscriptions)))
 	mux.Handle("GET /api/usage", auth.requireAdmin(http.HandlerFunc(application.usage)))
 	mux.Handle("GET /api/invoices", auth.requireAdmin(http.HandlerFunc(application.invoices)))
+	mux.Handle("GET /api/owner-access-requests", auth.requireAdmin(http.HandlerFunc(application.ownerAccessRequests)))
+	mux.Handle("POST /api/owner-access-requests/{id}/decision", auth.requireAdmin(http.HandlerFunc(application.decideOwnerAccess)))
 	mux.Handle("POST /api/subscriptions/{customer}/invoices/draft", auth.requireAdmin(http.HandlerFunc(application.createCustomerDraftInvoice)))
 	mux.Handle("POST /api/subscriptions/{customer}/plan", auth.requireAdmin(http.HandlerFunc(application.changePlan)))
 	mux.Handle("POST /api/subscriptions/{customer}/status", auth.requireAdmin(http.HandlerFunc(application.changeSubscriptionStatus)))

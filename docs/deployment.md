@@ -201,6 +201,50 @@ configuration Job. Argo CD excludes hook manifests from normal drift
 comparison, so the generated trigger ConfigMap ensures changes to users, roles,
 or OIDC clients initiate a sync and rerun the idempotent identity hook.
 
+### Developer Hub consumer and owner onboarding
+
+The RHDH sign-in button redirects to the Operator-managed Red Hat build of
+Keycloak. The identity application builds the `api-monetization` login theme
+from the exact Argo CD commit with an OpenShift `BuildConfig`, promotes it under
+an immutable `git-<commit>` tag, and runs Keycloak with the optimized custom
+image. The theme extends `keycloak.v2`, preserves the supported forms and
+accessibility behavior, and applies Red Hat/PatternFly typography, spacing, and
+color. RHDH itself uses its supported `app.branding` logo settings.
+
+Keycloak registration is enabled in the demo realm. Every registered user is
+assigned to `api-consumers`; that group supplies both the RHDH consumer role
+and the `monetization-developer` realm role required by the control plane. No
+manual role correction is needed. Email verification is disabled in the
+portable demo because no SMTP service is a prerequisite. A production overlay
+must configure SMTP, enable email verification, and apply the organization's
+password, identity-proofing, and federation policies.
+
+Owner registration is a reviewed workflow, not a second public registration
+form:
+
+1. The signed-in consumer opens **Subscriptions & Access** and submits an API
+   ownership justification.
+2. The control plane stores one pending request per Keycloak subject in
+   PostgreSQL.
+3. An `api-admins` member approves or rejects it in the same RHDH page.
+4. Approval uses the dedicated `monetization-owner-approvals` service account
+   to add `api-owners` and remove `api-consumers`.
+5. The user signs out and back in; Keycloak reissues roles and RHDH synchronizes
+   the new group on its ten-second demo schedule.
+
+The approval client receives only `manage-users`, `query-users`, and
+`query-groups`. RHDH's own organization-sync client retains only read/query
+roles. The consumer group is removed on promotion because its conditional
+catalog policy intentionally hides Components and Golden Path Templates; a
+promoted owner must see the owner catalog instead.
+
+The secure user-ID resolver still requires the new account to exist in the RHDH
+catalog; the unsafe catalog-bypass option is deliberately disabled because this
+solution depends on group-based RBAC. If the automatic callback immediately
+after registration reaches RHDH before the ten-second provider refresh, select
+sign in once more. The existing Keycloak session completes that retry without
+asking for the password again.
+
 ## Verify
 
 ```bash
@@ -457,5 +501,7 @@ volumes whose claim did not belong to an explicit demo namespace.
 - [External Secrets Operator for Red Hat OpenShift](https://docs.redhat.com/en/documentation/openshift_container_platform/4.21/html/security_and_compliance/external-secrets-operator-for-red-hat-openshift)
 - [CloudNativePG installation and upgrades](https://cloudnative-pg.io/docs/1.30/installation_upgrade/)
 - [Red Hat build of Keycloak Operator guide](https://docs.redhat.com/en/documentation/red_hat_build_of_keycloak/26.6/html/operator_guide/)
+- [Red Hat build of Keycloak UI customization](https://docs.redhat.com/en/documentation/red_hat_build_of_keycloak/26.6/html/ui_customization_guide/)
+- [Customizing Red Hat Developer Hub](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.8/html/customizing_red_hat_developer_hub/)
 - [Red Hat build of OpenTelemetry](https://docs.redhat.com/en/documentation/red_hat_build_of_opentelemetry/3.10/html/installing_red_hat_build_of_opentelemetry/)
 - [Red Hat OpenShift distributed tracing](https://docs.redhat.com/en/documentation/red_hat_openshift_distributed_tracing_platform/3.9/html/installing_distributed_tracing/)

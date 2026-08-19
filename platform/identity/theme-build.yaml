@@ -1,0 +1,46 @@
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: api-monetization-keycloak
+  namespace: api-monetization-identity
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+  labels:
+    app.kubernetes.io/name: api-monetization-keycloak-theme
+    app.kubernetes.io/part-of: api-monetization
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: api-monetization-keycloak
+  namespace: api-monetization-identity
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+  labels:
+    app.kubernetes.io/name: api-monetization-keycloak-theme
+    app.kubernetes.io/part-of: api-monetization
+spec:
+  runPolicy: SerialLatestOnly
+  source:
+    type: Git
+    git:
+      uri: https://github.com/arencloud/api-monetization-demo.git
+      ref: main
+    contextDir: platform/identity/theme
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Containerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: api-monetization-keycloak:demo
+  successfulBuildsHistoryLimit: 3
+  failedBuildsHistoryLimit: 3
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi

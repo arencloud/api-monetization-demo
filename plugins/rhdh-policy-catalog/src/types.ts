@@ -57,6 +57,26 @@ export interface PortalIdentity {
   username: string;
   admin: boolean;
   developer: boolean;
+  owner: boolean;
+}
+
+export interface OwnerAccessRequest {
+  id: string;
+  subject: string;
+  username: string;
+  email: string;
+  justification: string;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewedBy?: string;
+  decisionReason?: string;
+  createdAt: string;
+  updatedAt: string;
+  reviewedAt?: string;
+}
+
+export interface OwnerAccessState {
+  owner: boolean;
+  request?: OwnerAccessRequest;
 }
 
 export interface Subscription {

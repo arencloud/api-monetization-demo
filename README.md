@@ -75,7 +75,8 @@ The first profile follows the RHCL 1.4 support matrix:
 | Red Hat Developer Hub | 1.10 z-stream (`fast-1.10`) |
 | Red Hat OpenShift Dev Spaces | Latest `stable` channel z-stream |
 | Kuadrant Developer Hub plugin | 0.4.0, integrity-pinned |
-| Effective-policy catalog plugin | 0.1.0, source-controlled local TGZ |
+| Effective-policy catalog plugin | 0.1.7, source-controlled local TGZ |
+| Monetization backend plugin | 0.1.5, source-controlled local TGZ |
 | Red Hat OpenShift GitOps | Latest catalog channel, automatic upgrades |
 | Red Hat OpenShift AI | 3.4 stable channel, 3.4.3 starting CSV |
 | External Secrets Operator for Red Hat OpenShift | 1.2 |
@@ -182,21 +183,31 @@ repository, applies cluster-specific gateway and identity settings through the
 restricted AppProject, and the control plane adds the product to consumer
 subscriptions only after its APIProduct and OpenAPI contract are ready.
 
-Developer Hub delegates login to the existing Red Hat build of Keycloak realm;
-Keycloak groups map to the Kuadrant consumer, owner, and administrator roles.
+Developer Hub delegates login to the existing Red Hat build of Keycloak realm.
+Its source-built login theme uses the Red Hat PatternFly visual language, while
+RHDH retains its native application shell with API Monetization branding.
+Self-registration is enabled for consumers: every new account enters the
+`api-consumers` group and receives the developer realm role used by the
+subscription APIs. Owner access is never self-assigned. A consumer requests it
+from **Subscriptions & Access**, an administrator reviews the request there,
+and an approval moves that identity to `api-owners`. Keycloak groups map to the
+Kuadrant consumer, owner, and administrator roles.
 The source-controlled RHDH extension resolves effective `PlanPolicy`, direct
-`RateLimitPolicy`, and `TokenRateLimitPolicy` resources and adds a Billing view
+`RateLimitPolicy`, and `TokenRateLimitPolicy` resources and adds a subscription view
 for subscriptions, accepted request/token usage, projected revenue, and
 invoices. Both the Kuadrant API Products view and Developer Hub's APIs explorer
 treat published products as production APIs and show whether the signed-in
-consumer has an active subscription. The Billing page provides
+consumer has an active subscription. The **Subscriptions & Access** page provides
 consumer-scoped subscribe, plan-change, cancellation, one-time API-key
 reveal/rotation, and Keycloak JWT workflows. Raw Kuadrant credential and
 approval pages are deliberately absent: the subscription control plane is the
 only credential writer. Its backend applies RHDH permissions before
 forwarding the signed-in user's Keycloak token, while the existing control
 plane independently checks the role and maps the token subject to exactly one
-customer. PostgreSQL remains the sole commercial system of record. The
+customer. Owner requests and review decisions are retained as an auditable
+PostgreSQL workflow. A dedicated least-privilege Keycloak service identity can
+change user/group membership; the RHDH organization provider remains
+read-only. PostgreSQL remains the sole commercial system of record. The
 existing portal remains deployed as a rollback path and for the AI playground.
 
 The current development milestone adds an Operator-managed OpenShift AI 3.4

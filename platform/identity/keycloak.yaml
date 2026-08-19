@@ -10,6 +10,8 @@ metadata:
     app.kubernetes.io/part-of: api-monetization
 spec:
   instances: 1
+  image: image-registry.openshift-image-registry.svc:5000/api-monetization-identity/api-monetization-keycloak:demo
+  startOptimized: true
   db:
     vendor: postgres
     host: keycloak-postgres-rw

@@ -17,6 +17,23 @@ describe('control-plane proxy boundary', () => {
     expect(resolveControlAccess('admin', 'POST', 'subscriptions')).toBeUndefined();
   });
 
+  it('separates owner applications from administrator approval decisions', () => {
+    expect(resolveControlAccess('user', 'GET', 'me/owner-access')).toBe('read-owner');
+    expect(resolveControlAccess('user', 'POST', 'me/owner-access')).toBe('request-owner');
+    expect(resolveControlAccess('user', 'GET', 'owner-access-requests')).toBeUndefined();
+    expect(resolveControlAccess('admin', 'GET', 'owner-access-requests')).toBe('review-owner');
+    expect(resolveControlAccess(
+      'admin',
+      'POST',
+      'owner-access-requests/3f78ab4c-8a23-4efe-8477-74b8b45fc54f/decision',
+    )).toBe('review-owner');
+    expect(resolveControlAccess(
+      'admin',
+      'DELETE',
+      'owner-access-requests/3f78ab4c-8a23-4efe-8477-74b8b45fc54f/decision',
+    )).toBeUndefined();
+  });
+
   it('allows only the explicit own-subscription lifecycle operations', () => {
     expect(resolveControlAccess('user', 'POST', 'me/subscriptions')).toBe('create-own');
     expect(resolveControlAccess('user', 'POST', 'me/subscriptions/inventory/plan')).toBe('update-own');

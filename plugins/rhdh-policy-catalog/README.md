@@ -28,3 +28,8 @@ keeps the TGZ below the Kubernetes ConfigMap object limit.
 The GitOps configuration mounts the resulting TGZ locally into RHDH. For a
 production installation, publish the same exported dynamic plugin as a
 digest-pinned OCI artifact in a private registry.
+
+The **Subscriptions & Access** route also contains the reviewed API-owner
+onboarding workflow. Consumers submit their own request; administrators can
+approve or reject it. The browser never receives a Keycloak management token,
+and the extension does not become a second identity authority.

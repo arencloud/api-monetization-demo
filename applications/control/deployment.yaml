@@ -44,6 +44,11 @@ spec:
                 secretKeyRef:
                   name: subscriptions-db-credentials
                   key: password
+            - name: OWNER_APPROVAL_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: monetization-owner-approval-keycloak
+                  key: client-secret
             - name: DEMO_APIKEY_NAME
               value: demo-inventory-key
             - name: DEMO_APIKEY_NAMESPACE

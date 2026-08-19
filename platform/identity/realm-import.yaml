@@ -19,6 +19,7 @@ spec:
     id: api-monetization
     realm: api-monetization
     displayName: API Monetization
+    loginTheme: api-monetization
     enabled: true
     sslRequired: external
     registrationAllowed: true

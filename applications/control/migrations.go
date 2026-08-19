@@ -167,6 +167,33 @@ WHERE product.id IN ('inventory', 'payments', 'ai-chat')
 ON CONFLICT DO NOTHING;
 `
 
+const ownerAccessRequestMigration = `
+CREATE TABLE IF NOT EXISTS monetization.owner_access_requests (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  subject text NOT NULL,
+  username text NOT NULL,
+  email text NOT NULL DEFAULT '',
+  justification text NOT NULL,
+  status text NOT NULL DEFAULT 'pending',
+  reviewed_by text,
+  decision_reason text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  reviewed_at timestamptz,
+  CONSTRAINT owner_access_request_status
+    CHECK (status IN ('pending', 'approved', 'rejected')),
+  CONSTRAINT owner_access_request_justification_length
+    CHECK (char_length(justification) BETWEEN 10 AND 1000)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS owner_access_requests_one_pending_subject
+  ON monetization.owner_access_requests (subject)
+  WHERE status='pending';
+
+CREATE INDEX IF NOT EXISTS owner_access_requests_status_time
+  ON monetization.owner_access_requests (status, created_at DESC);
+`
+
 func applyDatabaseMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
@@ -194,6 +221,9 @@ func applyDatabaseMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	if _, err = tx.Exec(ctx, dynamicProductCatalogMigration); err != nil {
 		return fmt.Errorf("apply dynamic product catalog migration: %w", err)
+	}
+	if _, err = tx.Exec(ctx, ownerAccessRequestMigration); err != nil {
+		return fmt.Errorf("apply owner access request migration: %w", err)
 	}
 	if _, err = tx.Exec(ctx, `
 		INSERT INTO monetization.schema_migrations (version, description)
@@ -230,6 +260,12 @@ func applyDatabaseMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 		VALUES (6, 'discover published APIProducts and their available plans')
 		ON CONFLICT (version) DO NOTHING`); err != nil {
 		return fmt.Errorf("record dynamic product catalog migration: %w", err)
+	}
+	if _, err = tx.Exec(ctx, `
+		INSERT INTO monetization.schema_migrations (version, description)
+		VALUES (7, 'audited API owner access requests and approval decisions')
+		ON CONFLICT (version) DO NOTHING`); err != nil {
+		return fmt.Errorf("record owner access request migration: %w", err)
 	}
 	return tx.Commit(ctx)
 }

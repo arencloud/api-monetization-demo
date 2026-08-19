@@ -1,0 +1,10 @@
+FROM registry.redhat.io/rhbk/keycloak-rhel9:26.6
+
+COPY --chown=keycloak:root api-monetization/ /opt/keycloak/themes/api-monetization/
+
+# Keep the custom image aligned with the operator-managed PostgreSQL,
+# health, and metrics build-time configuration.
+ENV KC_DB=postgres \
+    KC_HEALTH_ENABLED=true \
+    KC_METRICS_ENABLED=true
+RUN /opt/keycloak/bin/kc.sh build

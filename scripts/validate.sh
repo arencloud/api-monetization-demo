@@ -61,6 +61,7 @@ python3 - <<'PY'
 import subprocess
 import json
 import hashlib
+import base64
 import pathlib
 import re
 import stat
@@ -108,7 +109,7 @@ for forbidden_fragment in (
 
 with open("bootstrap/root/application.yaml", encoding="utf-8") as stream:
     root = yaml.safe_load(stream)
-expected = (
+expected_git_source = (
     root["spec"]["source"]["repoURL"],
     root["spec"]["source"]["targetRevision"],
 )
@@ -138,10 +139,10 @@ for resource in yaml.safe_load_all(rendered):
         resource["spec"]["source"]["repoURL"],
         resource["spec"]["source"]["targetRevision"],
     )
-    if actual != expected:
+    if actual != expected_git_source:
         name = resource["metadata"]["name"]
         raise SystemExit(
-            f"{name}: child Git source {actual} does not match root source {expected}"
+            f"{name}: child Git source {actual} does not match root source {expected_git_source}"
         )
     source_path = resource["spec"]["source"]["path"]
     if not __import__("pathlib").Path(source_path, "kustomization.yaml").is_file():
@@ -173,9 +174,9 @@ for build_file in pathlib.Path("applications").glob("*/build.yaml"):
             continue
         git_source = resource["spec"]["source"]["git"]
         actual = (git_source["uri"], git_source["ref"])
-        if actual != expected:
+        if actual != expected_git_source:
             raise SystemExit(
-                f"{build_file}: build Git source {actual} does not match root source {expected}"
+                f"{build_file}: build Git source {actual} does not match root source {expected_git_source}"
             )
 
 with open("operators/openshift-ai/subscription.yaml", encoding="utf-8") as stream:
@@ -277,17 +278,17 @@ if any(
     raise SystemExit("catalog entities must not expose direct Kuadrant API-key management")
 
 frontend_plugin_path = pathlib.Path(
-    "platform/developer-hub/arencloud-rhdh-policy-catalog-dynamic-0.1.6.tgz"
+    "platform/developer-hub/arencloud-rhdh-policy-catalog-dynamic-0.1.7.tgz"
 )
 frontend_plugin_package = (
     "/opt/app-root/src/local-plugins/"
-    "arencloud-rhdh-policy-catalog-dynamic-0.1.6.tgz"
+    "arencloud-rhdh-policy-catalog-dynamic-0.1.7.tgz"
 )
 frontend_plugin = plugin_by_package.get(frontend_plugin_package, {})
 if (
     frontend_plugin.get("disabled") is not False
     or frontend_plugin.get("integrity")
-    != "sha512-Um1Vu1snxx733lux3R2+IJCtfMWC404J6QYIdTXk0NGDuTDqmJ51XzX2H2HBpCLzm0F56rUyTqOKMXf6l3ci7Q=="
+    != "sha512-JNedD9pt/KV/qqWC5djZ4QIGpHfaf50IOS/pnUm0sTcJyMovIUVHrDzUlbORyPY15MjFxQEsrmbUnX1nsaX2Ag=="
 ):
     raise SystemExit("effective-policy RHDH plugin is not checksum-pinned")
 frontend_config = (
@@ -314,28 +315,28 @@ if {"isKind": "component"} not in devspaces_condition or {
 if not frontend_plugin_path.is_file() or frontend_plugin_path.stat().st_size >= 350_000:
     raise SystemExit("effective-policy plugin artifact is missing or too large for its ConfigMap")
 if hashlib.sha256(frontend_plugin_path.read_bytes()).hexdigest() != (
-    "77e335655bc281ce1b1612e53a43f684cb03a65775cd3bdee7814debffd2aedf"
+    "33e53315c66eae6809b383c8ccbc9e5723eef2c0bb4f295d8e75da8813a6ca34"
 ):
     raise SystemExit("effective-policy plugin artifact checksum changed; rebuild and review it")
 
 backend_plugin_path = pathlib.Path(
-    "platform/developer-hub/arencloud-rhdh-monetization-backend-dynamic-0.1.4.tgz"
+    "platform/developer-hub/arencloud-rhdh-monetization-backend-dynamic-0.1.5.tgz"
 )
 backend_plugin_package = (
     "/opt/app-root/src/local-plugins/"
-    "arencloud-rhdh-monetization-backend-dynamic-0.1.4.tgz"
+    "arencloud-rhdh-monetization-backend-dynamic-0.1.5.tgz"
 )
 backend_plugin = plugin_by_package.get(backend_plugin_package, {})
 if (
     backend_plugin.get("disabled") is not False
     or backend_plugin.get("integrity")
-    != "sha512-hJ/Mmw87jleNPOjvJWsYsR6BoJjEijcvYPCVOhg0F8NpFpDs5TeMkAJ2KoFCAWMhLs+B8DBqteRl2OOc4rbmUw=="
+    != "sha512-KgtFFDf5J+IjYdrQ18OqEsMJTpr0Yd2mC1zXKygWjt9v1ROevPr6MeiLQ31Tyh+uRDtxRqQft6FhT3nJW+EzKw=="
 ):
     raise SystemExit("monetization RHDH backend plugin is not checksum-pinned")
 if not backend_plugin_path.is_file() or backend_plugin_path.stat().st_size >= 700_000:
     raise SystemExit("monetization backend artifact is missing or too large for its ConfigMap")
 if hashlib.sha256(backend_plugin_path.read_bytes()).hexdigest() != (
-    "7f8641e3c040c8ecb03132f91181e380eb2df030bf14595e85972072aaafc0d9"
+    "bbd736c966468cc1a620466f974b090502099d4ba323a6b9789e53514e88008f"
 ):
     raise SystemExit("monetization backend artifact checksum changed; rebuild and review it")
 if frontend_plugin_path.stat().st_size + backend_plugin_path.stat().st_size >= 1_000_000:
@@ -358,9 +359,25 @@ if configured_routes.count("/billing") != 1:
     raise SystemExit("exactly one frontend plugin must own /billing")
 if configured_routes.count("/monetized-apis") != 1:
     raise SystemExit("exactly one frontend plugin must own /monetized-apis")
+if not any(
+    route.get("path") == "/billing"
+    and route.get("menuItem", {}).get("text") == "Subscriptions & Access"
+    for route in frontend_config.get("dynamicRoutes", [])
+):
+    raise SystemExit("RHDH must expose consumer and owner onboarding as Subscriptions & Access")
 
 with open("platform/developer-hub/app-config.yaml", encoding="utf-8") as stream:
     rhdh_config = yaml.safe_load(stream)
+branding = rhdh_config.get("app", {}).get("branding", {})
+for key, asset in (
+    ("fullLogo", "platform/developer-hub/branding/full-logo.svg"),
+    ("iconLogo", "platform/developer-hub/branding/icon-logo.svg"),
+):
+    expected_logo = "data:image/svg+xml;base64," + base64.b64encode(
+        pathlib.Path(asset).read_bytes()
+    ).decode()
+    if branding.get(key) != expected_logo:
+        raise SystemExit(f"RHDH {key} must exactly match its source-controlled branding asset")
 apis_menu = (
     rhdh_config.get("dynamicPlugins", {}).get("frontend", {})
     .get("default.main-menu-items", {}).get("menuItems", {})
@@ -376,6 +393,15 @@ resolvers = (
 )
 if resolvers != [{"resolver": "oidcSubClaimMatchingKeycloakUserId"}]:
     raise SystemExit("RHDH must use the non-bypass Keycloak user-ID sign-in resolver")
+keycloak_provider = (
+    rhdh_config.get("catalog", {}).get("providers", {})
+    .get("keycloakOrg", {}).get("default", {})
+)
+if (
+    keycloak_provider.get("schedule", {}).get("frequency") != {"seconds": 10}
+    or keycloak_provider.get("schedule", {}).get("initialDelay") != {"seconds": 5}
+):
+    raise SystemExit("RHDH must synchronize new Keycloak registrations without an unsafe resolver bypass")
 if not rhdh_config.get("permission", {}).get("enabled"):
     raise SystemExit("RHDH permission framework must be enabled for Kuadrant RBAC")
 conditional_policy_path = rhdh_config.get("permission", {}).get("rbac", {}).get("conditionalPoliciesFile")
@@ -439,10 +465,13 @@ for permission, action in (
     ("api-monetization.subscription.create.own", "create"),
     ("api-monetization.subscription.update.own", "update"),
     ("api-monetization.subscription.delete.own", "delete"),
+    ("api-monetization.owner-access.request", "create"),
 ):
     expected = f"p, role:default/api-consumer, {permission}, {action}, allow"
     if expected not in rhdh_rbac:
         raise SystemExit(f"RHDH consumers are missing {permission}")
+if "p, role:default/api-admin, api-monetization.owner-access.review, update, allow" not in rhdh_rbac:
+    raise SystemExit("RHDH administrators must receive the reviewed owner-onboarding permission")
 for forbidden in (
     "kuadrant.apikey.create",
     "kuadrant.apikey.update",
@@ -1239,6 +1268,12 @@ for required_identity_fragment in (
     'run_kcadm update "users/$developer_user_id/groups/$consumer_group_id"',
     'grep -Fxq "$consumer_group_id" <<<"$admin_group_ids"',
     'Portal administrator still belongs to api-consumers',
+    '-s registrationAllowed=true',
+    '-s loginTheme=api-monetization',
+    '--gid "$consumer_group_id" --rolename "$developer_role"',
+    '--gid "$owner_group_id" --rolename "$owner_role"',
+    'clientId": "monetization-owner-approvals"',
+    'for management_role in manage-users query-users query-groups',
 ):
     if required_identity_fragment not in identity_script:
         raise SystemExit(
@@ -1258,6 +1293,90 @@ if not admin_cleanup_position < consumer_default_position < developer_position:
     raise SystemExit(
         "Keycloak must enable the consumer default only after verifying the administrator"
     )
+
+with open("platform/identity/keycloak.yaml", encoding="utf-8") as stream:
+    keycloak = yaml.safe_load(stream)
+if (
+    keycloak.get("spec", {}).get("image")
+    != "image-registry.openshift-image-registry.svc:5000/api-monetization-identity/api-monetization-keycloak:demo"
+    or keycloak.get("spec", {}).get("startOptimized") is not True
+):
+    raise SystemExit("RHBK must use the optimized, source-built login-theme image")
+
+with open("platform/identity/theme-build.yaml", encoding="utf-8") as stream:
+    theme_resources = [resource for resource in yaml.safe_load_all(stream) if resource]
+theme_build = next(resource for resource in theme_resources if resource.get("kind") == "BuildConfig")
+if (
+    theme_build["spec"]["source"]["git"].get("uri") != expected_git_source[0]
+    or theme_build["spec"]["source"]["git"].get("ref") != expected_git_source[1]
+    or theme_build["spec"]["source"].get("contextDir") != "platform/identity/theme"
+    or theme_build["spec"]["strategy"].get("type") != "Docker"
+    or theme_build["spec"]["strategy"]["dockerStrategy"].get("dockerfilePath")
+    != "Containerfile"
+):
+    raise SystemExit("Keycloak theme BuildConfig must follow the canonical Git source")
+
+with open("platform/identity/theme-source-build.yaml", encoding="utf-8") as stream:
+    theme_delivery_resources = [resource for resource in yaml.safe_load_all(stream) if resource]
+theme_job = next(resource for resource in theme_delivery_resources if resource.get("kind") == "Job")
+theme_script = theme_job["spec"]["template"]["spec"]["containers"][0]["command"][-1]
+for fragment in (
+    'immutable_tag="git-${SOURCE_REVISION:0:12}"',
+    'Failed|Error|Cancelled)',
+    'actual_revision=$(oc get "$build_name"',
+    'oc tag "$app:$immutable_tag" "$app:demo"',
+    'Keycloak is ready on theme image $digest',
+):
+    if fragment not in theme_script:
+        raise SystemExit("Keycloak theme delivery must preserve immutable build provenance")
+
+theme_containerfile = pathlib.Path("platform/identity/theme/Containerfile").read_text()
+theme_css = pathlib.Path(
+    "platform/identity/theme/api-monetization/login/resources/css/login.css"
+).read_text()
+if (
+    "registry.redhat.io/rhbk/keycloak-rhel9:26.6" not in theme_containerfile
+    or "/opt/keycloak/bin/kc.sh build" not in theme_containerfile
+    or "parent=keycloak.v2" not in pathlib.Path(
+        "platform/identity/theme/api-monetization/login/theme.properties"
+    ).read_text()
+    or "#ee0000" not in theme_css
+    or "pf-v6-c-login" not in theme_css
+):
+    raise SystemExit("Keycloak login theme must stay on RHBK, PatternFly, and Red Hat styling")
+
+with open("applications/control/identity-secret-store.yaml", encoding="utf-8") as stream:
+    owner_secret_resources = [resource for resource in yaml.safe_load_all(stream) if resource]
+owner_secret_role = next(
+    resource for resource in owner_secret_resources
+    if resource.get("kind") == "Role"
+)
+if owner_secret_role.get("rules") != [{
+    "apiGroups": [""],
+    "resources": ["secrets"],
+    "resourceNames": ["monetization-owner-approval-keycloak-client"],
+    "verbs": ["get"],
+}]:
+    raise SystemExit("owner approval must read only its dedicated Keycloak client secret")
+
+control_sources = "\n".join(
+    pathlib.Path(path).read_text()
+    for path in (
+        "applications/control/main.go",
+        "applications/control/owner_access.go",
+        "applications/control/keycloak_admin.go",
+        "applications/control/migrations.go",
+    )
+)
+for fragment in (
+    "/api/me/owner-access",
+    "/api/owner-access-requests/{id}/decision",
+    "monetization.owner_access_requests",
+    'groupID(ctx, "api-owners")',
+    'groupID(ctx, "api-consumers")',
+):
+    if fragment not in control_sources:
+        raise SystemExit("reviewed API-owner onboarding contract is incomplete")
 developer_client_match = re.search(
     r"cat >/tmp/developer-automation-client.json <<JSON\n(.*?)\n[ \t]*JSON",
     identity_script,
