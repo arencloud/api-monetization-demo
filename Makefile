@@ -1,11 +1,12 @@
 SHELL := /usr/bin/env bash
 
-.PHONY: help validate test rhdh-plugin-test lifecycle-test multi-product-test ai-model-test ai-monetization-test ai-demo promotion-status preflight bootstrap render status verify observe grafana portal hub demo metered-demo showcase reset-demo uninstall
+.PHONY: help validate test golden-path-test rhdh-plugin-test lifecycle-test multi-product-test ai-model-test ai-monetization-test ai-demo promotion-status preflight bootstrap render status verify observe grafana portal hub demo metered-demo showcase reset-demo uninstall
 
 help:
 	@echo "Targets:"
 	@echo "  validate   Render and statically validate every Kustomize package"
 	@echo "  test       Run Go unit tests"
+	@echo "  golden-path-test Render and build both API-owner Golden Path projects"
 	@echo "  rhdh-plugin-test Build, test, and reproduce the custom RHDH plugin artifact"
 	@echo "  lifecycle-test Prove suspend, resume, cancel, cleanup, and resubscribe"
 	@echo "  multi-product-test Prove independent Inventory and Payment subscriptions"
@@ -33,6 +34,9 @@ validate:
 
 test:
 	@go test ./applications/... ./internal/...
+
+golden-path-test:
+	@./scripts/validate-golden-paths.py --build
 
 rhdh-plugin-test:
 	@./plugins/rhdh-monetization-backend/scripts/container-build.sh

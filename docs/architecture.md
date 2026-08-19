@@ -90,6 +90,19 @@ Keycloak supplies users and groups to the
 catalog through a confidential, read-only service account. `api-consumers`,
 `api-owners`, and `api-admins` map to the matching RHDH RBAC roles, and newly
 registered developers enter the consumer group by default.
+An external conditional RBAC policy limits consumers to catalog entities of
+Kind `API` and `Group`, allowing API ownership relations to resolve while
+Component/Service entities and their development controls remain owner and
+administrator concerns. API-owner Components with a validated
+`github.com/project-slug` annotation receive an **Open in Dev Spaces** action,
+including projects created by earlier Golden Path template versions. Current
+Golden Path repositories additionally receive a **Publish API** action. The
+backend accepts only the configured GitHub organization, validates catalog
+ownership and the governed resource set, and creates an Argo CD Application in
+the restricted `api-monetization-api-owners` AppProject. It discovers Route and
+Keycloak hosts at publication time and overlays mandatory active-subscription
+authorization and plan-aware JWT limits; API owners cannot replace those
+platform controls.
 
 `TokenRateLimitPolicy` discovery is implemented in the custom backend because
 the tested Kuadrant 0.4.0 backend does not expose that CRD. The endpoint uses
@@ -132,6 +145,17 @@ is enrolled in the same Red Hat OpenShift Service Mesh revision. Red Hat's
 documented KServe sidecar and probe-rewrite annotations inject the predictor,
 and an explicit `ISTIO_MUTUAL` destination rule plus namespace-wide `STRICT`
 peer authentication protect the facade-to-model hop.
+
+The control plane discovers API-key APIProducts dynamically. A product enters
+the subscription catalog only when it is `Published` and reports both
+`Ready=True` and `OpenAPISpecReady=True`; its available tiers come from the
+admitted PlanPolicy. Discovery never trusts repository-defined prices. It maps
+the generated plan identifiers to centrally governed commercial
+plan records, and hides a product again if its APIProduct ceases to be healthy.
+Generated services expose their OpenAPI document on dedicated port 8082. A
+workload-scoped PeerAuthentication keeps API port 8080 in STRICT mTLS and
+exempts only the documentation port for the out-of-mesh Kuadrant portal
+controller.
 
 The AI Chat playground runs in the existing developer portal but sends
 inference directly to the cluster-admitted API-key or JWT Gateway hostname.

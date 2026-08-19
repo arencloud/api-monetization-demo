@@ -22,8 +22,11 @@ admin_password=$(oc get secret monetization-portal-credentials \
 developer_password=$(oc get secret monetization-developer-credentials \
   -n api-monetization-identity \
   -o go-template='{{index .data "portal-developer-password"}}' | base64 -d)
+devspaces_url=$(oc get checluster.org.eclipse.che devspaces \
+  -n openshift-devspaces -o jsonpath='{.status.cheURL}')
 
 printf 'Developer Hub:      https://%s\n' "$hub_host"
+printf 'OpenShift Dev Spaces: %s\n' "$devspaces_url"
 printf 'Developer username: demo-developer\n'
 printf 'Developer password: %s\n' "$developer_password"
 printf 'Admin username:     demo-admin\n'

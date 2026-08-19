@@ -1,0 +1,1 @@
+export { EntityDevSpacesCard } from '../plugin';

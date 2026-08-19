@@ -54,6 +54,7 @@ trust boundaries.
 | `operators/` | OLM subscriptions and operator groups |
 | `platform/` | Operator-managed platform operands and shared namespaces |
 | `applications/` | Inventory, Payment, and monetization control-plane source/builds |
+| `golden-paths/` | RHDH Software Templates and standalone API project skeletons for API owners |
 | `policies/` | Gateway, authentication, authorization, and limit policies |
 | `dashboards/` | Business and platform observability assets |
 | `environments/` | Environment-specific composition and configuration |
@@ -72,6 +73,7 @@ The first profile follows the RHCL 1.4 support matrix:
 | cert-manager Operator for Red Hat OpenShift | 1.19 |
 | Red Hat build of Keycloak | 26.6 |
 | Red Hat Developer Hub | 1.10 z-stream (`fast-1.10`) |
+| Red Hat OpenShift Dev Spaces | Latest `stable` channel z-stream |
 | Kuadrant Developer Hub plugin | 0.4.0, integrity-pinned |
 | Effective-policy catalog plugin | 0.1.0, source-controlled local TGZ |
 | Red Hat OpenShift GitOps | Latest catalog channel, automatic upgrades |
@@ -100,7 +102,8 @@ cluster has three 4-vCPU/16-GiB control-plane nodes and two schedulable
 8-vCPU/32-GiB workers and at least 100 GiB of provisionable persistent
 capacity. The registry consumes a one-replica 50-GiB persistent volume; the
 subscription and Keycloak PostgreSQL clusters consume 2 GiB each, and the
-Developer Hub PostgreSQL cluster consumes 5 GiB. See
+Developer Hub PostgreSQL cluster consumes 5 GiB, and the first Dev Spaces user
+workspace consumes a default 10-GiB persistent volume. See
 [the deployment sizing profiles](docs/deployment.md#cluster-sizing) for
 Minimum, Recommended, Large showcase, and single-node requirements, and use
 [the runbook resource gate](docs/demo-runbook.md#select-and-verify-the-cluster-profile)
@@ -165,6 +168,20 @@ and installs the OpenShift router CA into the RHCL OIDC components, so the same
 catalog works on a fresh cluster with a different applications domain.
 The default RHDH Lightspeed flavour is disabled because the solution already
 contains its independently governed OpenShift AI chat product.
+
+Members of the `api-owners` group also receive two governed
+[Golden Paths](docs/golden-paths.md). The standard path creates a contract-first
+Go API and the integration path creates a Red Hat Camel Quarkus API with a
+Kaoto-editable mapping route. Each scaffolder run creates and registers a
+dedicated GitHub repository containing application source, OpenAPI, tests,
+OpenShift builds, Service Mesh configuration, Gateway API routes, RHCL
+authentication and plan resources, APIProducts, TechDocs, and a restricted
+Argo CD bootstrap Application. New products start in Draft. After review, the
+owner publishes from the Component Overview: Developer Hub validates the
+repository, applies cluster-specific gateway and identity settings through the
+restricted AppProject, and the control plane adds the product to consumer
+subscriptions only after its APIProduct and OpenAPI contract are ready.
+
 Developer Hub delegates login to the existing Red Hat build of Keycloak realm;
 Keycloak groups map to the Kuadrant consumer, owner, and administrator roles.
 The source-controlled RHDH extension resolves effective `PlanPolicy`, direct

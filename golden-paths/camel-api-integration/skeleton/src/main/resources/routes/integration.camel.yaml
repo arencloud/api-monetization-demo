@@ -1,0 +1,18 @@
+- route:
+    id: ${{ values.name }}-mapping
+    from:
+      uri: platform-http:${{ values.apiPath }}
+      parameters:
+        httpMethodRestrict: POST
+      steps:
+        - unmarshal:
+            json:
+              library: Jackson
+        - to: bean:canonicalMapping?method=map
+        - marshal:
+            json:
+              library: Jackson
+        - setHeader:
+            name: Content-Type
+            constant: application/json
+

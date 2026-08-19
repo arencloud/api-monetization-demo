@@ -151,6 +151,22 @@ ON CONFLICT (id) DO UPDATE SET
   active=true;
 `
 
+const dynamicProductCatalogMigration = `
+CREATE TABLE IF NOT EXISTS monetization.api_product_plans (
+  api_product_id text NOT NULL REFERENCES monetization.api_products(id) ON DELETE CASCADE,
+  plan_id text NOT NULL REFERENCES monetization.plans(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (api_product_id, plan_id)
+);
+
+INSERT INTO monetization.api_product_plans (api_product_id, plan_id)
+SELECT product.id, plan.id
+FROM monetization.api_products product
+CROSS JOIN monetization.plans plan
+WHERE product.id IN ('inventory', 'payments', 'ai-chat')
+ON CONFLICT DO NOTHING;
+`
+
 func applyDatabaseMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
@@ -175,6 +191,9 @@ func applyDatabaseMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	if _, err = tx.Exec(ctx, aiChatProductMigration); err != nil {
 		return fmt.Errorf("apply AI Chat product migration: %w", err)
+	}
+	if _, err = tx.Exec(ctx, dynamicProductCatalogMigration); err != nil {
+		return fmt.Errorf("apply dynamic product catalog migration: %w", err)
 	}
 	if _, err = tx.Exec(ctx, `
 		INSERT INTO monetization.schema_migrations (version, description)
@@ -205,6 +224,12 @@ func applyDatabaseMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 		VALUES (5, 'publish token-metered AI Chat product')
 		ON CONFLICT (version) DO NOTHING`); err != nil {
 		return fmt.Errorf("record AI Chat product migration: %w", err)
+	}
+	if _, err = tx.Exec(ctx, `
+		INSERT INTO monetization.schema_migrations (version, description)
+		VALUES (6, 'discover published APIProducts and their available plans')
+		ON CONFLICT (version) DO NOTHING`); err != nil {
+		return fmt.Errorf("record dynamic product catalog migration: %w", err)
 	}
 	return tx.Commit(ctx)
 }

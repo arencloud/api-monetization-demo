@@ -1,0 +1,56 @@
+apiVersion: extensions.kuadrant.io/v1alpha1
+kind: PlanPolicy
+metadata:
+  name: ${{ values.name }}-plans
+  namespace: api-monetization-apps
+  annotations: {argocd.argoproj.io/sync-wave: "30"}
+spec:
+  targetRef: {group: gateway.networking.k8s.io, kind: HTTPRoute, name: '${{ values.name }}-api-key'}
+  plans:
+    - tier: enterprise
+      predicate: auth.identity.metadata.annotations['secret.kuadrant.io/plan-id'] == "enterprise"
+      limits: {}
+    - tier: developer
+      predicate: auth.identity.metadata.annotations['secret.kuadrant.io/plan-id'] == "developer"
+      limits:
+        monthly: ${{ values.developerMonthlyQuota }}
+        custom:
+          - limit: ${{ values.developerRequestsPerMinute }}
+            window: 1m
+    - tier: free
+      predicate: auth.identity.metadata.annotations['secret.kuadrant.io/plan-id'] == "free"
+      limits:
+        monthly: ${{ values.freeMonthlyQuota }}
+        custom:
+          - limit: ${{ values.freeRequestsPerMinute }}
+            window: 1m
+---
+apiVersion: kuadrant.io/v1
+kind: RateLimitPolicy
+metadata:
+  name: ${{ values.name }}-jwt
+  namespace: api-monetization-apps
+  annotations: {argocd.argoproj.io/sync-wave: "30"}
+spec:
+  targetRef: {group: gateway.networking.k8s.io, kind: HTTPRoute, name: '${{ values.name }}-jwt'}
+  limits:
+    free:
+      rates:
+        - limit: ${{ values.freeRequestsPerMinute }}
+          window: 1m
+        - limit: ${{ values.freeMonthlyQuota }}
+          window: 720h
+      counters:
+        - expression: auth.kuadrant.customer
+      when:
+        - predicate: auth.kuadrant.plan == "free"
+    developer:
+      rates:
+        - limit: ${{ values.developerRequestsPerMinute }}
+          window: 1m
+        - limit: ${{ values.developerMonthlyQuota }}
+          window: 720h
+      counters:
+        - expression: auth.kuadrant.customer
+      when:
+        - predicate: auth.kuadrant.plan == "developer"

@@ -161,6 +161,30 @@ if (
 ):
     raise SystemExit("RHDH must track automatic 1.10 z-stream updates on fast-1.10")
 
+with open("operators/devspaces/subscription.yaml", encoding="utf-8") as stream:
+    devspaces_subscription = yaml.safe_load(stream)
+devspaces_spec = devspaces_subscription.get("spec", {})
+if (
+    devspaces_subscription.get("metadata", {}).get("namespace") != "openshift-operators"
+    or devspaces_spec.get("name") != "devspaces"
+    or devspaces_spec.get("channel") != "stable"
+    or devspaces_spec.get("source") != "redhat-operators"
+    or devspaces_spec.get("sourceNamespace") != "openshift-marketplace"
+    or devspaces_spec.get("installPlanApproval") != "Automatic"
+    or "startingCSV" in devspaces_spec
+):
+    raise SystemExit("OpenShift Dev Spaces must automatically track the stable channel head")
+
+with open("gitops/applications/devspaces.yaml", encoding="utf-8") as stream:
+    devspaces_application = yaml.safe_load(stream)
+devspaces_sync_options = (
+    devspaces_application.get("spec", {})
+    .get("syncPolicy", {})
+    .get("syncOptions", [])
+)
+if "CreateNamespace=true" not in devspaces_sync_options:
+    raise SystemExit("OpenShift Dev Spaces must create its destination namespace before reconciliation")
+
 with open("platform/developer-hub/dynamic-plugins.yaml", encoding="utf-8") as stream:
     dynamic_plugins = yaml.safe_load(stream)
 plugin_by_package = {
@@ -176,6 +200,14 @@ for package, integrity in expected_kuadrant_plugins.items():
     plugin = plugin_by_package.get(package, {})
     if plugin.get("disabled") is not False or plugin.get("integrity") != integrity:
         raise SystemExit(f"{package}: Kuadrant plugin version or integrity is not reproducibly pinned")
+
+for package in (
+    "./dynamic-plugins/dist/backstage-plugin-kubernetes",
+    "./dynamic-plugins/dist/backstage-plugin-kubernetes-backend-dynamic",
+    "./dynamic-plugins/dist/backstage-community-plugin-topology",
+):
+    if plugin_by_package.get(package, {}).get("disabled") is not False:
+        raise SystemExit(f"{package}: Dev Spaces topology integration must be enabled")
 
 kuadrant_frontend = (
     plugin_by_package["@kuadrant/kuadrant-backstage-plugin-frontend@v0.4.0"]
@@ -204,17 +236,17 @@ if any(
     raise SystemExit("catalog entities must not expose direct Kuadrant API-key management")
 
 frontend_plugin_path = pathlib.Path(
-    "platform/developer-hub/arencloud-rhdh-policy-catalog-dynamic-0.1.3.tgz"
+    "platform/developer-hub/arencloud-rhdh-policy-catalog-dynamic-0.1.6.tgz"
 )
 frontend_plugin_package = (
     "/opt/app-root/src/local-plugins/"
-    "arencloud-rhdh-policy-catalog-dynamic-0.1.3.tgz"
+    "arencloud-rhdh-policy-catalog-dynamic-0.1.6.tgz"
 )
 frontend_plugin = plugin_by_package.get(frontend_plugin_package, {})
 if (
     frontend_plugin.get("disabled") is not False
     or frontend_plugin.get("integrity")
-    != "sha512-hWQm5NZfDlBci00UGuFBU51uCF7CqWhNrCRYcRz0GxvyOKWTRbpo9YjDjutvavK1N9tbURJp2SVwmEimZLQ4IQ=="
+    != "sha512-Um1Vu1snxx733lux3R2+IJCtfMWC404J6QYIdTXk0NGDuTDqmJ51XzX2H2HBpCLzm0F56rUyTqOKMXf6l3ci7Q=="
 ):
     raise SystemExit("effective-policy RHDH plugin is not checksum-pinned")
 frontend_config = (
@@ -225,31 +257,44 @@ frontend_config = (
 )
 if frontend_config.get("apiFactories") != [{"importName": "oidcAuthApiFactory"}]:
     raise SystemExit("RHDH monetization UI must register its generic OIDC API factory")
-if not frontend_plugin_path.is_file() or frontend_plugin_path.stat().st_size >= 250_000:
+devspaces_mount = next(
+    (
+        mount for mount in frontend_config.get("mountPoints", [])
+        if mount.get("mountPoint") == "entity.page.overview/cards"
+        and mount.get("importName") == "EntityDevSpacesCard"
+    ),
+    {},
+)
+devspaces_condition = devspaces_mount.get("config", {}).get("if", {}).get("allOf", [])
+if {"isKind": "component"} not in devspaces_condition or {
+    "hasAnnotation": "github.com/project-slug"
+} not in devspaces_condition:
+    raise SystemExit("RHDH API-owner Components must expose their Dev Spaces action")
+if not frontend_plugin_path.is_file() or frontend_plugin_path.stat().st_size >= 350_000:
     raise SystemExit("effective-policy plugin artifact is missing or too large for its ConfigMap")
 if hashlib.sha256(frontend_plugin_path.read_bytes()).hexdigest() != (
-    "e06a3f9b3e4b476640bf3c15a985496bac9fa65a2e5750cdec2fc641a3f9ec40"
+    "77e335655bc281ce1b1612e53a43f684cb03a65775cd3bdee7814debffd2aedf"
 ):
     raise SystemExit("effective-policy plugin artifact checksum changed; rebuild and review it")
 
 backend_plugin_path = pathlib.Path(
-    "platform/developer-hub/arencloud-rhdh-monetization-backend-dynamic-0.1.0.tgz"
+    "platform/developer-hub/arencloud-rhdh-monetization-backend-dynamic-0.1.4.tgz"
 )
 backend_plugin_package = (
     "/opt/app-root/src/local-plugins/"
-    "arencloud-rhdh-monetization-backend-dynamic-0.1.0.tgz"
+    "arencloud-rhdh-monetization-backend-dynamic-0.1.4.tgz"
 )
 backend_plugin = plugin_by_package.get(backend_plugin_package, {})
 if (
     backend_plugin.get("disabled") is not False
     or backend_plugin.get("integrity")
-    != "sha512-W+mm0icsCnBcOhuw9Y+SRz6XRhKryFzWHtH1yqRxhpBp1zLjnEwMnpxjabvuDcc2qiJqesBeKA4kmScSoy9wyA=="
+    != "sha512-hJ/Mmw87jleNPOjvJWsYsR6BoJjEijcvYPCVOhg0F8NpFpDs5TeMkAJ2KoFCAWMhLs+B8DBqteRl2OOc4rbmUw=="
 ):
     raise SystemExit("monetization RHDH backend plugin is not checksum-pinned")
 if not backend_plugin_path.is_file() or backend_plugin_path.stat().st_size >= 700_000:
     raise SystemExit("monetization backend artifact is missing or too large for its ConfigMap")
 if hashlib.sha256(backend_plugin_path.read_bytes()).hexdigest() != (
-    "1707fe3185d23f6d7206974072abefa0c835b7b84ab29384fc65697cf393bc7e"
+    "7f8641e3c040c8ecb03132f91181e380eb2df030bf14595e85972072aaafc0d9"
 ):
     raise SystemExit("monetization backend artifact checksum changed; rebuild and review it")
 if frontend_plugin_path.stat().st_size + backend_plugin_path.stat().st_size >= 1_000_000:
@@ -292,8 +337,49 @@ if resolvers != [{"resolver": "oidcSubClaimMatchingKeycloakUserId"}]:
     raise SystemExit("RHDH must use the non-bypass Keycloak user-ID sign-in resolver")
 if not rhdh_config.get("permission", {}).get("enabled"):
     raise SystemExit("RHDH permission framework must be enabled for Kuadrant RBAC")
+conditional_policy_path = rhdh_config.get("permission", {}).get("rbac", {}).get("conditionalPoliciesFile")
+if conditional_policy_path != "/opt/app-root/etc/rbac-conditional-policies.yaml":
+    raise SystemExit("RHDH must load its source-controlled conditional RBAC policy")
+devspaces_environment = (
+    rhdh_config.get("scaffolder", {})
+    .get("defaultEnvironment", {})
+    .get("parameters", {})
+    .get("devSpacesBaseUrl")
+)
+if devspaces_environment != "${DEV_SPACES_URL}":
+    raise SystemExit("RHDH scaffolder must consume the discovered Dev Spaces URL")
+if rhdh_config.get("apiMonetization", {}).get("devSpacesBaseUrl") != "${DEV_SPACES_URL}":
+    raise SystemExit("RHDH backend must consume the discovered Dev Spaces URL")
+kubernetes_config = rhdh_config.get("kubernetes", {})
+clusters = kubernetes_config.get("clusterLocatorMethods", [{}])[0].get("clusters", [])
+if not any(
+    cluster.get("authProvider") == "serviceAccount"
+    and cluster.get("serviceAccountToken") == "${K8S_SERVICE_ACCOUNT_TOKEN}"
+    for cluster in clusters
+):
+    raise SystemExit("RHDH and Kuadrant must consume a cluster-generated ServiceAccount credential")
+custom_resources = {
+    (resource.get("group"), resource.get("apiVersion"), resource.get("plural"))
+    for resource in kubernetes_config.get("customResources", [])
+}
+if ("org.eclipse.che", "v2", "checlusters") not in custom_resources:
+    raise SystemExit("RHDH topology must discover the OpenShift Dev Spaces CheCluster")
 
 rhdh_rbac = pathlib.Path("platform/developer-hub/rbac-policy.csv").read_text()
+consumer_catalog_allow = "p, role:default/api-consumer, catalog.entity.read, read, allow"
+if consumer_catalog_allow in rhdh_rbac:
+    raise SystemExit("RHDH consumers must not receive an unconditional catalog read")
+conditional_policy = yaml.safe_load(
+    pathlib.Path("platform/developer-hub/rbac-conditional-policies.yaml").read_text()
+)
+if (
+    conditional_policy.get("roleEntityRef") != "role:default/api-consumer"
+    or conditional_policy.get("pluginId") != "catalog"
+    or conditional_policy.get("permissionMapping") != ["read"]
+    or conditional_policy.get("conditions", {}).get("rule") != "IS_ENTITY_KIND"
+    or conditional_policy.get("conditions", {}).get("params", {}).get("kinds") != ["API", "Group"]
+):
+    raise SystemExit("RHDH consumers must be restricted to APIs and their owner groups")
 for permission, action in (
     ("api-monetization.subscription.create.own", "create"),
     ("api-monetization.subscription.update.own", "update"),
@@ -337,6 +423,17 @@ if any(
 
 with open("platform/developer-hub/backstage.yaml", encoding="utf-8") as stream:
     backstage = yaml.safe_load(stream)
+with open("platform/developer-hub/service-account-token.yaml", encoding="utf-8") as stream:
+    rhdh_service_account_token = yaml.safe_load(stream)
+if (
+    rhdh_service_account_token.get("type") != "kubernetes.io/service-account-token"
+    or rhdh_service_account_token.get("data") is not None
+    or rhdh_service_account_token.get("stringData") is not None
+    or rhdh_service_account_token.get("metadata", {}).get("annotations", {}).get(
+        "kubernetes.io/service-account.name"
+    ) != "api-monetization-rhdh"
+):
+    raise SystemExit("RHDH's Kubernetes credential must be generated by the cluster, never stored in Git")
 with open("platform/developer-hub/database.yaml", encoding="utf-8") as stream:
     rhdh_database = yaml.safe_load(stream)
 if rhdh_database.get("spec", {}).get("imageName") != (
@@ -351,6 +448,27 @@ if backstage.get("spec", {}).get("flavours") != []:
 pod_spec = backstage.get("spec", {}).get("deployment", {}).get("patch", {}).get("spec", {}).get("template", {}).get("spec", {})
 if pod_spec.get("serviceAccountName") != "api-monetization-rhdh" or pod_spec.get("automountServiceAccountToken") is not True:
     raise SystemExit("RHDH must use its dedicated in-cluster Kuadrant service account")
+backstage_container = next(
+    (container for container in pod_spec.get("containers", []) if container.get("name") == "backstage-backend"),
+    {},
+)
+expected_token_env = {
+    "name": "K8S_SERVICE_ACCOUNT_TOKEN",
+    "valueFrom": {
+        "secretKeyRef": {
+            "name": "api-monetization-rhdh-service-account-token",
+            "key": "token",
+        }
+    },
+}
+if expected_token_env not in backstage_container.get("env", []):
+    raise SystemExit("RHDH must map the cluster-generated token into Kuadrant's required setting")
+runtime_config = pathlib.Path("platform/developer-hub/runtime-config.yaml").read_text()
+if (
+    "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt" not in runtime_config
+    or "cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt" not in runtime_config
+):
+    raise SystemExit("RHDH's trusted bundle must include the OpenShift Kubernetes API CA")
 plugin_volume = next(
     (
         volume for volume in pod_spec.get("volumes", [])
@@ -1080,7 +1198,7 @@ for pattern in ("*.yaml", "*.yml"):
         if any(part in {"node_modules", "dist", "dist-dynamic"} for part in path.parts):
             continue
         for resource in yaml.safe_load_all(path.read_text(encoding="utf-8")):
-            if not resource or resource.get("kind") != "Secret":
+            if not isinstance(resource, dict) or resource.get("kind") != "Secret":
                 continue
             service_account_token = (
                 resource.get("type") == "kubernetes.io/service-account-token"
@@ -1105,5 +1223,7 @@ if rg -n --glob '!**/node_modules/**' --glob '*.yaml' --glob '*.yml' --glob '*.m
   echo "error: text files must not contain trailing whitespace" >&2
   exit 1
 fi
+
+./scripts/validate-golden-paths.py
 
 echo "validated $package_count Kustomize packages"

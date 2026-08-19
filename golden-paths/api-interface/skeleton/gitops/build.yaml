@@ -1,0 +1,35 @@
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: ${{ values.name }}
+  namespace: api-monetization-apps
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: ${{ values.name }}
+  namespace: api-monetization-apps
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  runPolicy: SerialLatestOnly
+  source:
+    type: Git
+    git:
+      uri: https://github.com/${{ values.repoOwner }}/${{ values.name }}.git
+      ref: main
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Containerfile
+  output:
+    to: {kind: ImageStreamTag, name: '${{ values.name }}:latest'}
+  triggers: [{type: ConfigChange}]
+  successfulBuildsHistoryLimit: 3
+  failedBuildsHistoryLimit: 3
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {cpu: "2", memory: 2Gi}
+

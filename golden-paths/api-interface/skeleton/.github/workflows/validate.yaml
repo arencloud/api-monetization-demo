@@ -1,0 +1,28 @@
+name: Validate API project
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Unit tests
+        run: go test ./...
+      - name: Install OpenShift CLI
+        uses: redhat-actions/openshift-tools-installer@v3.0
+        with:
+          source: mirror
+          oc: "4.22"
+      - name: Render GitOps resources
+        run: oc kustomize gitops >/tmp/rendered.yaml
+

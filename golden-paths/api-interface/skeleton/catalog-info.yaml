@@ -1,0 +1,23 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: ${{ values.name }}
+  title: ${{ values.displayName }}
+  description: ${{ values.description }}
+  annotations:
+    github.com/project-slug: ${{ values.repoOwner }}/${{ values.name }}
+    argocd/app-name: ${{ values.name }}
+    backstage.io/kubernetes-id: ${{ values.name }}
+    backstage.io/source-template: template:default/monetized-api-interface
+    backstage.io/template-version: 1.2.0
+  links:
+    - url: /api/api-monetization/devspaces/open?owner=${{ values.repoOwner }}&repo=${{ values.name }}
+      title: Open in OpenShift Dev Spaces
+      icon: dashboard
+  tags: [api, kuadrant, monetized, openshift]
+spec:
+  type: service
+  lifecycle: ${{ values.lifecycle }}
+  owner: ${{ values.owner }}
+  # Kuadrant creates the consumer-facing API entities after publication. Keep
+  # them unrelated here because consumers intentionally cannot read Components.

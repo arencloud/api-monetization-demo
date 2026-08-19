@@ -53,11 +53,17 @@ interface CatalogApiRow extends CatalogApiEntity {
   subscriptionStatus?: string;
 }
 
-const inferCommercialProduct = (entity: CatalogApiEntity): string | undefined => {
+export const inferCommercialProduct = (entity: CatalogApiEntity): string | undefined => {
   const annotated = entity.metadata.annotations?.['monetization.arencloud.com/product'];
   if (annotated) {
     return annotated;
   }
+
+  // API entities synchronized by the Kuadrant provider intentionally use the
+  // admitted APIProduct name as their catalog name and relation key.
+  const apiProduct = entity.metadata.annotations?.['kuadrant.io/apiproduct'];
+  if (apiProduct?.endsWith('-api-jwt')) return apiProduct.slice(0, -8);
+  if (apiProduct?.endsWith('-api')) return apiProduct.slice(0, -4);
 
   const name = entity.metadata.name.toLowerCase();
   if (name.startsWith('ai-chat')) return 'ai-chat';

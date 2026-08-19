@@ -44,6 +44,7 @@ rules:
       - apiproducts
     verbs:
       - get
+      - list
   - apiGroups:
       - generators.external-secrets.io
     resources:

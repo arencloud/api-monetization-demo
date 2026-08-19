@@ -101,6 +101,8 @@ for application_name in \
   api-monetization-demo-secrets \
   api-monetization-database \
   api-monetization-identity \
+  api-monetization-devspaces-operator \
+  api-monetization-devspaces \
   api-monetization-developer-hub \
   api-monetization-ai-chat \
   api-monetization-inventory \
@@ -165,6 +167,18 @@ if [[ -z $ingress_certificate ]]; then
 fi
 
 echo "waiting for Red Hat Developer Hub and Kuadrant plugin runtime"
+oc wait --for=jsonpath='{.data.token}' \
+  secret/api-monetization-rhdh-service-account-token \
+  -n api-monetization-developer-hub --timeout=5m
+oc wait --for=jsonpath='{.status.chePhase}'=Active \
+  checluster.org.eclipse.che/devspaces -n openshift-devspaces --timeout=25m
+devspaces_url=$(oc get checluster.org.eclipse.che devspaces \
+  -n openshift-devspaces -o jsonpath='{.status.cheURL}')
+if [[ $devspaces_url != https://* ]]; then
+  echo "error: OpenShift Dev Spaces did not publish an HTTPS dashboard URL" >&2
+  exit 1
+fi
+echo "OpenShift Dev Spaces: $devspaces_url"
 oc rollout status deployment/backstage-api-monetization \
   -n api-monetization-developer-hub --timeout=15m
 oc wait route/backstage-api-monetization -n api-monetization-developer-hub \
@@ -188,12 +202,32 @@ if ! grep -q "Loaded dynamic frontend plugin '@kuadrant/kuadrant-backstage-plugi
   echo "error: Developer Hub did not load the tested Kuadrant 0.4.0 frontend plugin" >&2
   exit 1
 fi
-if ! grep -q "Loaded dynamic frontend plugin '@arencloud/rhdh-policy-catalog-dynamic'.*0.1.3" <<<"$rhdh_logs"; then
+if ! grep -q "Loaded dynamic frontend plugin '@arencloud/rhdh-policy-catalog-dynamic'.*0.1.6" <<<"$rhdh_logs"; then
   echo "error: Developer Hub did not load the effective-policy catalog plugin" >&2
   exit 1
 fi
-if ! grep -qi "loaded dynamic backend plugin '@arencloud/rhdh-monetization-backend-dynamic'.*0.1.0" <<<"$rhdh_logs"; then
+if ! grep -qi "loaded dynamic backend plugin '@arencloud/rhdh-monetization-backend-dynamic'.*0.1.4" <<<"$rhdh_logs"; then
   echo "error: Developer Hub did not load the permission-controlled monetization backend plugin" >&2
+  exit 1
+fi
+if ! grep -qi "loaded dynamic backend plugin 'backstage-plugin-kubernetes-backend-dynamic'" <<<"$rhdh_logs"; then
+  echo "error: Developer Hub did not load the Kubernetes backend required by Topology" >&2
+  exit 1
+fi
+if ! grep -qi "Loaded dynamic frontend plugin 'backstage-plugin-kubernetes'" <<<"$rhdh_logs"; then
+  echo "error: Developer Hub did not load the Kubernetes frontend API required by Topology" >&2
+  exit 1
+fi
+if ! grep -qi "Loaded dynamic frontend plugin 'backstage-community-plugin-topology'" <<<"$rhdh_logs"; then
+  echo "error: Developer Hub did not load the Topology source editor" >&2
+  exit 1
+fi
+if grep -q "Missing required config value at 'kubernetes.clusterLocatorMethods\[0\].clusters\[0\].serviceAccountToken'" <<<"$rhdh_logs"; then
+  echo "error: Developer Hub did not receive its cluster-generated Kubernetes credential" >&2
+  exit 1
+fi
+if grep -q "self-signed certificate in certificate chain" <<<"$rhdh_logs"; then
+  echo "error: Developer Hub does not trust the OpenShift Kubernetes API certificate" >&2
   exit 1
 fi
 if [[ $(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
@@ -202,6 +236,18 @@ if [[ $(curl --silent --show-error --output /dev/null --write-out '%{http_code}'
   --connect-to "$rhdh_hostname:443:$rhdh_router_hostname:443" \
   "https://$rhdh_hostname/healthcheck") != "200" ]]; then
   echo "error: Developer Hub health endpoint is unavailable" >&2
+  exit 1
+fi
+devspaces_url=$(oc get checluster devspaces -n openshift-devspaces \
+  -o jsonpath='{.status.cheURL}')
+devspaces_location=$(curl --silent --show-error --head \
+  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+  --connect-to "$rhdh_hostname:443:$rhdh_router_hostname:443" \
+  "https://$rhdh_hostname/api/api-monetization/devspaces/open?owner=arencloud&repo=verification-api" \
+  | tr -d '\r' | awk -F': ' 'tolower($1) == "location" {print $2}')
+if [[ $devspaces_location != "${devspaces_url%/}#https://github.com/arencloud/verification-api" ]]; then
+  echo "error: Developer Hub did not return the portable Dev Spaces factory redirect" >&2
   exit 1
 fi
 echo "Developer Hub: https://$rhdh_hostname (Keycloak and Kuadrant integration ready)"

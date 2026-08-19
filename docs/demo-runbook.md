@@ -19,7 +19,7 @@ upper profile for this demo rather than an OpenShift maximum.
 
 | Profile | Control plane | Workers | Required demo headroom before bootstrap | Persistent capacity |
 | --- | --- | --- | --- | --- |
-| Minimum | 3 × 4 vCPU and 16 GiB | 2 × 8 vCPU and 32 GiB | 10 vCPU and 32 GiB after existing pod requests | 60 GiB, including the registry |
+| Minimum | 3 × 4 vCPU and 16 GiB | 2 × 8 vCPU and 32 GiB | 10 vCPU and 32 GiB after existing pod requests | 75 GiB, including the registry and one Dev Spaces workspace |
 | Recommended | 3 × 4 vCPU and 16 GiB | 3 × 8 vCPU and 32 GiB | 16 vCPU and 48 GiB after existing pod requests | 100 GiB |
 | Large showcase | 3 × 8 vCPU and 32 GiB | 3 × 16 vCPU and 64 GiB | 28 vCPU and 96 GiB after existing pod requests | 200 GiB |
 

@@ -1,0 +1,30 @@
+name: Validate Camel integration
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Red Hat Camel Quarkus tests
+        run: mvn -B test
+      - name: Install OpenShift CLI
+        uses: redhat-actions/openshift-tools-installer@v3.0
+        with:
+          source: mirror
+          oc: "4.22"
+      - name: Render GitOps resources
+        run: oc kustomize gitops >/tmp/rendered.yaml
+

@@ -108,6 +108,39 @@ subjects:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
+  name: api-monetization-rhdh-devspaces-reader
+  namespace: openshift-devspaces
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+rules:
+  - apiGroups: [org.eclipse.che]
+    resources: [checlusters]
+    resourceNames: [devspaces]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: api-monetization-rhdh-devspaces-reader
+  namespace: openshift-devspaces
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: api-monetization-rhdh-devspaces-reader
+subjects:
+  - kind: ServiceAccount
+    name: api-monetization-rhdh-config
+    namespace: api-monetization-developer-hub
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
   name: api-monetization-rhdh-runtime-config
   namespace: api-monetization-developer-hub
   annotations:
@@ -160,7 +193,7 @@ metadata:
   labels:
     app.kubernetes.io/part-of: api-monetization
 spec:
-  activeDeadlineSeconds: 180
+  activeDeadlineSeconds: 1800
   backoffLimit: 2
   template:
     metadata:
@@ -178,17 +211,27 @@ spec:
             - |
               apps_domain=""
               keycloak_hostname=""
-              for _ in $(seq 1 60); do
+              devspaces_url=""
+              devspaces_phase=""
+              for _ in $(seq 1 300); do
                 apps_domain=$(oc get ingress.config.openshift.io cluster \
                   -o jsonpath='{.spec.domain}' 2>/dev/null || true)
                 keycloak_hostname=$(oc get route api-monetization-keycloak \
                   -n api-monetization-identity \
                   -o jsonpath='{.status.ingress[0].host}' 2>/dev/null || true)
-                [[ -n $apps_domain && -n $keycloak_hostname ]] && break
-                sleep 2
+                devspaces_url=$(oc get checluster devspaces \
+                  -n openshift-devspaces \
+                  -o jsonpath='{.status.cheURL}' 2>/dev/null || true)
+                devspaces_phase=$(oc get checluster devspaces \
+                  -n openshift-devspaces \
+                  -o jsonpath='{.status.chePhase}' 2>/dev/null || true)
+                [[ -n $apps_domain && -n $keycloak_hostname && \
+                  -n $devspaces_url && $devspaces_phase == Active ]] && break
+                sleep 5
               done
-              if [[ -z $apps_domain || -z $keycloak_hostname ]]; then
-                echo "OpenShift ingress domain or admitted Keycloak Route was not published" >&2
+              if [[ -z $apps_domain || -z $keycloak_hostname || \
+                -z $devspaces_url || $devspaces_phase != Active ]]; then
+                echo "OpenShift ingress, Keycloak, or Dev Spaces was not ready" >&2
                 exit 1
               fi
 
@@ -197,17 +240,22 @@ spec:
               oc get secret router-ca -n openshift-ingress-operator \
                 -o go-template='{{index .data "tls.crt"}}' \
                 | base64 -d >/tmp/router-ca.crt
+              printf '\n' >>/tmp/router-ca.crt
+              cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+                >>/tmp/router-ca.crt
               oc create configmap api-monetization-rhdh-router-ca \
                 --from-file=router-ca.crt=/tmp/router-ca.crt \
                 --dry-run=client -o yaml \
                 | oc apply --server-side --field-manager=api-monetization-rhdh-config -f -
               oc create secret generic api-monetization-rhdh-runtime-config \
                 --from-literal="RHDH_BASE_URL=$rhdh_base_url" \
+                --from-literal="DEV_SPACES_URL=$devspaces_url" \
                 --from-literal="KEYCLOAK_SERVER_URL=$keycloak_server_url" \
                 --from-literal="KEYCLOAK_BASE_URL=$keycloak_server_url/realms/api-monetization" \
                 --dry-run=client -o yaml \
                 | oc apply --server-side --field-manager=api-monetization-rhdh-config -f -
               echo "Developer Hub URL is $rhdh_base_url"
+              echo "OpenShift Dev Spaces URL is $devspaces_url"
           resources:
             requests: {cpu: 10m, memory: 64Mi}
             limits: {cpu: 200m, memory: 256Mi}

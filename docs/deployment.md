@@ -6,8 +6,8 @@
 
 Size this repository as an OpenShift AI cluster, not as only two small API
 Deployments. The CPU model, four in-cluster source builds, RHCL, Service Mesh,
-Keycloak, Red Hat Developer Hub, three PostgreSQL clusters, Grafana, Tempo, and their Operators all run
-at the same time.
+Keycloak, Red Hat Developer Hub, OpenShift Dev Spaces, three PostgreSQL clusters,
+Grafana, Tempo, and their Operators all run at the same time.
 
 Red Hat OpenShift AI 3.4 requires a minimum of two worker nodes with 8 CPUs and
 32 GiB of RAM each. That requirement is higher than the generic OpenShift
@@ -16,7 +16,7 @@ demo. The following profiles are planning targets for a fresh cluster:
 
 | Profile | Control plane | Schedulable workers | Aggregate worker capacity | Demo headroom before bootstrap | Provisionable persistent capacity | Intended use |
 | --- | --- | --- | --- | --- | --- | --- |
-| Minimum | 3 × 4 vCPU, 16 GiB RAM, 100 GiB disk | 2 × 8 vCPU, 32 GiB RAM, 100 GiB disk | 16 vCPU, 64 GiB RAM | 10 vCPU and 36 GiB RAM after existing pod requests | 65 GiB | Functional installation and single-user validation; builds and first model start can be slow |
+| Minimum | 3 × 4 vCPU, 16 GiB RAM, 100 GiB disk | 2 × 8 vCPU, 32 GiB RAM, 100 GiB disk | 16 vCPU, 64 GiB RAM | 10 vCPU and 36 GiB RAM after existing pod requests | 75 GiB | Functional installation and single-user validation; builds and first model start can be slow |
 | Recommended | 3 × 4 vCPU, 16 GiB RAM, 100 GiB disk | 3 × 8 vCPU, 32 GiB RAM, 150 GiB disk | 24 vCPU, 96 GiB RAM | 16 vCPU and 48 GiB RAM after existing pod requests | 100 GiB | Reliable installation, rehearsal, and live presentation |
 | Large showcase | 3 × 8 vCPU, 32 GiB RAM, 150 GiB disk | 3 × 16 vCPU, 64 GiB RAM, 200 GiB disk | 48 vCPU, 192 GiB RAM | 28 vCPU and 96 GiB RAM after existing pod requests | 200 GiB | Parallel builds, repeated tests, and additional observability or development workloads |
 
@@ -71,10 +71,11 @@ follows:
 | Subscription PostgreSQL | 2 GiB RWO PVC | Demo data, subscriptions, usage, invoices, and audit history |
 | Keycloak PostgreSQL | 2 GiB RWO PVC | Identity and realm state |
 | Developer Hub PostgreSQL | 5 GiB RWO PVC | RHDH catalog, authentication, and plugin schemas; PostgreSQL 17 is digest-pinned because RHDH 1.10 supports PostgreSQL 14–17 while newer CloudNativePG releases default to 18 |
+| OpenShift Dev Spaces | 10 GiB RWO PVC for the first user workspace | Operator-managed cloud development environment; additional concurrent users require additional workspace capacity |
 | AI model and container layers | Node-local ephemeral storage | Approximately 1 GiB pinned model plus the Red Hat serving image and build layers; retain at least 30 GiB free per candidate worker |
 | Tempo | Memory-backed 1 GiB volume | Demo-only trace retention; no persistent volume |
 
-The absolute persistent-volume request is 59 GiB. The 65-GiB Minimum profile
+The first-user absolute persistent-volume request is 69 GiB. The 75-GiB Minimum profile
 allows only a small provisioning margin; 100 GiB or more is recommended. The
 StorageClass and its backing storage must also have enough unallocated capacity
 to satisfy those claims.
@@ -104,6 +105,7 @@ or resize an existing claim, so confirm the 50-GiB value explicitly.
 - `community-operators` available in `openshift-marketplace` for Grafana.
 - Red Hat entitlements that expose the `rhcl-operator` package.
 - Red Hat entitlements that expose the `rhdh` package and permit RHDH image pulls.
+- Red Hat entitlements that expose the `devspaces` package and permit Dev Spaces image pulls.
 - The repository is reachable by the in-cluster Argo CD repository server.
 - A default dynamic `StorageClass` is configured for PostgreSQL PVCs.
 - Open Data Hub is not installed; it conflicts with the Red Hat OpenShift AI

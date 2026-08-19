@@ -26,7 +26,7 @@ func TestSelfServiceResourceNames(t *testing.T) {
 	}
 }
 
-func TestSelfServiceProducts(t *testing.T) {
+func TestBuiltInProductDefaults(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		product    string
@@ -38,16 +38,56 @@ func TestSelfServiceProducts(t *testing.T) {
 		{product: "ai-chat", apiProduct: "ai-chat-api", endpoint: "https://api.example/v1/chat/completions"},
 	}
 	for _, test := range tests {
-		definition, available := selfServiceProducts[test.product]
+		definition, available := builtInProductDefaults[test.product]
 		if !available || definition.APIProduct != test.apiProduct {
 			t.Errorf("product %q definition=%+v available=%v", test.product, definition, available)
 		}
-		if got := endpointFor("api.example", test.product); got != test.endpoint {
-			t.Errorf("endpointFor product %q=%q, want %q", test.product, got, test.endpoint)
+		if got := endpointForDefinition("api.example", definition); got != test.endpoint {
+			t.Errorf("endpointForDefinition product %q=%q, want %q", test.product, got, test.endpoint)
 		}
 	}
-	if selfServiceProductAvailable("missing") {
-		t.Error("unknown products must remain unavailable")
+}
+
+func TestPublishedProductDefinitionsDiscoversGeneratedProduct(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || !strings.HasSuffix(r.URL.Path, "/apiproducts") {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"items":[{
+          "metadata":{"name":"time-api","annotations":{
+            "monetization.arencloud.com/product":"time",
+            "monetization.arencloud.com/path":"/timer",
+            "monetization.arencloud.com/unit":"request"}},
+          "spec":{"displayName":"Time","description":"Shows current time","publishStatus":"Published"},
+          "status":{"conditions":[
+            {"type":"Ready","status":"True"},
+            {"type":"OpenAPISpecReady","status":"True"}],
+            "discoveredPlans":[{"tier":"free"},{"tier":"developer"},{"tier":"enterprise"}]}}
+        ]}`))
+	}))
+	defer server.Close()
+	client := &kubeClient{baseURL: server.URL, token: "test", client: server.Client()}
+	definitions, err := client.publishedProductDefinitions(context.Background(), "api-monetization-apps")
+	if err != nil {
+		t.Fatalf("publishedProductDefinitions returned error: %v", err)
+	}
+	definition, ok := definitions["time"]
+	if !ok || definition.APIProduct != "time-api" || definition.Path != "/timer" ||
+		!containsString(definition.Plans, "free") || !containsString(definition.Plans, "developer") {
+		t.Fatalf("unexpected Time definition: %+v", definition)
+	}
+}
+
+func TestAdmittedCommercialPlansRejectsRepositoryOnlyPricingTiers(t *testing.T) {
+	t.Parallel()
+	got := admittedCommercialPlans(
+		[]string{"free", "repository-defined", "developer"},
+		map[string]bool{"free": true, "developer": true},
+	)
+	if strings.Join(got, ",") != "free,developer" {
+		t.Fatalf("admitted plans=%v, want only centrally governed plans", got)
 	}
 }
 

@@ -57,3 +57,35 @@ subjects:
   - kind: ServiceAccount
     name: api-monetization-rhdh
     namespace: api-monetization-developer-hub
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: api-monetization-rhdh-publications
+  namespace: openshift-gitops
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+rules:
+  - apiGroups: [argoproj.io]
+    resources: [applications]
+    verbs: [get, create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: api-monetization-rhdh-publications
+  namespace: openshift-gitops
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  labels:
+    app.kubernetes.io/part-of: api-monetization
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: api-monetization-rhdh-publications
+subjects:
+  - kind: ServiceAccount
+    name: api-monetization-rhdh
+    namespace: api-monetization-developer-hub
