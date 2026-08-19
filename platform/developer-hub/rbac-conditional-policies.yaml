@@ -1,0 +1,12 @@
+result: CONDITIONAL
+roleEntityRef: role:default/api-consumer
+pluginId: catalog
+resourceType: catalog-entity
+permissionMapping:
+  - read
+conditions:
+  rule: IS_ENTITY_KIND
+  resourceType: catalog-entity
+  params:
+    kinds:
+      - API

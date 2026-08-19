@@ -122,6 +122,7 @@ scaffolder:
 permission:
   enabled: true
   rbac:
+    conditionalPoliciesFile: /opt/app-root/etc/rbac-conditional-policies.yaml
     policies-csv-file: /opt/app-root/etc/rbac-policy.csv
     policyFileReload: true
 

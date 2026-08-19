@@ -202,7 +202,7 @@ if ! grep -q "Loaded dynamic frontend plugin '@kuadrant/kuadrant-backstage-plugi
   echo "error: Developer Hub did not load the tested Kuadrant 0.4.0 frontend plugin" >&2
   exit 1
 fi
-if ! grep -q "Loaded dynamic frontend plugin '@arencloud/rhdh-policy-catalog-dynamic'.*0.1.3" <<<"$rhdh_logs"; then
+if ! grep -q "Loaded dynamic frontend plugin '@arencloud/rhdh-policy-catalog-dynamic'.*0.1.4" <<<"$rhdh_logs"; then
   echo "error: Developer Hub did not load the effective-policy catalog plugin" >&2
   exit 1
 fi
@@ -212,6 +212,10 @@ if ! grep -qi "loaded dynamic backend plugin '@arencloud/rhdh-monetization-backe
 fi
 if ! grep -qi "loaded dynamic backend plugin 'backstage-plugin-kubernetes-backend-dynamic'" <<<"$rhdh_logs"; then
   echo "error: Developer Hub did not load the Kubernetes backend required by Topology" >&2
+  exit 1
+fi
+if ! grep -qi "Loaded dynamic frontend plugin 'backstage-plugin-kubernetes'" <<<"$rhdh_logs"; then
+  echo "error: Developer Hub did not load the Kubernetes frontend API required by Topology" >&2
   exit 1
 fi
 if ! grep -qi "Loaded dynamic frontend plugin 'backstage-community-plugin-topology'" <<<"$rhdh_logs"; then

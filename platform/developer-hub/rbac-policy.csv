@@ -1,7 +1,7 @@
 # API consumers discover published products and manage only their own credentials.
 p, role:default/api-consumer, kuadrant.apiproduct.read.all, read, allow
 p, role:default/api-consumer, kuadrant.apiproduct.list, read, allow
-p, role:default/api-consumer, catalog.entity.read, read, allow
+# Catalog reads are constrained to Kind API by rbac-conditional-policies.yaml.
 p, role:default/api-consumer, kuadrant.planpolicy.list, read, allow
 p, role:default/api-consumer, kuadrant.authpolicy.list, read, allow
 p, role:default/api-consumer, kuadrant.ratelimitpolicy.list, read, allow

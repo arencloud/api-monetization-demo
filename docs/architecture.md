@@ -90,6 +90,11 @@ Keycloak supplies users and groups to the
 catalog through a confidential, read-only service account. `api-consumers`,
 `api-owners`, and `api-admins` map to the matching RHDH RBAC roles, and newly
 registered developers enter the consumer group by default.
+An external conditional RBAC policy limits consumers to catalog entities of
+Kind `API`; Component/Service entities and their development controls remain
+owner and administrator concerns. API-owner Components with a validated
+`github.com/project-slug` annotation receive an **Open in Dev Spaces** action,
+including projects created by earlier Golden Path template versions.
 
 `TokenRateLimitPolicy` discovery is implemented in the custom backend because
 the tested Kuadrant 0.4.0 backend does not expose that CRD. The endpoint uses

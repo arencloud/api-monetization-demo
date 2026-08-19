@@ -1,4 +1,9 @@
-import { createPlugin, createRouteRef, createRoutableExtension } from '@backstage/core-plugin-api';
+import {
+  createComponentExtension,
+  createPlugin,
+  createRouteRef,
+  createRoutableExtension,
+} from '@backstage/core-plugin-api';
 
 const rootRouteRef = createRouteRef({
   id: 'api-monetization-policy-catalog',
@@ -45,5 +50,15 @@ export const MonetizedApisPage = policyCatalogPlugin.provide(
     component: () =>
       import('./components/MonetizedApisPage').then(module => module.MonetizedApisPage),
     mountPoint: monetizedApisRouteRef,
+  }),
+);
+
+export const EntityDevSpacesCard = policyCatalogPlugin.provide(
+  createComponentExtension({
+    name: 'EntityDevSpacesCard',
+    component: {
+      lazy: () =>
+        import('./components/EntityDevSpacesCard').then(module => module.EntityDevSpacesCard),
+    },
   }),
 );

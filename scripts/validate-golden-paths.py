@@ -171,6 +171,7 @@ def assert_platform_configuration() -> None:
         if plugin.get("disabled") is False
     }
     for package in (
+        "./dynamic-plugins/dist/backstage-plugin-kubernetes",
         "./dynamic-plugins/dist/backstage-plugin-kubernetes-backend-dynamic",
         "./dynamic-plugins/dist/backstage-community-plugin-topology",
     ):
@@ -194,6 +195,18 @@ def assert_platform_configuration() -> None:
     consumer_lines = [line for line in policy.splitlines() if "role:default/api-consumer" in line]
     if any("scaffolder." in line or "catalog.location.create" in line for line in consumer_lines):
         fail("API consumers must not execute owner Golden Paths")
+    if any("catalog.entity.read" in line for line in consumer_lines):
+        fail("API consumers must not receive unconditional Component catalog access")
+    conditional_policy = yaml.safe_load(
+        (ROOT / "platform/developer-hub/rbac-conditional-policies.yaml").read_text(encoding="utf-8")
+    )
+    if (
+        conditional_policy.get("roleEntityRef") != "role:default/api-consumer"
+        or conditional_policy.get("permissionMapping") != ["read"]
+        or conditional_policy.get("conditions", {}).get("rule") != "IS_ENTITY_KIND"
+        or conditional_policy.get("conditions", {}).get("params", {}).get("kinds") != ["API"]
+    ):
+        fail("API consumers must see only API entities through conditional RBAC")
 
     project = yaml.safe_load((ROOT / "gitops/applications/api-owner-project.yaml").read_text(encoding="utf-8"))
     spec = project.get("spec", {})

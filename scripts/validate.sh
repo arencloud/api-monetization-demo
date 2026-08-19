@@ -202,6 +202,7 @@ for package, integrity in expected_kuadrant_plugins.items():
         raise SystemExit(f"{package}: Kuadrant plugin version or integrity is not reproducibly pinned")
 
 for package in (
+    "./dynamic-plugins/dist/backstage-plugin-kubernetes",
     "./dynamic-plugins/dist/backstage-plugin-kubernetes-backend-dynamic",
     "./dynamic-plugins/dist/backstage-community-plugin-topology",
 ):
@@ -235,17 +236,17 @@ if any(
     raise SystemExit("catalog entities must not expose direct Kuadrant API-key management")
 
 frontend_plugin_path = pathlib.Path(
-    "platform/developer-hub/arencloud-rhdh-policy-catalog-dynamic-0.1.3.tgz"
+    "platform/developer-hub/arencloud-rhdh-policy-catalog-dynamic-0.1.4.tgz"
 )
 frontend_plugin_package = (
     "/opt/app-root/src/local-plugins/"
-    "arencloud-rhdh-policy-catalog-dynamic-0.1.3.tgz"
+    "arencloud-rhdh-policy-catalog-dynamic-0.1.4.tgz"
 )
 frontend_plugin = plugin_by_package.get(frontend_plugin_package, {})
 if (
     frontend_plugin.get("disabled") is not False
     or frontend_plugin.get("integrity")
-    != "sha512-hWQm5NZfDlBci00UGuFBU51uCF7CqWhNrCRYcRz0GxvyOKWTRbpo9YjDjutvavK1N9tbURJp2SVwmEimZLQ4IQ=="
+    != "sha512-LyXE6l7qzRI7x05zRdsWDskji9k16+KdqwZemSu5H3Tl692In4DstrEcoybooyP3aqG96UNIMR+xq8/2htw54A=="
 ):
     raise SystemExit("effective-policy RHDH plugin is not checksum-pinned")
 frontend_config = (
@@ -256,10 +257,23 @@ frontend_config = (
 )
 if frontend_config.get("apiFactories") != [{"importName": "oidcAuthApiFactory"}]:
     raise SystemExit("RHDH monetization UI must register its generic OIDC API factory")
-if not frontend_plugin_path.is_file() or frontend_plugin_path.stat().st_size >= 250_000:
+devspaces_mount = next(
+    (
+        mount for mount in frontend_config.get("mountPoints", [])
+        if mount.get("mountPoint") == "entity.page.overview/cards"
+        and mount.get("importName") == "EntityDevSpacesCard"
+    ),
+    {},
+)
+devspaces_condition = devspaces_mount.get("config", {}).get("if", {}).get("allOf", [])
+if {"isKind": "component"} not in devspaces_condition or {
+    "hasAnnotation": "github.com/project-slug"
+} not in devspaces_condition:
+    raise SystemExit("RHDH API-owner Components must expose their Dev Spaces action")
+if not frontend_plugin_path.is_file() or frontend_plugin_path.stat().st_size >= 350_000:
     raise SystemExit("effective-policy plugin artifact is missing or too large for its ConfigMap")
 if hashlib.sha256(frontend_plugin_path.read_bytes()).hexdigest() != (
-    "e06a3f9b3e4b476640bf3c15a985496bac9fa65a2e5750cdec2fc641a3f9ec40"
+    "01db7720feda37e512494e917408bc1aec435b5bcce8fc8f360f9586ba5882fa"
 ):
     raise SystemExit("effective-policy plugin artifact checksum changed; rebuild and review it")
 
@@ -323,6 +337,9 @@ if resolvers != [{"resolver": "oidcSubClaimMatchingKeycloakUserId"}]:
     raise SystemExit("RHDH must use the non-bypass Keycloak user-ID sign-in resolver")
 if not rhdh_config.get("permission", {}).get("enabled"):
     raise SystemExit("RHDH permission framework must be enabled for Kuadrant RBAC")
+conditional_policy_path = rhdh_config.get("permission", {}).get("rbac", {}).get("conditionalPoliciesFile")
+if conditional_policy_path != "/opt/app-root/etc/rbac-conditional-policies.yaml":
+    raise SystemExit("RHDH must load its source-controlled conditional RBAC policy")
 devspaces_environment = (
     rhdh_config.get("scaffolder", {})
     .get("defaultEnvironment", {})
@@ -349,6 +366,20 @@ if ("org.eclipse.che", "v2", "checlusters") not in custom_resources:
     raise SystemExit("RHDH topology must discover the OpenShift Dev Spaces CheCluster")
 
 rhdh_rbac = pathlib.Path("platform/developer-hub/rbac-policy.csv").read_text()
+consumer_catalog_allow = "p, role:default/api-consumer, catalog.entity.read, read, allow"
+if consumer_catalog_allow in rhdh_rbac:
+    raise SystemExit("RHDH consumers must not receive an unconditional catalog read")
+conditional_policy = yaml.safe_load(
+    pathlib.Path("platform/developer-hub/rbac-conditional-policies.yaml").read_text()
+)
+if (
+    conditional_policy.get("roleEntityRef") != "role:default/api-consumer"
+    or conditional_policy.get("pluginId") != "catalog"
+    or conditional_policy.get("permissionMapping") != ["read"]
+    or conditional_policy.get("conditions", {}).get("rule") != "IS_ENTITY_KIND"
+    or conditional_policy.get("conditions", {}).get("params", {}).get("kinds") != ["API"]
+):
+    raise SystemExit("RHDH consumers must be conditionally restricted to catalog Kind API")
 for permission, action in (
     ("api-monetization.subscription.create.own", "create"),
     ("api-monetization.subscription.update.own", "update"),
