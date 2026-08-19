@@ -1155,6 +1155,15 @@ identity_job = next(
     and resource.get("metadata", {}).get("name") == "api-monetization-portal-identity"
 )
 identity_script = identity_job["spec"]["template"]["spec"]["containers"][0]["command"][-1]
+for required_identity_fragment in (
+    'run_kcadm delete "users/$admin_user_id/groups/$consumer_group_id"',
+    'run_kcadm update "users/$developer_user_id/groups/$consumer_group_id"',
+):
+    if required_identity_fragment not in identity_script:
+        raise SystemExit(
+            "Keycloak identity reconciliation must keep elevated Golden Path users "
+            "out of the consumer-only catalog policy"
+        )
 developer_client_match = re.search(
     r"cat >/tmp/developer-automation-client.json <<JSON\n(.*?)\n[ \t]*JSON",
     identity_script,
