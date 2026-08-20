@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
+from urllib.parse import urlparse
 
 import yaml
 
@@ -35,6 +36,7 @@ VALUES = {
     "repoOwner": "arencloud",
 }
 VALUE_EXPRESSION = re.compile(r"\$\{\{\s*values\.([A-Za-z0-9_]+)\s*\}\}")
+TEMPLATE_VERSION = "1.2.1"
 
 
 def fail(message: str) -> None:
@@ -71,7 +73,7 @@ def assert_template(path: pathlib.Path) -> None:
     spec = template.get("spec", {})
     if spec.get("owner") != "group:default/api-owners":
         fail(f"{path}: template must be owned by api-owners")
-    if template.get("metadata", {}).get("annotations", {}).get("backstage.io/template-version") != "1.2.0":
+    if template.get("metadata", {}).get("annotations", {}).get("backstage.io/template-version") != TEMPLATE_VERSION:
         fail(f"{path}: template must expose the self-service publication release")
     actions = [step.get("action") for step in spec.get("steps", [])]
     if actions != ["fetch:template", "publish:github", "catalog:register"]:
@@ -181,6 +183,44 @@ def assert_platform_configuration() -> None:
     ):
         if package not in enabled_packages:
             fail(f"RHDH must enable {package} for the Dev Spaces source editor")
+
+    policy_catalog = next(
+        (
+            plugin
+            for plugin in dynamic_plugins.get("plugins", [])
+            if "arencloud-rhdh-policy-catalog-dynamic" in plugin.get("package", "")
+        ),
+        None,
+    )
+    frontend = (
+        policy_catalog.get("pluginConfig", {})
+        .get("dynamicPlugins", {})
+        .get("frontend", {})
+        .get("arencloud.rhdh-policy-catalog", {})
+        if policy_catalog
+        else {}
+    )
+    mount_points = frontend.get("mountPoints", [])
+    devspaces_card = next(
+        (
+            mount
+            for mount in mount_points
+            if mount.get("mountPoint") == "entity.page.overview/cards"
+            and mount.get("importName") == "EntityDevSpacesCard"
+        ),
+        None,
+    )
+    card_conditions = (
+        devspaces_card.get("config", {}).get("if", {}).get("allOf", [])
+        if devspaces_card
+        else []
+    )
+    if (
+        not devspaces_card
+        or {"isKind": "component"} not in card_conditions
+        or {"hasAnnotation": "github.com/project-slug"} not in card_conditions
+    ):
+        fail("RHDH must provide the portable Dev Spaces card for generated Components")
 
     policy = (ROOT / "platform/developer-hub/rbac-policy.csv").read_text(encoding="utf-8")
     permissions = (
@@ -324,15 +364,14 @@ def assert_rendered_project(kind: str, project: pathlib.Path) -> None:
         fail(f"{kind}: catalog Component must not expose a relation hidden from API consumers")
     if component.get("metadata", {}).get("annotations", {}).get("backstage.io/kubernetes-id") != "orders-edge":
         fail(f"{kind}: catalog Component is not mapped to its OpenShift workload")
+    if component.get("metadata", {}).get("annotations", {}).get("backstage.io/template-version") != TEMPLATE_VERSION:
+        fail(f"{kind}: generated Component does not identify template release {TEMPLATE_VERSION}")
     component_links = component.get("metadata", {}).get("links", [])
-    devspaces_link = next(
-        (link for link in component_links if link.get("title") == "Open in OpenShift Dev Spaces"),
-        {},
-    )
-    if devspaces_link.get("url") != (
-        "/api/api-monetization/devspaces/open?owner=arencloud&repo=orders-edge"
-    ):
-        fail(f"{kind}: catalog Component is missing its reusable Dev Spaces action")
+    for link in component_links:
+        url = link.get("url", "")
+        parsed = urlparse(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            fail(f"{kind}: catalog metadata link must be an absolute HTTP(S) URL: {url!r}")
     deployment = yaml.safe_load((project / "gitops/deployment.yaml").read_text(encoding="utf-8"))
     annotations = deployment.get("metadata", {}).get("annotations", {})
     if annotations.get("app.openshift.io/vcs-uri") != "https://github.com/arencloud/orders-edge.git":

@@ -13,8 +13,10 @@ organization, registers its `catalog-info.yaml` in Developer Hub, and returns
 an **Open in OpenShift Dev Spaces** link. Developer Hub resolves that link
 through its runtime configuration, then starts a workspace from the new
 repository and its generated `devfile.yaml`. The same action remains available
-under **Links** on the generated Component page; generated source is not added
-to this platform repository.
+in the generated Component's **OpenShift Dev Spaces** card. The catalog entity
+contains only portable metadata; the card derives the runtime-specific link
+from the validated `github.com/project-slug` annotation. Generated source is
+not added to this platform repository.
 
 ## Owner workflow
 
@@ -157,3 +159,18 @@ make golden-path-test
 The build test requires Java 21, Maven, Go, and `oc`. CI runs the same command,
 which proves the templates can create valid standalone projects rather than
 only validating their source YAML.
+
+### Recover a repository created by template 1.2.0
+
+Template 1.2.0 generated a relative Dev Spaces URL in `metadata.links`. RHDH
+requires catalog links to be absolute, so repository publication succeeded but
+catalog registration returned HTTP 400. A retry could then return HTTP 409
+because the first request had already created the catalog Location.
+
+For an affected repository, remove the `metadata.links` block containing
+`/api/api-monetization/devspaces/open` from `catalog-info.yaml` and push the
+change. RHDH will reprocess the existing Location; no repository recreation is
+required. The Scaffolder task remains failed as immutable history, but the
+Component becomes available after catalog refresh. Template 1.2.1 and later do
+not write that link, while the Component Overview card continues to provide the
+Dev Spaces action.
