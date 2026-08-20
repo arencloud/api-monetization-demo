@@ -23,6 +23,14 @@ spec:
     enabled: true
     sslRequired: external
     registrationAllowed: true
+    # The portable demo has no SMTP prerequisite. Successful local form
+    # registrations are marked trusted by the scoped event listener bundled
+    # in the custom RHBK image. Production must replace this with real email
+    # verification and SMTP delivery.
+    verifyEmail: false
+    eventsListeners:
+      - jboss-logging
+      - trusted-registration-email
     loginWithEmailAllowed: true
     duplicateEmailsAllowed: false
     resetPasswordAllowed: true

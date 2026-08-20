@@ -215,9 +215,17 @@ Keycloak registration is enabled in the demo realm. Every registered user is
 assigned to `api-consumers`; that group supplies both the RHDH consumer role
 and the `monetization-developer` realm role required by the control plane. No
 manual role correction is needed. Email verification is disabled in the
-portable demo because no SMTP service is a prerequisite. A production overlay
-must configure SMTP, enable email verification, and apply the organization's
-password, identity-proofing, and federation policies.
+portable demo because no SMTP service is a prerequisite. Instead, the custom
+RHBK image contains a realm-scoped event listener that marks only successful
+local registration events as email verified. This is a trusted demo shortcut,
+not proof that the registrant owns the address. A production overlay must
+remove that listener, configure SMTP, enable email verification, and apply the
+organization's password, identity-proofing, and federation policies.
+
+The Keycloak organization provider explicitly sets both `minutes: 0` and
+`seconds: 10`. RHDH configuration layers deep-merge duration objects; omitting
+the zero-minute override would combine the RHDH default 60-minute schedule
+with ten seconds and silently produce a `PT60M10S` refresh cadence.
 
 Owner registration is a reviewed workflow, not a second public registration
 form:

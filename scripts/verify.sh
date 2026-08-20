@@ -235,6 +235,11 @@ if ! grep -qi "Loaded dynamic frontend plugin 'backstage-community-plugin-topolo
   echo "error: Developer Hub did not load the Topology source editor" >&2
   exit 1
 fi
+if ! grep -q 'KeycloakOrgEntityProvider:default:refresh.*"cadence":"PT10S"' \
+  <<<"$rhdh_logs"; then
+  echo "error: Developer Hub Keycloak organization sync is not running every ten seconds" >&2
+  exit 1
+fi
 if grep -q "Missing required config value at 'kubernetes.clusterLocatorMethods\[0\].clusters\[0\].serviceAccountToken'" <<<"$rhdh_logs"; then
   echo "error: Developer Hub did not receive its cluster-generated Kubernetes credential" >&2
   exit 1
@@ -882,6 +887,21 @@ keycloak_admin_token=$(curl --silent --show-error --fail \
   --data 'grant_type=password' \
   "https://$keycloak_hostname/realms/master/protocol/openid-connect/token" \
   | jq -er '.access_token')
+keycloak_realm=$(curl --silent --show-error --fail \
+  --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+    -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+  --connect-to "$keycloak_hostname:443:$keycloak_router_hostname:443" \
+  --header "Authorization: Bearer $keycloak_admin_token" \
+  "https://$keycloak_hostname/admin/realms/api-monetization")
+if ! jq -e '
+  .registrationAllowed == true and
+  .verifyEmail == false and
+  (.defaultGroups | index("/api-consumers") != null) and
+  (.eventsListeners | index("trusted-registration-email") != null)
+' <<<"$keycloak_realm" >/dev/null; then
+  echo "error: trusted demo registration and automatic consumer membership are incomplete" >&2
+  exit 1
+fi
 grafana_client=$(curl --silent --show-error --fail \
   --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
     -o go-template='{{index .data "tls.crt"}}' | base64 -d) \

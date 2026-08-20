@@ -634,8 +634,10 @@ spec:
               admin_group_id=$(ensure_group api-admins)
               run_kcadm update "realms/$realm" --config /tmp/kcadm.config \
                 -s registrationAllowed=true \
+                -s verifyEmail=false \
                 -s displayName='API Monetization Developer Hub' \
-                -s loginTheme=api-monetization
+                -s loginTheme=api-monetization \
+                -s 'eventsListeners=["jboss-logging","trusted-registration-email"]'
 
               # Group membership is the single source of truth for both RHDH
               # authorization and control-plane realm roles. This makes every

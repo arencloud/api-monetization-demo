@@ -44,8 +44,10 @@ tokens. Use RHDH's supported `app.branding` settings for the authenticated UI.
 - The secure immutable-user-ID resolver remains mandatory. A just-registered
   user might need to select sign in once more if its automatic callback wins
   the race with the first catalog refresh; no unsafe resolver bypass is used.
-- The demo does not require SMTP and therefore does not verify registration
-  email. A production overlay must add email verification and enterprise
-  identity policy.
+- The demo does not require SMTP. Its custom RHBK listener marks successful
+  local form registrations as email verified so the portable onboarding path
+  is deterministic. This trusts the submitted address; a production overlay
+  must remove the listener and add SMTP-backed email verification plus the
+  enterprise identity policy.
 - Identity authority remains Keycloak, commercial/workflow authority remains
   PostgreSQL, and RHDH remains the unified presentation and permission layer.

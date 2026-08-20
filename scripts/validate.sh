@@ -398,10 +398,14 @@ keycloak_provider = (
     .get("keycloakOrg", {}).get("default", {})
 )
 if (
-    keycloak_provider.get("schedule", {}).get("frequency") != {"seconds": 10}
+    keycloak_provider.get("schedule", {}).get("frequency")
+    != {"minutes": 0, "seconds": 10}
     or keycloak_provider.get("schedule", {}).get("initialDelay") != {"seconds": 5}
 ):
-    raise SystemExit("RHDH must synchronize new Keycloak registrations without an unsafe resolver bypass")
+    raise SystemExit(
+        "RHDH must clear the inherited 60-minute Keycloak cadence and "
+        "synchronize registrations every ten seconds"
+    )
 if not rhdh_config.get("permission", {}).get("enabled"):
     raise SystemExit("RHDH permission framework must be enabled for Kuadrant RBAC")
 conditional_policy_path = rhdh_config.get("permission", {}).get("rbac", {}).get("conditionalPoliciesFile")
@@ -1269,7 +1273,9 @@ for required_identity_fragment in (
     'grep -Fxq "$consumer_group_id" <<<"$admin_group_ids"',
     'Portal administrator still belongs to api-consumers',
     '-s registrationAllowed=true',
+    '-s verifyEmail=false',
     '-s loginTheme=api-monetization',
+    'eventsListeners=["jboss-logging","trusted-registration-email"]',
     '--gid "$consumer_group_id" --rolename "$developer_role"',
     '--gid "$owner_group_id" --rolename "$owner_role"',
     'clientId": "monetization-owner-approvals"',
@@ -1336,6 +1342,8 @@ theme_css = pathlib.Path(
 ).read_text()
 if (
     "registry.redhat.io/rhbk/keycloak-rhel9:26.6" not in theme_containerfile
+    or "registry.access.redhat.com/ubi9/openjdk-21@sha256:" not in theme_containerfile
+    or "trusted-registration-email-provider.jar" not in theme_containerfile
     or "/opt/keycloak/bin/kc.sh build" not in theme_containerfile
     or "KC_TRANSACTION_XA_ENABLED=false" not in theme_containerfile
     or "parent=keycloak.v2" not in pathlib.Path(
@@ -1345,6 +1353,31 @@ if (
     or "pf-v6-c-login" not in theme_css
 ):
     raise SystemExit("Keycloak login theme must stay on RHBK, PatternFly, and Red Hat styling")
+
+registration_listener = pathlib.Path(
+    "platform/identity/theme/provider/src/com/arencloud/keycloak/"
+    "TrustedRegistrationEmailListenerProvider.java"
+).read_text()
+registration_listener_factory = pathlib.Path(
+    "platform/identity/theme/provider/src/com/arencloud/keycloak/"
+    "TrustedRegistrationEmailListenerProviderFactory.java"
+).read_text()
+registration_listener_service = pathlib.Path(
+    "platform/identity/theme/provider/services/"
+    "org.keycloak.events.EventListenerProviderFactory"
+).read_text().strip()
+if (
+    "event.getType() != EventType.REGISTER" not in registration_listener
+    or '!"api-monetization".equals(realm.getName())' not in registration_listener
+    or "user.setEmailVerified(true)" not in registration_listener
+    or 'ID = "trusted-registration-email"' not in registration_listener_factory
+    or registration_listener_service
+    != "com.arencloud.keycloak.TrustedRegistrationEmailListenerProviderFactory"
+):
+    raise SystemExit(
+        "the demo email-verification listener must remain limited to successful "
+        "local registrations in the api-monetization realm"
+    )
 
 with open("applications/control/identity-secret-store.yaml", encoding="utf-8") as stream:
     owner_secret_resources = [resource for resource in yaml.safe_load_all(stream) if resource]
