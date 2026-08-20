@@ -1,6 +1,28 @@
-FROM registry.redhat.io/rhbk/keycloak-rhel9:26.6
+FROM registry.redhat.io/rhbk/keycloak-rhel9:26.6 AS rhbk
+
+FROM registry.access.redhat.com/ubi9/openjdk-21@sha256:e0e645d79aae69906ec063e24dddf6bdbd017fc7ec370ea5213cf8f74d04a629 AS provider-builder
+
+COPY --from=rhbk /opt/keycloak/lib/lib/ /tmp/keycloak-lib/
+COPY provider/src/ /tmp/provider/src/
+COPY provider/services/ /tmp/provider/services/
+
+USER 0
+RUN mkdir -p /tmp/provider/classes/META-INF/services && \
+    javac -cp '/tmp/keycloak-lib/main/*' \
+      -d /tmp/provider/classes \
+      $(find /tmp/provider/src -name '*.java' -type f | sort) && \
+    cp /tmp/provider/services/org.keycloak.events.EventListenerProviderFactory \
+      /tmp/provider/classes/META-INF/services/ && \
+    jar --create \
+      --file /tmp/trusted-registration-email-provider.jar \
+      -C /tmp/provider/classes .
+
+FROM rhbk
 
 COPY --chown=keycloak:root api-monetization/ /opt/keycloak/themes/api-monetization/
+COPY --from=provider-builder --chown=keycloak:root \
+  /tmp/trusted-registration-email-provider.jar \
+  /opt/keycloak/providers/trusted-registration-email-provider.jar
 
 # Keep the custom image aligned with the operator-managed PostgreSQL,
 # health, and metrics build-time configuration.

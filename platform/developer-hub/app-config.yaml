@@ -100,9 +100,11 @@ catalog:
         clientId: ${KEYCLOAK_CLIENT_ID}
         clientSecret: ${KEYCLOAK_CLIENT_SECRET}
         schedule:
-          # Keep registration usable without bypassing catalog-backed RBAC:
-          # the first retry after Keycloak creates a user resolves in <=10s.
-          frequency: {seconds: 10}
+          # RHDH's base configuration supplies a 60-minute default. Config
+          # objects are deep-merged, so explicitly clear that minute field;
+          # otherwise {seconds: 10} becomes an effective PT60M10S cadence.
+          # Keep registration usable without bypassing catalog-backed RBAC.
+          frequency: {minutes: 0, seconds: 10}
           initialDelay: {seconds: 5}
           timeout: {minutes: 1}
   locations:
