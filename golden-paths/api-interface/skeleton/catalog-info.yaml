@@ -9,11 +9,7 @@ metadata:
     argocd/app-name: ${{ values.name }}
     backstage.io/kubernetes-id: ${{ values.name }}
     backstage.io/source-template: template:default/monetized-api-interface
-    backstage.io/template-version: 1.2.0
-  links:
-    - url: /api/api-monetization/devspaces/open?owner=${{ values.repoOwner }}&repo=${{ values.name }}
-      title: Open in OpenShift Dev Spaces
-      icon: dashboard
+    backstage.io/template-version: 1.2.1
   tags: [api, kuadrant, monetized, openshift]
 spec:
   type: service
