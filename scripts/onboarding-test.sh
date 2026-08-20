@@ -86,7 +86,7 @@ curl --silent --show-error --fail \
   --data-urlencode code_challenge=0123456789012345678901234567890123456789012 \
   --data-urlencode code_challenge_method=S256 >"$auth_html"
 
-registration_url=$(grep 'id="kc-registration"' "$auth_html" \
+registration_url=$(grep 'Create developer account' "$auth_html" \
   | head -n 1 | sed -n 's/.*href="\([^"]*\)".*/\1/p' \
   | sed 's/&amp;/\&/g')
 if [[ $registration_url == /* ]]; then
