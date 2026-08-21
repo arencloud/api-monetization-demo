@@ -406,6 +406,10 @@ def assert_rendered_project(kind: str, project: pathlib.Path) -> None:
         fail(f"{kind}: workload is missing its generated metering identity")
     if not environment.get("USAGE_SINK_URL", "").endswith("/internal/usage"):
         fail(f"{kind}: workload is not connected to the billing usage sink")
+    if kind == "api-interface":
+        containerfile = (project / "Containerfile").read_text(encoding="utf-8")
+        if "COPY internal/ internal/" not in containerfile:
+            fail("Go API image must include the generated metering package")
 
     for suffix in ("api-key", "jwt"):
         if not (project / "gitops/api-products.yaml").read_text(encoding="utf-8").count(f"orders-edge-{suffix}"):
