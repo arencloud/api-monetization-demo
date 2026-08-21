@@ -1,121 +1,115 @@
-# API Monetization on Red Hat OpenShift
+<p align="center">
+  <img src="platform/developer-hub/branding/full-logo.svg" width="420" alt="API Monetization Developer Hub">
+</p>
 
-This repository contains the declarative foundation for a reproducible API
-monetization demonstration built around Red Hat Connectivity Link (RHCL).
-RHCL is the policy enforcement point; subscription management, usage
-aggregation, and billing remain independent services.
+<h1 align="center">API Monetization on Red Hat OpenShift</h1>
 
-## Target experience
+<p align="center">
+  Turn APIs and AI inference into governed products with self-service subscriptions,
+  live policy enforcement, usage attribution, and visible commercial outcomes.
+</p>
 
-A developer subscribes to an API plan, receives credentials, and calls an API
-through a Gateway API gateway. The request is authenticated, authorized,
-rate-limited, observed, and attributed to a subscription. During the demo an
-administrator upgrades the subscription and the new limits take effect without
-restarting the gateway or application.
+<p align="center">
+  <img alt="OpenShift 4.21–4.22" src="https://img.shields.io/badge/OpenShift-4.21%E2%80%934.22-ee0000?logo=redhatopenshift&logoColor=white">
+  <img alt="Connectivity Link 1.4" src="https://img.shields.io/badge/Connectivity%20Link-1.4-ee0000">
+  <img alt="Developer Hub 1.10" src="https://img.shields.io/badge/Developer%20Hub-1.10-151515">
+  <img alt="GitOps managed" src="https://img.shields.io/badge/delivery-OpenShift%20GitOps-f0ab00">
+  <img alt="Operators first" src="https://img.shields.io/badge/platform-Operators%20first-3e8635">
+</p>
+
+<p align="center">
+  <a href="docs/architecture.md">Architecture</a> ·
+  <a href="docs/deployment.md">Deployment</a> ·
+  <a href="docs/demo-runbook.md">Live demo</a> ·
+  <a href="docs/golden-paths.md">Golden Paths</a> ·
+  <a href="docs/README.md">Documentation</a>
+</p>
+
+---
+
+## The experience
+
+A developer discovers a production API in Red Hat Developer Hub, subscribes to
+a commercial plan, receives an operator-managed API key or a short-lived
+Keycloak JWT, and calls the API through Connectivity Link. Every accepted
+request is authenticated, authorized, limited, observed, and attributed to the
+correct subscription. A live plan upgrade takes effect on the next request—no
+gateway, token, or workload restart is required.
+
+| Persona | Self-service journey | Platform outcome |
+| --- | --- | --- |
+| **API consumer** | Register → discover → subscribe → obtain API key/JWT → inspect usage and invoices | Subject-scoped access to subscribed production APIs |
+| **API owner** | Request owner role → select Golden Path → develop in Dev Spaces → publish | Governed API repository, policies, plans, docs, and GitOps delivery |
+| **Platform administrator** | Approve owners → manage plans and subscriptions → observe → audit | Central policy control without putting billing in the gateway |
+
+## What the demonstration proves
+
+| Capability | Visible proof |
+| --- | --- |
+| 🔐 **Identity and entitlement** | API keys and Keycloak JWTs resolve to the same active subscription |
+| 🚦 **Request-time enforcement** | Connectivity Link returns HTTP 401/403/429 before traffic reaches the API |
+| ⚡ **Live plan changes** | Free → Developer immediately raises both API-key and already-issued JWT limits |
+| 💶 **Real metering** | Only accepted requests become billable; rejected attempts remain observable but unbilled |
+| 🤖 **AI token monetization** | OpenShift AI returns actual prompt/completion tokens consumed by `TokenRateLimitPolicy` and billing |
+| 🧭 **Golden Paths** | API owners create standalone Go or Camel projects, open them in Dev Spaces, and publish through GitOps |
+
+## Architecture at a glance
+
+![API Monetization architecture showing consumers, Connectivity Link, Service Mesh, APIs, commercial control plane, OpenShift AI, observability, secrets, and GitOps](docs/assets/api-monetization-architecture.svg)
+
+<p align="center"><em>Request enforcement stays in the data plane. Products, subscriptions, usage, and billing stay in the commercial control plane.</em></p>
 
 ```text
-Internet -> OpenShift Route -> Gateway API -> Connectivity Link -> Service Mesh -> APIs
-                                 |              |                 |
-                              TLS/DNS      Auth and limits   mTLS and traces
-                                 +--------------+-----------------+
-                                   |
-                    Metrics, logs, traces, usage, billing
+Internet → OpenShift Route → Gateway API → Connectivity Link → Service Mesh → APIs
+                                        ↕                      ↕
+                                Auth · plans · limits     mTLS · traces
+                                        ↕
+                    subscriptions · accepted usage · invoices · revenue
 ```
 
-OpenShift Routes always provide the portable entry path shown above. When
-MetalLB, a cloud integration, or another Service LoadBalancer provider assigns
-an external address, the Gateway also retains that direct LoadBalancer entry.
-The API hostnames are generated beneath the cluster ingress domain and are
-printed by `make verify`; no external DNS setup is required for the baseline.
+OpenShift Routes provide the portable public entry point. When MetalLB, a cloud
+integration, or another `LoadBalancer` provider is available, the same Gateway
+can additionally receive an external address. No LoadBalancer provider or
+external DNS setup is required for the baseline.
 
-See [the architecture](docs/architecture.md) for component responsibilities and
-trust boundaries.
+Read [the architecture guide](docs/architecture.md) for component ownership,
+trust boundaries, request lifecycle, billing rules, and the build provenance
+chain.
 
-## Deployment principles
+## Platform capability map
 
-- OpenShift GitOps is the only steady-state deployment mechanism.
-- Red Hat products and other operator-capable platform services are installed
-  with OLM Operators.
-- Operator subscriptions and their operands are separate GitOps applications so
-  CRDs can become available before custom resources are reconciled.
-- No credentials are committed. Secrets must be supplied by an approved secret
-  manager or created as a documented bootstrap prerequisite.
-- Compatibility channels are deliberately selected as a tested set; upgrades
-  are reviewed as a set rather than component by component.
-- Every layer is idempotent and can be rendered locally before it reaches a
-  cluster.
+| Layer | Components | Responsibility |
+| --- | --- | --- |
+| Developer experience | Red Hat Developer Hub, Kuadrant plugins, custom monetization plugins, Dev Spaces | Catalog, subscriptions, credentials, billing, Golden Paths, AI playground |
+| Identity | Red Hat build of Keycloak | Registration, OIDC/JWT, users, groups, roles, SSO |
+| API management | Red Hat Connectivity Link, Authorino, Limitador, Gateway API | API products, authentication, authorization, request and token limits |
+| Workload network | Red Hat OpenShift Service Mesh | Strict mTLS, traffic management, telemetry |
+| Applications | Inventory, Payment, AI Chat | Independently governed and metered API products |
+| AI serving | Red Hat OpenShift AI, KServe, Red Hat vLLM CPU runtime | OpenAI-compatible inference and actual-token reporting |
+| Commercial state | CloudNativePG, monetization control plane | Customers, plans, subscriptions, accepted usage, invoices, audit history |
+| Observability | Prometheus, Grafana Operator, Loki, Tempo, OpenTelemetry | Business metrics, policy decisions, logs, and traces |
+| Secrets | External Secrets Operator for Red Hat OpenShift | Generated passwords and product-scoped API credentials |
+| Delivery | OpenShift GitOps, OpenShift Builds | Declarative reconciliation, immutable source revision, in-cluster builds |
 
-## Repository layout
+## Start on a fresh cluster
 
-| Path | Purpose |
-| --- | --- |
-| `bootstrap/` | One-time installation of OpenShift GitOps and the root application |
-| `gitops/applications/` | App-of-apps definitions and reconciliation ordering |
-| `operators/` | OLM subscriptions and operator groups |
-| `platform/` | Operator-managed platform operands and shared namespaces |
-| `applications/` | Inventory, Payment, and monetization control-plane source/builds |
-| `golden-paths/` | RHDH Software Templates and standalone API project skeletons for API owners |
-| `policies/` | Gateway, authentication, authorization, and limit policies |
-| `dashboards/` | Business and platform observability assets |
-| `environments/` | Environment-specific composition and configuration |
-| `scripts/` | Bootstrap, preflight, and validation automation |
-| `docs/` | Architecture, operations, decisions, and demo runbooks |
+### Baseline prerequisites
 
-## Supported initial profile
+- OpenShift Container Platform 4.21 or 4.22 and `cluster-admin` access.
+- Red Hat, certified, and community Operator catalogs plus the required Red Hat
+  product entitlements.
+- A default dynamic RWO-capable `StorageClass`.
+- The integrated OpenShift registry configured as `Managed`, one replica, with
+  a Bound 50-GiB PVC.
+- Workstation tools: `oc`, `git`, `make`, `curl`, `jq`, `python3`, and PyYAML.
+- Cluster egress to the image registries, npm, GitHub, and—when enabling the CPU
+  AI product—Hugging Face model content.
 
-The first profile follows the RHCL 1.4 support matrix:
+> **Portable by design:** RWX storage, a GPU, MetalLB, and external DNS/TLS are
+> not prerequisites. The baseline uses RWO volumes, CPU inference, `ClusterIP`,
+> and OpenShift Routes.
 
-| Component | Selected compatibility lane |
-| --- | --- |
-| OpenShift Container Platform | 4.21–4.22 |
-| Red Hat Connectivity Link | 1.4 stable channel, 1.4.1 or later |
-| Red Hat OpenShift Service Mesh | 3.4 |
-| cert-manager Operator for Red Hat OpenShift | 1.19 |
-| Red Hat build of Keycloak | 26.6 |
-| Red Hat Developer Hub | 1.10 z-stream (`fast-1.10`) |
-| Red Hat OpenShift Dev Spaces | Latest `stable` channel z-stream |
-| Kuadrant Developer Hub plugin | 0.4.0, integrity-pinned |
-| Effective-policy catalog plugin | 0.1.8, source-controlled local TGZ |
-| Monetization backend plugin | 0.1.5, source-controlled local TGZ |
-| Red Hat OpenShift GitOps | Latest catalog channel, automatic upgrades |
-| Red Hat OpenShift AI | 3.4 stable channel, 3.4.3 starting CSV |
-| External Secrets Operator for Red Hat OpenShift | 1.2 |
-| CloudNativePG certified Operator | 1.30 |
-| Developer Hub database | PostgreSQL 17.11, multi-architecture digest pin |
-| Red Hat build of OpenTelemetry Operator | stable, 0.152.0-2 starting CSV |
-| Tempo Operator | stable, 0.21.0-3 starting CSV |
-| Grafana Operator | v5, 5.24.0 starting CSV |
-| Application build toolchain | Red Hat UBI 9 Go Toolset 1.26.5 |
-
-The cluster must have subscriptions/entitlements for the Red Hat products. Run
-`make preflight` before making any cluster changes.
-
-The optional CPU AI milestone also requires outbound access to Hugging Face.
-Its pinned Qwen2.5 0.5B model is downloaded when the serving Pod starts. No GPU,
-GPU Operator, RWX volume, or LoadBalancer provider is required.
-
-The Developer Hub Pod also requires outbound access to `registry.npmjs.org` on
-first start so its pinned Kuadrant dynamic plugin packages can be installed.
-
-Because the current profile includes OpenShift AI, the minimum multi-node
-cluster has three 4-vCPU/16-GiB control-plane nodes and two schedulable
-8-vCPU/32-GiB workers. For a reliable live presentation, use three
-8-vCPU/32-GiB workers and at least 100 GiB of provisionable persistent
-capacity. The registry consumes a one-replica 50-GiB persistent volume; the
-subscription and Keycloak PostgreSQL clusters consume 2 GiB each, and the
-Developer Hub PostgreSQL cluster consumes 5 GiB, and the first Dev Spaces user
-workspace consumes a default 10-GiB persistent volume. See
-[the deployment sizing profiles](docs/deployment.md#cluster-sizing) for
-Minimum, Recommended, Large showcase, and single-node requirements, and use
-[the runbook resource gate](docs/demo-runbook.md#select-and-verify-the-cluster-profile)
-before bootstrap.
-
-## Quick start
-
-Prerequisites: `oc`, cluster-admin access, the Red Hat, certified, and community
-operator catalogs, and a cluster matching the profile above. Grafana Operator
-is community-supported; Red Hat product components continue to use their Red
-Hat Operators.
+### Install and verify
 
 ```bash
 make validate
@@ -126,235 +120,142 @@ make verify
 make promotion-status
 ```
 
-`make bootstrap` is the only imperative installation step. It installs the
-OpenShift GitOps Operator, waits for the default Argo CD instance, grants its
-dedicated application controller the cluster access required to reconcile this
-cluster-configuration repository, and applies the root application. Argo CD
-owns everything below that root.
+`make bootstrap` is the only imperative installation entry point. It installs
+OpenShift GitOps, waits for the current catalog head, and creates the root Argo
+CD Application. Operators and operands are separate child Applications so CRDs
+become available before their custom resources. Argo CD owns steady state from
+that point forward.
 
-Application source is built inside OpenShift from the exact commit reconciled
-by Argo CD. Successful outputs receive immutable `git-<commit>` ImageStreamTags;
-`make promotion-status` verifies the Argo revision, OpenShift Build, delivery
-tag, Deployment digest, and running Pods agree.
+See the [deployment guide](docs/deployment.md) for sizing, storage, bootstrap
+behavior, verification, upgrades, recovery, and complete removal.
 
-The root application points to this repository's canonical GitHub URL and the
-selected delivery branch. Before bootstrapping another branch, align
-`bootstrap/root/application.yaml`, the generated source in
-`gitops/applications/kustomization.yaml`, and every application `BuildConfig`
-Git ref. Restore all of them to `main` before merging a feature branch.
+### Cluster planning profiles
 
-Detailed prerequisites, verification, and recovery steps are in
-[the deployment guide](docs/deployment.md).
+| Profile | Control plane | Workers | Persistent capacity | Use |
+| --- | --- | --- | --- | --- |
+| **Minimum** | 3 × 4 vCPU / 16 GiB | 2 × 8 vCPU / 32 GiB | 75 GiB | Functional installation and single-user validation |
+| **Recommended** | 3 × 4 vCPU / 16 GiB | 3 × 8 vCPU / 32 GiB | 100 GiB | Rehearsal and reliable live presentation |
+| **Large showcase** | 3 × 8 vCPU / 32 GiB | 3 × 16 vCPU / 64 GiB | 200 GiB | Parallel builds, tests, and development workloads |
 
-## Implemented solution
+Use the [detailed sizing rationale](docs/deployment.md#cluster-sizing) before
+installation. A single-node lab requires at least 32 CPUs, 128 GiB RAM, and
+200 GiB disk because OpenShift AI sets the governing SNO requirement.
 
-The repository now contains the complete single-cluster demo path: operator and
-GitOps bootstrap, integrated-registry readiness validation, OpenShift Routes,
-Service Mesh, Connectivity Link, the enabled GitOps and RHCL console plugins,
-the RHCL developer catalog,
-External Secrets-generated API keys, Keycloak JWT clients, Free/Developer/Business/
-Enterprise plan policies plus a real Pay-as-you-go metered tier, independently
-monetized Inventory, Payment, and AI Chat APIs, a PostgreSQL-backed subscription
-control plane, live plan changes, Prometheus metrics, an operator-managed
-Grafana instance and dashboard, structured logs, and an OpenTelemetry-to-Tempo
-trace pipeline.
-
-Red Hat Developer Hub is installed through its Operator as the strategic
-developer experience. The integrity-pinned Kuadrant frontend and backend
-plugins synchronize six RHCL `APIProduct` resources into the catalog: an
-API-key and a Keycloak OIDC/JWT presentation of each Inventory, Payment, and AI
-Chat API. They provide read-only product discovery and OIDC metadata. GitOps
-discovers the admitted Keycloak issuer
-and installs the OpenShift router CA into the RHCL OIDC components, so the same
-catalog works on a fresh cluster with a different applications domain.
-The default RHDH Lightspeed flavour is disabled because the solution already
-contains its independently governed OpenShift AI chat product.
-
-Members of the `api-owners` group also receive two governed
-[Golden Paths](docs/golden-paths.md). The standard path creates a contract-first
-Go API and the integration path creates a Red Hat Camel Quarkus API with a
-Kaoto-editable mapping route. Each scaffolder run creates and registers a
-dedicated GitHub repository containing application source, OpenAPI, tests,
-OpenShift builds, Service Mesh configuration, Gateway API routes, RHCL
-authentication and plan resources, APIProducts, TechDocs, and a restricted
-Argo CD bootstrap Application. New products start in Draft. After review, the
-owner publishes from the Component Overview: Developer Hub validates the
-repository, applies cluster-specific gateway and identity settings through the
-restricted AppProject, and the control plane adds the product to consumer
-subscriptions only after its APIProduct and OpenAPI contract are ready.
-
-Developer Hub delegates login to the existing Red Hat build of Keycloak realm.
-Its responsive, source-built welcome page uses the supported dynamic frontend
-`signInPage` extension point to introduce the API economy, subscriptions, Golden
-Paths, and billing before opening the secure OIDC flow. The source-built
-Keycloak login theme continues the Red Hat PatternFly visual language through
-registration and authentication. Neither layer replaces or bypasses the
-Operator-managed identity provider.
-Self-registration is enabled for consumers: every new account enters the
-`api-consumers` group and receives the developer realm role used by the
-subscription APIs. Owner access is never self-assigned. A consumer requests it
-from **Subscriptions & Access**, an administrator reviews the request there,
-and an approval moves that identity to `api-owners`. Keycloak groups map to the
-Kuadrant consumer, owner, and administrator roles.
-The source-controlled RHDH extension resolves effective `PlanPolicy`, direct
-`RateLimitPolicy`, and `TokenRateLimitPolicy` resources and adds a subscription view
-for subscriptions, accepted request/token usage, projected revenue, and
-invoices. Both the Kuadrant API Products view and Developer Hub's APIs explorer
-treat published products as production APIs and show whether the signed-in
-consumer has an active subscription. The **Subscriptions & Access** page provides
-consumer-scoped subscribe, plan-change, cancellation, one-time API-key
-reveal/rotation, and Keycloak JWT workflows. Raw Kuadrant credential and
-approval pages are deliberately absent: the subscription control plane is the
-only credential writer. Its backend applies RHDH permissions before
-forwarding the signed-in user's Keycloak token, while the existing control
-plane independently checks the role and maps the token subject to exactly one
-customer. Owner requests and review decisions are retained as an auditable
-PostgreSQL workflow. A dedicated least-privilege Keycloak service identity can
-change user/group membership; the RHDH organization provider remains
-read-only. PostgreSQL remains the sole commercial system of record. The
-existing portal remains deployed as a rollback path and for the AI playground.
-
-The current development milestone adds an Operator-managed OpenShift AI 3.4
-foundation, KServe, and a pinned Qwen2.5 0.5B Instruct model served by Red Hat's
-vLLM CPU x86 runtime. A mesh-injected facade keeps the model internal, exposes
-its OpenAI-compatible chat operation through Connectivity Link, and stores the
-vLLM-reported prompt plus completion tokens as native billable units. RHCL
-`TokenRateLimitPolicy` extracts the same OpenAI-compatible
-`usage.total_tokens` response field and enforces plan-specific monthly token
-quotas in Limitador; the ordinary request policy remains as a separate
-requests-per-minute abuse guard.
-
-The monetization portal is exposed through a portable OpenShift Route and uses
-Red Hat build of Keycloak Authorization Code flow with PKCE. Its subscription,
-usage, and upgrade APIs require the `monetization-admin` realm role; internal
-entitlement and usage ingestion use a separate, non-routed service port.
-
-For AI Chat, the developer portal includes a browser playground that calls the
-cluster-admitted Gateway API endpoints directly. A developer can select the
-one-time-revealed API key or their existing Keycloak access token, submit a
-prompt, inspect the model response and exact prompt/completion/total-token
-counts, and compare consumed, remaining, overage, and projected-revenue data.
-Only the `OPTIONS` preflight routes permit anonymous access. Actual inference
-remains protected by RHCL authentication, entitlement, request limits, and
-token limits. Portable CORS rules do not use cookies and therefore require no
-cluster-specific portal hostname.
-
-Developers authenticate with the separate `monetization-developer` role. They
-can browse the multi-product API catalog, but a production API rejects their
-API-key and JWT requests until they subscribe to its logical commercial
-product. Both authentication presentations share that subscription. Developers
-choose an independent plan for each product, create their own PostgreSQL
-customer and subscriptions in RHDH, and request product-scoped API keys or a
-short-lived Keycloak JWT. The
-control plane creates an External Secrets Password generator and ExternalSecret
-before submitting the RHCL `APIKey`; the raw credential is displayed once and
-only its digest is retained in the commercial datastore. Developers can rotate
-the API key from the portal, which revokes the previous key and provisions a
-new operator-managed credential. Interactive JWTs resolve the same subscription
-and current plan by the Keycloak user subject.
-
-The portal also calculates current-calendar-month billing previews from stored
-billable units and persists refreshable draft invoices with line items. A
-developer can inspect invoice and lifecycle history or cancel a subscription;
-cancellation removes its operator-managed API key and immediately denies both
-API-key and already-issued JWT entitlement. Administrators can suspend and
-resume a subscription without regenerating credentials.
-
-The deterministic scenario issues an API key and a Keycloak JWT for the same
-customer subscription, drives both through the Free limit, and performs one
-live Free-to-Developer upgrade. Both credentials immediately receive the new
-limit, including the already-issued JWT, because commercial state is resolved
-from PostgreSQL rather than embedded in the signed token.
-
-After deployment and verification, run the deterministic scenario:
+## Run the business demonstration
 
 ```bash
 make showcase
 ```
 
-`make showcase` is the complete presentation path. It verifies the deployed
-platform, proves simultaneous Inventory and Payment subscriptions, proves AI
-Chat with both credential types and real token attribution, establishes
-a clean Free-plan window, proves API-key and JWT rate
-limiting plus the live Developer upgrade, creates real Pay-as-you-go usage and
-a draft invoice, prints Prometheus evidence and all UI/API URLs, and restores
-Demo Company to a reusable Free state. It prints a stage-by-stage PASS/FAIL
-summary and also restores the plan after interruption. Stored accepted usage,
-invoice history, and audit records remain as intentional business evidence.
+The showcase verifies the platform, proves simultaneous Inventory and Payment
+subscriptions, exercises AI Chat with both credential types, reaches genuine
+request and token limits, performs a live plan upgrade, creates metered usage
+and a draft invoice, prints observability evidence, and restores reusable demo
+state—even after interruption.
 
-The individual scenarios remain available for focused development and manual
-presentations:
+Focused scenarios are also available:
 
-```bash
-make lifecycle-test
-make multi-product-test
-make ai-model-test
-make ai-monetization-test
-make ai-demo
-make demo
-make metered-demo
-make observe
-make grafana
-make reset-demo
-make portal
-```
+| Command | Scenario |
+| --- | --- |
+| `make lifecycle-test` | Suspend, resume, cancel, clean up, and resubscribe with API key and JWT |
+| `make multi-product-test` | Independent Inventory and Payment subscriptions and attribution |
+| `make ai-monetization-test` | Exact vLLM token attribution through both authentication paths |
+| `make ai-demo` | Free AI token quota → HTTP 429 → live Developer upgrade → continue |
+| `make demo` | Free request limit → HTTP 429 → live Developer upgrade for API key and JWT |
+| `make metered-demo` | Pay-as-you-go traffic, accepted usage, projected revenue, draft invoice |
+| `make observe` | Prometheus evidence for commercial state, limits, and gateway responses |
+| `make grafana` | Grafana SSO URL and break-glass credentials |
+| `make reset-demo` | Return deterministic demo identities to reusable state |
 
-`make lifecycle-test` uses dedicated Keycloak automation identities to prove
-active API-key and JWT access, administrative suspension and resume, developer
-cancellation, operator-resource cleanup, and clean resubscription. It leaves
-the browser `demo-developer` and the deterministic `demo-company` scenario
-unchanged and returns its own automation subscription to a cancelled state.
+Follow the [live demo runbook](docs/demo-runbook.md) for the presenter narrative,
+expected output, manual checks, UI paths, business message, and reset procedure.
 
-`make multi-product-test` creates simultaneous Inventory Free and Payment
-Developer subscriptions for the automation identity, proves both API-key and
-JWT paths, confirms per-product usage attribution, and cancels its test
-subscriptions afterward. The browser developer and Demo Company remain
-unchanged.
+## API-owner Golden Paths
 
-`make ai-monetization-test` creates a dedicated Developer AI Chat subscription,
-proves API-key and Keycloak JWT inference through Connectivity Link, verifies
-that the billed units exactly match vLLM's `usage.total_tokens`, proves both
-RHCL/Limitador namespaces advance by those response tokens plus the independent
-request-guard hit, waits for the asynchronous PostgreSQL attribution, and
-cancels its automation subscription.
-Deployment verification also requires both AI `TokenRateLimitPolicy` objects
-to be Enforced and the facade-to-KServe hop to use strict Service Mesh mTLS.
+Members of `api-owners` receive two governed templates in Developer Hub:
 
-`make ai-demo` is the deterministic AI business presentation. It creates a new
-Free AI Chat subscription, proves browser preflight, sends a model request whose
-reported token cost crosses the Free allowance, observes HTTP 429 on the next
-request for both API-key and already-issued JWT paths, upgrades that same
-subscription to Developer, and immediately continues with both credentials.
-It then waits for PostgreSQL attribution and prints consumed tokens, remaining
-Developer allowance, and projected revenue. Its automation identity is
-cancelled on success or interruption. Token counters use the immutable
-subscription UUID, so the next run starts with a new counter without requiring
-privileged Limitador cleanup or relying on a fixed cluster hostname.
+| Template | Generated project |
+| --- | --- |
+| **Monetized API interface** | Go 1.26 service, OpenAPI, tests, OpenShift build, Service Mesh, Gateway API, Connectivity Link policies, plans, APIProducts, TechDocs, and GitOps |
+| **Monetized Camel API integration** | Red Hat Camel Quarkus on Java 21, Kaoto-editable route, OpenAPI, tests, and the same governed platform resources |
 
-`make metered-demo` changes Demo Company to Pay as you go, sends five real
-accepted requests through the OpenShift Route and Connectivity Link, waits for
-asynchronous usage attribution, and persists a draft invoice. Pay as you go has
-no included requests, a 10,000-request monthly safety cap, a 100/minute rate
-limit, and a €0.01 charge per accepted request. HTTP 429 responses are rejected
-before the Inventory API and are therefore never counted or billed. Run
-`make reset-demo` afterward to return Demo Company to Free.
+Each run creates a dedicated GitHub repository. The owner opens it in OpenShift
+Dev Spaces, develops through pull requests, publishes from the Component page,
+and receives API-key plus Keycloak JWT presentations only when the APIProduct
+and OpenAPI contract are ready. Consumers cannot discover draft projects and
+cannot open a production API until they subscribe.
 
-`make observe` queries OpenShift user-workload monitoring and prints the live
-commercial and policy evidence directly from Thanos. It
-shows PostgreSQL-backed accepted usage, overage and revenue; Limitador decisions
-split between API-key and JWT; and Istio gateway responses by HTTP status. The
-operator-managed Grafana instance presents the same separation visually. It
-uses the same Keycloak identities as the portal: `demo-admin` receives the
-Grafana Admin role and `demo-developer` receives Viewer. Run `make grafana` to
-print its admitted HTTPS URL, SSO credentials, and the generated local
-break-glass login. In particular, HTTP 429 traffic remains observable while
-never being included in billing.
+See [API-owner Golden Paths](docs/golden-paths.md) for the complete workflow and
+security boundary.
 
-The portable demo profile intentionally requires neither a LoadBalancer
-provider nor production infrastructure. It uses `ClusterIP` plus admitted
-OpenShift Routes when MetalLB or a cloud load balancer is unavailable. External
-DNS/TLS, object storage, PostgreSQL HA/backups, and disaster recovery belong in
-a separate environment-specific production overlay and are not baseline
-installation prerequisites.
+## Tested compatibility lane
 
-See [the live demo runbook](docs/demo-runbook.md) before presenting it.
+| Component | Selection |
+| --- | --- |
+| OpenShift Container Platform | 4.21–4.22 |
+| Red Hat Connectivity Link | 1.4 stable, 1.4.1 or later |
+| Red Hat OpenShift Service Mesh | 3.4 |
+| Red Hat build of Keycloak | 26.6 |
+| Red Hat Developer Hub | 1.10 z-stream (`fast-1.10`) |
+| Red Hat OpenShift Dev Spaces | Latest `stable` channel z-stream |
+| Red Hat OpenShift AI | 3.4 stable, 3.4.3 starting CSV |
+| cert-manager Operator for Red Hat OpenShift | 1.19 |
+| External Secrets Operator for Red Hat OpenShift | 1.2 |
+| CloudNativePG certified Operator | 1.30 |
+| Red Hat build of OpenTelemetry / Tempo | Stable tested channels |
+| Grafana Operator | v5, 5.24.0 starting CSV |
+| Red Hat OpenShift GitOps | Latest catalog channel, automatic upgrades |
+| Application build toolchain | Red Hat UBI 9 Go Toolset 1.26.5 |
+
+Compatibility versions are reviewed as a set. `make preflight` validates the
+cluster and Operator catalog before making changes.
+
+## Repository map
+
+| Path | Purpose |
+| --- | --- |
+| [`bootstrap/`](bootstrap/) | One-time OpenShift GitOps and root Application installation |
+| [`gitops/applications/`](gitops/applications/) | App-of-apps definitions and reconciliation waves |
+| [`operators/`](operators/) | OLM Subscriptions and OperatorGroups |
+| [`platform/`](platform/) | Operator-managed operands, identity, gateway, data, and observability |
+| [`applications/`](applications/) | Inventory, Payment, AI Chat, and commercial control-plane source/builds |
+| [`golden-paths/`](golden-paths/) | RHDH templates and standalone generated-project skeletons |
+| [`policies/`](policies/) | Authentication, authorization, request, and token policies |
+| [`dashboards/`](dashboards/) | Business and platform observability assets |
+| [`environments/`](environments/) | Environment-specific composition and configuration |
+| [`scripts/`](scripts/) | Validation, bootstrap, verification, demo, and cleanup automation |
+| [`docs/`](docs/README.md) | Architecture, deployment, runbook, data model, and decisions |
+
+## Documentation
+
+| Guide | Read it when… |
+| --- | --- |
+| [Documentation home](docs/README.md) | You need a map of all guides and architecture decisions |
+| [Architecture](docs/architecture.md) | You need responsibilities, trust boundaries, data flow, or billing behavior |
+| [Deployment](docs/deployment.md) | You are preparing, installing, validating, recovering, or removing a cluster |
+| [Live demo runbook](docs/demo-runbook.md) | You are rehearsing or presenting the complete story |
+| [Golden Paths](docs/golden-paths.md) | You are creating and publishing a new monetized API project |
+| [Subscription model](docs/data/subscription-model.md) | You need the commercial entities and lifecycle constraints |
+
+## Design principles
+
+- **GitOps is the contract.** Desired state, policy, dashboards, and promotion
+  metadata live in Git; OpenShift GitOps is the steady-state reconciler.
+- **Operators own platform services.** Every Red Hat component—and every other
+  operator-capable service—is installed and managed through OLM.
+- **The gateway is not a billing database.** Request-time enforcement consumes
+  narrow entitlement metadata; rating and invoicing stay asynchronous.
+- **Commercial identity is live.** Keycloak proves identity while PostgreSQL
+  owns current product, plan, and subscription state.
+- **Accepted usage is billable usage.** HTTP 429 attempts are observable but do
+  not reach the workload and never appear on an invoice.
+- **Fresh-cluster reproducibility is continuously tested.** Kustomize rendering,
+  application tests, Golden Paths, and checksum-pinned RHDH plugins run in CI.
+
+The checked-in profile is intentionally optimized for a portable demonstration.
+Production PostgreSQL HA/backups, external TLS/DNS, object storage, payments,
+and disaster recovery should be added through a separate reviewed overlay.
+
+---
+
+Licensed under the [Apache License 2.0](LICENSE).

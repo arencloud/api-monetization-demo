@@ -1,5 +1,22 @@
 # Deployment guide
 
+[Project home](../README.md) · [Documentation](README.md) · [Architecture](architecture.md) · **Deploy** · [Demo](demo-runbook.md) · [Golden Paths](golden-paths.md)
+
+> **Installation contract:** start with a fresh, entitled OpenShift cluster and
+> a ready integrated registry. Run one bootstrap command; OpenShift GitOps owns
+> all steady-state platform resources afterward.
+
+## Deployment journey
+
+| Stage | Command | Result |
+| --- | --- | --- |
+| 1. Validate source | `make validate && make test` | Renders GitOps packages and tests applications without a cluster |
+| 2. Inspect cluster | `make preflight` | Read-only compatibility, entitlement, registry, storage, and edge checks |
+| 3. Bootstrap GitOps | `make bootstrap` | Installs current OpenShift GitOps and creates the root Application |
+| 4. Confirm convergence | `make status` | Shows child Application sync and health |
+| 5. Prove behavior | `make verify` | Validates operators, policies, identity, routes, API access, RHDH, and AI |
+| 6. Prove provenance | `make promotion-status` | Connects Git revision, build, image digest, Deployment, and running Pod |
+
 ## Prerequisites
 
 ### Cluster sizing
@@ -516,3 +533,7 @@ volumes whose claim did not belong to an explicit demo namespace.
 - [Customizing Red Hat Developer Hub](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.8/html/customizing_red_hat_developer_hub/)
 - [Red Hat build of OpenTelemetry](https://docs.redhat.com/en/documentation/red_hat_build_of_opentelemetry/3.10/html/installing_red_hat_build_of_opentelemetry/)
 - [Red Hat OpenShift distributed tracing](https://docs.redhat.com/en/documentation/red_hat_openshift_distributed_tracing_platform/3.9/html/installing_distributed_tracing/)
+
+---
+
+[Documentation home](README.md) · [Understand the architecture](architecture.md) · [Run the demo](demo-runbook.md)

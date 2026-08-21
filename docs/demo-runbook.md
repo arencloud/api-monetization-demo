@@ -1,5 +1,21 @@
 # Live demo runbook
 
+[Project home](../README.md) · [Documentation](README.md) · [Architecture](architecture.md) · [Deploy](deployment.md) · **Demo** · [Golden Paths](golden-paths.md)
+
+> **One-command story:** `make showcase` verifies the platform, runs real API
+> and AI traffic, demonstrates live upgrades and billing, prints evidence, and
+> restores reusable demo state.
+
+## Presenter dashboard
+
+| Act | Show | Business message |
+| --- | --- | --- |
+| **Discover** | RHDH catalog, subscription-required APIs, API key and OIDC presentations | An API becomes a governed product before it becomes a credential |
+| **Consume** | Free-plan API-key and JWT traffic reaching HTTP 429 | Identity, entitlement, and limits are applied consistently at the edge |
+| **Upgrade** | Free → Developer while the application and gateway remain running | Commercial change is immediate and independent of application delivery |
+| **Meter** | Accepted requests and actual AI tokens in PostgreSQL and Grafana | Billing uses successful consumption, never rejected attempts |
+| **Build** | Golden Path → GitHub → Dev Spaces → GitOps publication | API owners receive a safe paved road, not cluster-admin access |
+
 ## Story and expected outcome
 
 Demo Company starts on the Free Inventory API plan. Connectivity Link accepts a
@@ -420,3 +436,7 @@ make reset-demo
 The reset changes the shared API-key and Keycloak JWT subscription
 back to Free. Limitador counters are intentionally not deleted; wait for the
 one-minute demo window before repeating the burst.
+
+---
+
+[Documentation home](README.md) · [Deployment guide](deployment.md) · [Architecture](architecture.md)

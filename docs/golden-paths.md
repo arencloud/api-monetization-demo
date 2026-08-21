@@ -1,5 +1,11 @@
 # API-owner Golden Paths
 
+[Project home](../README.md) · [Documentation](README.md) · [Architecture](architecture.md) · [Deploy](deployment.md) · [Demo](demo-runbook.md) · **Golden Paths**
+
+> Golden Paths turn API creation into a governed product workflow: source,
+> contract, tests, policies, plans, documentation, and GitOps are generated
+> together in a dedicated repository.
+
 Red Hat Developer Hub exposes two governed Software Templates to members of the
 `api-owners` group:
 
@@ -17,6 +23,11 @@ in the generated Component's **OpenShift Dev Spaces** card. The catalog entity
 contains only portable metadata; the card derives the runtime-specific link
 from the validated `github.com/project-slug` annotation. Generated source is
 not added to this platform repository.
+
+```text
+Choose template → Create repository → Open Dev Spaces → Develop and review
+        → Publish API → Argo CD reconciles → Consumers can subscribe
+```
 
 ## Owner workflow
 
@@ -174,3 +185,7 @@ required. The Scaffolder task remains failed as immutable history, but the
 Component becomes available after catalog refresh. Template 1.2.1 and later do
 not write that link, while the Component Overview card continues to provide the
 Dev Spaces action.
+
+---
+
+[Documentation home](README.md) · [Architecture](architecture.md) · [Deployment guide](deployment.md)
