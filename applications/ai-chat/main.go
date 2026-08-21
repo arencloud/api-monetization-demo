@@ -59,7 +59,7 @@ func main() {
 
 	docsMux := http.NewServeMux()
 	docsMux.HandleFunc("GET /healthz", health)
-	docsMux.HandleFunc("GET /openapi.yaml", openAPI)
+	registerOpenAPI(docsMux)
 	docsServer := &http.Server{
 		Addr:              env("DOCS_ADDR", ":8082"),
 		Handler:           docsMux,
@@ -225,9 +225,17 @@ func health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func openAPI(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/yaml")
-	http.ServeFile(w, r, "/opt/app-root/src/openapi.yaml")
+func registerOpenAPI(mux *http.ServeMux) {
+	mux.HandleFunc("GET /openapi.yaml", openAPI("api-key.yaml"))
+	mux.HandleFunc("GET /openapi/api-key.yaml", openAPI("api-key.yaml"))
+	mux.HandleFunc("GET /openapi/keycloak-jwt.yaml", openAPI("keycloak-jwt.yaml"))
+}
+
+func openAPI(filename string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/yaml")
+		http.ServeFile(w, r, "/opt/app-root/src/openapi/"+filename)
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {

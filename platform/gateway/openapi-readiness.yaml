@@ -34,28 +34,35 @@ spec:
             - -c
             - |
               for product in inventory payments ai-chat; do
-                url="http://${product}-api.api-monetization-apps.svc.cluster.local:8082/openapi.yaml"
-                ready=false
-                for attempt in $(seq 1 120); do
-                  if document=$(curl --silent --show-error --fail \
-                      --connect-timeout 2 --max-time 5 "$url" 2>/dev/null) && \
-                    grep -Eq '^openapi: 3\.' <<<"$document" && \
-                    grep -q '^paths:' <<<"$document" && \
-                    grep -Eq '^  - url: https://' <<<"$document" && \
-                    ! grep -q '^  - url: https://api-monetization.invalid$' <<<"$document"; then
-                    echo "$product OpenAPI document is ready for APIProduct discovery"
-                    ready=true
-                    break
+                for contract in api-key keycloak-jwt; do
+                  url="http://${product}-api.api-monetization-apps.svc.cluster.local:8082/openapi/${contract}.yaml"
+                  security_pattern='^      type: apiKey$'
+                  if [[ $contract == keycloak-jwt ]]; then
+                    security_pattern='^      scheme: bearer$'
                   fi
-                  if (( attempt % 12 == 0 )); then
-                    echo "waiting for $product OpenAPI document (attempt $attempt/120)"
+                  ready=false
+                  for attempt in $(seq 1 120); do
+                    if document=$(curl --silent --show-error --fail \
+                        --connect-timeout 2 --max-time 5 "$url" 2>/dev/null) && \
+                      grep -Eq '^openapi: 3\.' <<<"$document" && \
+                      grep -q '^paths:' <<<"$document" && \
+                      grep -Eq '^  - url: https://' <<<"$document" && \
+                      ! grep -Eq '^  - url: https://(jwt[.])?api-monetization[.]invalid$' <<<"$document" && \
+                      grep -Eq "$security_pattern" <<<"$document"; then
+                      echo "$product $contract OpenAPI contract is ready for APIProduct discovery"
+                      ready=true
+                      break
+                    fi
+                    if (( attempt % 12 == 0 )); then
+                      echo "waiting for $product $contract OpenAPI contract (attempt $attempt/120)"
+                    fi
+                    sleep 5
+                  done
+                  if [[ $ready != true ]]; then
+                    echo "$product $contract OpenAPI contract did not become available at $url" >&2
+                    exit 1
                   fi
-                  sleep 5
                 done
-                if [[ $ready != true ]]; then
-                  echo "$product OpenAPI document did not become available at $url" >&2
-                  exit 1
-                fi
               done
           resources:
             requests:

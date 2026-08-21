@@ -31,10 +31,11 @@ spec:
         - .spec.template.spec.containers[] | select(.name == "ai-chat-api").image
     - group: ""
       kind: ConfigMap
-      name: ai-chat-api-openapi
+      name: ai-chat-api-openapi-contracts
       namespace: api-monetization-apps
       jsonPointers:
-        - /data/openapi.yaml
+        - /data/api-key.yaml
+        - /data/keycloak-jwt.yaml
   syncPolicy:
     automated: {prune: true, selfHeal: true}
     retry:

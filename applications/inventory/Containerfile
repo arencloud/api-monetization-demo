@@ -9,7 +9,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /tmp/inventory-api ./ap
 FROM registry.access.redhat.com/ubi9-micro:9.7
 WORKDIR /opt/app-root/src
 COPY --from=builder /tmp/inventory-api /usr/local/bin/inventory-api
-COPY applications/inventory/openapi.yaml ./openapi.yaml
+COPY applications/inventory/openapi/ ./openapi/
 USER 1001
 EXPOSE 8080 8082
 ENTRYPOINT ["/usr/local/bin/inventory-api"]

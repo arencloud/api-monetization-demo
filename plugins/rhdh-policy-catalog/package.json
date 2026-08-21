@@ -1,6 +1,6 @@
 {
   "name": "@arencloud/rhdh-policy-catalog",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "private": true,
   "license": "Apache-2.0",
   "main": "src/index.ts",
@@ -20,6 +20,7 @@
       "MonetizationPage": "./src/extensions/MonetizationPage.ts",
       "MonetizedApisPage": "./src/extensions/MonetizedApisPage.ts",
       "EntityDevSpacesCard": "./src/extensions/EntityDevSpacesCard.ts",
+      "EntityMonetizedApiDefinition": "./src/extensions/EntityMonetizedApiDefinition.ts",
       "CustomSignInPage": "./src/extensions/CustomSignInPage.ts"
     }
   },
@@ -44,11 +45,13 @@
     "react-use": "^17.6.0"
   },
   "peerDependencies": {
+    "@backstage/plugin-api-docs": "^0.13.5",
     "react": "^18.0.0",
     "react-dom": "^18.0.0"
   },
   "devDependencies": {
     "@backstage/cli": "0.36.0",
+    "@backstage/plugin-api-docs": "0.13.5",
     "@red-hat-developer-hub/cli": "1.10.3",
     "@types/jest": "^29.5.14",
     "@types/react": "^18.3.0",

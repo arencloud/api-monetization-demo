@@ -7,10 +7,11 @@ resources:
   - service.yaml
   - monitoring.yaml
 configMapGenerator:
-  - name: inventory-api-openapi
+  - name: inventory-api-openapi-contracts
     namespace: api-monetization-apps
     files:
-      - openapi.yaml
+      - openapi/api-key.yaml
+      - openapi/keycloak-jwt.yaml
     options:
       disableNameSuffixHash: true
       labels:

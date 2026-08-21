@@ -54,12 +54,11 @@ spec:
             readOnlyRootFilesystem: true
           volumeMounts:
             - name: openapi
-              mountPath: /opt/app-root/src/openapi.yaml
-              subPath: openapi.yaml
+              mountPath: /opt/app-root/src/openapi
               readOnly: true
       volumes:
         - name: openapi
-          configMap: {name: payments-api-openapi}
+          configMap: {name: payments-api-openapi-contracts}
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname

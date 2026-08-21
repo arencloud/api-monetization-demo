@@ -147,10 +147,10 @@ The templates generate:
 - a plan-aware JWT `RateLimitPolicy` with matching per-consumer limits;
 - separate APIProduct entries for API-key and OIDC discovery.
 
-For API-key execution in the OpenAPI console, paste the complete authorization
-value as `APIKEY <credential>`. OpenAPI's standard `apiKey` scheme sends the
-entered header value verbatim; unlike the Keycloak `bearer` scheme, it cannot
-add a custom prefix automatically.
+For API-key execution in the Developer Hub OpenAPI console, paste only the
+credential. The platform adds the required `APIKEY` authorization prefix before
+sending the request. The Keycloak contract uses the standard HTTP Bearer scheme,
+so Swagger adds `Bearer` automatically without changing JWT behavior.
 
 API owners define the technical safety envelope and product-specific commercial
 terms. The APIProduct stores prices as integer euro cents and micro-euros per

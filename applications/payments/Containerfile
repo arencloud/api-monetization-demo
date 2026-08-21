@@ -9,7 +9,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /tmp/payments-api ./app
 FROM registry.access.redhat.com/ubi9-micro:9.7
 WORKDIR /opt/app-root/src
 COPY --from=builder /tmp/payments-api /usr/local/bin/payments-api
-COPY applications/payments/openapi.yaml ./openapi.yaml
+COPY applications/payments/openapi/ ./openapi/
 USER 1001
 EXPOSE 8080 8082
 ENTRYPOINT ["/usr/local/bin/payments-api"]

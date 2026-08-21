@@ -1,0 +1,1 @@
+export { EntityMonetizedApiDefinition } from '../plugin';

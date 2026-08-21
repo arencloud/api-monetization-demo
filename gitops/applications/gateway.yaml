@@ -42,6 +42,18 @@ spec:
         - /spec/hostnames
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
+      name: inventory-api-key-preflight
+      namespace: api-monetization-apps
+      jsonPointers:
+        - /spec/hostnames
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: inventory-jwt-preflight
+      namespace: api-monetization-apps
+      jsonPointers:
+        - /spec/hostnames
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
       name: payments-api-key
       namespace: api-monetization-apps
       jsonPointers:
@@ -49,6 +61,18 @@ spec:
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
       name: payments-jwt
+      namespace: api-monetization-apps
+      jsonPointers:
+        - /spec/hostnames
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: payments-api-key-preflight
+      namespace: api-monetization-apps
+      jsonPointers:
+        - /spec/hostnames
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: payments-jwt-preflight
       namespace: api-monetization-apps
       jsonPointers:
         - /spec/hostnames

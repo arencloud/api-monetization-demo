@@ -7,10 +7,11 @@ resources:
   - service.yaml
   - monitoring.yaml
 configMapGenerator:
-  - name: payments-api-openapi
+  - name: payments-api-openapi-contracts
     namespace: api-monetization-apps
     files:
-      - openapi.yaml
+      - openapi/api-key.yaml
+      - openapi/keycloak-jwt.yaml
     options:
       disableNameSuffixHash: true
       labels:

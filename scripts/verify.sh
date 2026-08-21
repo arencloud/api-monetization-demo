@@ -215,7 +215,7 @@ if ! grep -q "Loaded dynamic frontend plugin '@kuadrant/kuadrant-backstage-plugi
   echo "error: Developer Hub did not load the tested Kuadrant 0.4.0 frontend plugin" >&2
   exit 1
 fi
-if ! grep -q "Loaded dynamic frontend plugin '@arencloud/rhdh-policy-catalog-dynamic'.*0.1.9" <<<"$rhdh_logs"; then
+if ! grep -q "Loaded dynamic frontend plugin '@arencloud/rhdh-policy-catalog-dynamic'.*0.1.10" <<<"$rhdh_logs"; then
   echo "error: Developer Hub did not load the effective-policy catalog plugin" >&2
   exit 1
 fi
@@ -458,8 +458,12 @@ for route_name in api-monetization api-monetization-jwt; do
 done
 wait_for_http_route inventory-api-key api-monetization-apps
 wait_for_http_route inventory-jwt api-monetization-apps
+wait_for_http_route inventory-api-key-preflight api-monetization-apps
+wait_for_http_route inventory-jwt-preflight api-monetization-apps
 wait_for_http_route payments-api-key api-monetization-apps
 wait_for_http_route payments-jwt api-monetization-apps
+wait_for_http_route payments-api-key-preflight api-monetization-apps
+wait_for_http_route payments-jwt-preflight api-monetization-apps
 wait_for_http_route ai-chat-api-key api-monetization-apps
 wait_for_http_route ai-chat-jwt api-monetization-apps
 wait_for_http_route ai-chat-api-key-preflight api-monetization-apps
@@ -468,7 +472,10 @@ for policy in inventory-api-key inventory-jwt payments-api-key payments-jwt ai-c
   oc wait --for=condition=Enforced "authpolicies.kuadrant.io/$policy" \
     -n api-monetization-apps --timeout=5m
 done
-for policy in ai-chat-api-key-preflight ai-chat-jwt-preflight; do
+for policy in \
+  inventory-api-key-preflight inventory-jwt-preflight \
+  payments-api-key-preflight payments-jwt-preflight \
+  ai-chat-api-key-preflight ai-chat-jwt-preflight; do
   oc wait --for=condition=Enforced "authpolicies.kuadrant.io/$policy" \
     -n api-monetization-apps --timeout=5m
 done
@@ -519,14 +526,16 @@ for policy in inventory-jwt payments-jwt ai-chat-jwt; do
   fi
 done
 echo "JWT policies use the admitted Keycloak OIDC issuer"
-api_preflight_hostname=$(oc get httproute ai-chat-api-key-preflight \
-  -n api-monetization-apps -o jsonpath='{.spec.hostnames[0]}')
-jwt_preflight_hostname=$(oc get httproute ai-chat-jwt-preflight \
-  -n api-monetization-apps -o jsonpath='{.spec.hostnames[0]}')
-if [[ $api_hostname != "$api_preflight_hostname" || $jwt_hostname != "$jwt_preflight_hostname" ]]; then
-  echo "error: AI Chat browser preflight Routes do not match the admitted API hosts" >&2
-  exit 1
-fi
+for product in inventory payments ai-chat; do
+  api_preflight_hostname=$(oc get httproute "$product-api-key-preflight" \
+    -n api-monetization-apps -o jsonpath='{.spec.hostnames[0]}')
+  jwt_preflight_hostname=$(oc get httproute "$product-jwt-preflight" \
+    -n api-monetization-apps -o jsonpath='{.spec.hostnames[0]}')
+  if [[ $api_hostname != "$api_preflight_hostname" || $jwt_hostname != "$jwt_preflight_hostname" ]]; then
+    echo "error: $product browser preflight Routes do not match the admitted API hosts" >&2
+    exit 1
+  fi
+done
 
 echo "waiting for APIProducts to publish the admitted API URL"
 for product in inventory payments ai-chat; do
@@ -555,6 +564,11 @@ for product in inventory payments ai-chat; do
           if [[ $auth_mode == api-key ]] && \
             ! grep -Fxq "https://$api_hostname" <<<"$api_product_servers"; then
             echo "error: $api_product_name does not publish its API-key server URL https://$api_hostname" >&2
+            exit 1
+          fi
+          if [[ $auth_mode == jwt ]] && \
+            ! grep -Fxq "https://$jwt_hostname" <<<"$api_product_servers"; then
+            echo "error: $api_product_name does not publish its JWT server URL https://$jwt_hostname" >&2
             exit 1
           fi
           if [[ $api_product_route != "$expected_route" ]]; then
@@ -709,24 +723,30 @@ portal_hostname=$(oc get route monetization-control -n api-monetization-data \
   -o jsonpath='{.status.ingress[0].host}')
 portal_router_hostname=$(oc get route monetization-control -n api-monetization-data \
   -o jsonpath='{.status.ingress[0].routerCanonicalHostname}')
-for cors_hostname in "$api_hostname" "$jwt_hostname"; do
-  cors_headers=$(curl --silent --show-error --output /dev/null --dump-header - \
-    --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
-      -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
-    --connect-to "$cors_hostname:443:$router_hostname:443" \
-    --request OPTIONS \
-    --header "Origin: https://$portal_hostname" \
-    --header 'Access-Control-Request-Method: POST' \
-    --header 'Access-Control-Request-Headers: authorization,content-type' \
-    "https://$cors_hostname/v1/chat/completions")
-  cors_status=$(awk 'NR == 1 {print $2}' <<<"$cors_headers")
-  if [[ $cors_status != 204 ]] || \
-    ! grep -Eiq '^access-control-allow-origin:[[:space:]]*\*' <<<"$cors_headers" || \
-    ! grep -Eiq '^access-control-allow-headers:.*authorization' <<<"$cors_headers"; then
-    echo "error: AI Chat browser preflight failed for $cors_hostname (HTTP $cors_status)" >&2
-    exit 1
-  fi
-done
+while read -r cors_method cors_path cors_product; do
+  for cors_hostname in "$api_hostname" "$jwt_hostname"; do
+    cors_headers=$(curl --silent --show-error --output /dev/null --dump-header - \
+      --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
+        -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
+      --connect-to "$cors_hostname:443:$router_hostname:443" \
+      --request OPTIONS \
+      --header "Origin: https://$portal_hostname" \
+      --header "Access-Control-Request-Method: $cors_method" \
+      --header 'Access-Control-Request-Headers: authorization,content-type' \
+      "https://$cors_hostname$cors_path")
+    cors_status=$(awk 'NR == 1 {print $2}' <<<"$cors_headers")
+    if [[ $cors_status != 204 ]] || \
+      ! grep -Eiq '^access-control-allow-origin:[[:space:]]*\*' <<<"$cors_headers" || \
+      ! grep -Eiq '^access-control-allow-headers:.*authorization' <<<"$cors_headers"; then
+      echo "error: $cors_product browser preflight failed for $cors_hostname (HTTP $cors_status)" >&2
+      exit 1
+    fi
+  done
+done <<'CORS_CASES'
+GET /inventory Inventory
+GET /payments Payments
+POST /v1/chat/completions AI-Chat
+CORS_CASES
 portal_page=$(curl --silent --show-error --fail \
   --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
     -o go-template='{{index .data "tls.crt"}}' | base64 -d) \
@@ -736,7 +756,7 @@ if [[ $portal_page != *"AI Chat playground"* || $portal_page != *"Demonstrate Fr
   echo "error: deployed developer portal does not contain the AI Chat playground" >&2
   exit 1
 fi
-echo "AI Chat browser playground and portable CORS preflight verified"
+echo "Inventory, Payments, and AI Chat Swagger CORS preflight verified"
 portal_config=$(curl --silent --show-error --fail \
   --cacert <(oc get secret "$ingress_certificate" -n openshift-ingress \
     -o go-template='{{index .data "tls.crt"}}' | base64 -d) \

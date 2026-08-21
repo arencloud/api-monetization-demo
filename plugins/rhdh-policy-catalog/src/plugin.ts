@@ -3,22 +3,22 @@ import {
   createPlugin,
   createRouteRef,
   createRoutableExtension,
-} from '@backstage/core-plugin-api';
+} from "@backstage/core-plugin-api";
 
 const rootRouteRef = createRouteRef({
-  id: 'api-monetization-policy-catalog',
+  id: "api-monetization-policy-catalog",
 });
 
 const monetizationRouteRef = createRouteRef({
-  id: 'api-monetization-overview',
+  id: "api-monetization-overview",
 });
 
 const monetizedApisRouteRef = createRouteRef({
-  id: 'api-monetization-apis',
+  id: "api-monetization-apis",
 });
 
 export const policyCatalogPlugin = createPlugin({
-  id: 'api-monetization-policy-catalog',
+  id: "api-monetization-policy-catalog",
   routes: {
     root: rootRouteRef,
     monetization: monetizationRouteRef,
@@ -28,37 +28,57 @@ export const policyCatalogPlugin = createPlugin({
 
 export const ApiProductsPage = policyCatalogPlugin.provide(
   createRoutableExtension({
-    name: 'ApiProductsPage',
+    name: "ApiProductsPage",
     component: () =>
-      import('./components/ApiProductsPage').then(module => module.ApiProductsPage),
+      import("./components/ApiProductsPage").then(
+        (module) => module.ApiProductsPage
+      ),
     mountPoint: rootRouteRef,
-  }),
+  })
 );
 
 export const MonetizationPage = policyCatalogPlugin.provide(
   createRoutableExtension({
-    name: 'MonetizationPage',
+    name: "MonetizationPage",
     component: () =>
-      import('./components/MonetizationPage').then(module => module.MonetizationPage),
+      import("./components/MonetizationPage").then(
+        (module) => module.MonetizationPage
+      ),
     mountPoint: monetizationRouteRef,
-  }),
+  })
 );
 
 export const MonetizedApisPage = policyCatalogPlugin.provide(
   createRoutableExtension({
-    name: 'MonetizedApisPage',
+    name: "MonetizedApisPage",
     component: () =>
-      import('./components/MonetizedApisPage').then(module => module.MonetizedApisPage),
+      import("./components/MonetizedApisPage").then(
+        (module) => module.MonetizedApisPage
+      ),
     mountPoint: monetizedApisRouteRef,
-  }),
+  })
 );
 
 export const EntityDevSpacesCard = policyCatalogPlugin.provide(
   createComponentExtension({
-    name: 'EntityDevSpacesCard',
+    name: "EntityDevSpacesCard",
     component: {
       lazy: () =>
-        import('./components/EntityDevSpacesCard').then(module => module.EntityDevSpacesCard),
+        import("./components/EntityDevSpacesCard").then(
+          (module) => module.EntityDevSpacesCard
+        ),
     },
-  }),
+  })
+);
+
+export const EntityMonetizedApiDefinition = policyCatalogPlugin.provide(
+  createComponentExtension({
+    name: "EntityMonetizedApiDefinition",
+    component: {
+      lazy: () =>
+        import("./components/EntityMonetizedApiDefinition").then(
+          (module) => module.EntityMonetizedApiDefinition
+        ),
+    },
+  })
 );

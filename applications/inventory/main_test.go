@@ -29,3 +29,12 @@ func TestInventoryItemNotFound(t *testing.T) {
 		t.Fatalf("status=%d, want %d", response.Code, http.StatusNotFound)
 	}
 }
+
+func TestInventoryPreflight(t *testing.T) {
+	t.Parallel()
+	response := httptest.NewRecorder()
+	preflight(response, httptest.NewRequest(http.MethodOptions, "/inventory", nil))
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status=%d, want %d", response.Code, http.StatusNoContent)
+	}
+}

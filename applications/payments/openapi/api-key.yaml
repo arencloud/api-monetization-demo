@@ -1,0 +1,78 @@
+openapi: 3.0.3
+info:
+  title: Payment API
+  version: 1.0.0
+  description: Payment authorization and settlement API protected and monetized by Red Hat Connectivity Link.
+servers:
+  - url: https://api-monetization.invalid
+    description: API-key endpoint; replaced by the admitted Gateway API hostname during publication
+tags:
+  - name: payments
+    description: Payment operations
+paths:
+  /payments:
+    get:
+      tags: [payments]
+      operationId: listPaymentsWithApiKey
+      summary: List payments
+      security:
+        - apiKey: []
+      responses:
+        '200':
+          description: Current payments
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentList'
+        '401': {description: A valid API key is required}
+        '403': {description: An active subscription is required}
+        '429': {description: The selected plan limit has been reached}
+  /payments/{id}:
+    get:
+      tags: [payments]
+      operationId: getPaymentWithApiKey
+      summary: Get one payment
+      security:
+        - apiKey: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Payment identifier
+          schema: {type: string, example: pay-1001}
+      responses:
+        '200':
+          description: Payment details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '401': {description: A valid API key is required}
+        '403': {description: An active subscription is required}
+        '404': {description: Payment not found}
+        '429': {description: The selected plan limit has been reached}
+components:
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: "Paste the API key only. Developer Hub automatically sends it as `Authorization: APIKEY <credential>`."
+  schemas:
+    Payment:
+      type: object
+      required: [id, orderId, amountCents, currency, status]
+      properties:
+        id: {type: string, example: pay-1001}
+        orderId: {type: string, example: order-4711}
+        amountCents: {type: integer, format: int64, example: 12900}
+        currency: {type: string, example: EUR}
+        status: {type: string, enum: [authorized, settled, pending]}
+    PaymentList:
+      type: object
+      required: [payments, count]
+      properties:
+        payments:
+          type: array
+          items: {$ref: '#/components/schemas/Payment'}
+        count: {type: integer, example: 3}

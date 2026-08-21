@@ -21,9 +21,10 @@ curl -X POST http://localhost:8080${{ values.apiPath }} \
   -d '{"correlationId":"order-42","payload":{"amount":49}}'
 ```
 
-In Developer Hub's OpenAPI console, paste `APIKEY <credential>` into the API-key
-authorization field. The Keycloak contract accepts the JWT alone and adds the
-standard `Bearer` prefix automatically.
+In Developer Hub's OpenAPI console, paste only the API-key credential. The
+platform adds the required `APIKEY` authorization prefix automatically. Paste
+only the JWT value for the Keycloak contract; Swagger adds the standard
+`Bearer` prefix automatically.
 
 Open `src/main/resources/routes/integration.camel.yaml` in Kaoto to extend the
 route visually. Keep transformations in focused CDI beans so they remain easy
