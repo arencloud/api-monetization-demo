@@ -38,6 +38,12 @@ import {
   UsageSummary,
 } from '../types';
 import { oidcAuthApiRef } from '../apis';
+import {
+  billableUnitsFor,
+  normalizedUnitName,
+  remainingUnits,
+  summarizeNativeUsage,
+} from '../monetizationPresentation';
 
 interface MonetizationView {
   identity: PortalIdentity;
@@ -89,6 +95,28 @@ export const planPriceLabel = (plan: Plan, unit: string): string => {
   const variable = unitPrice(plan.overageMicrosPerRequest, unit);
   if (Number(plan.includedRequests || 0) === 0) return `${plan.displayName} · ${variable}`;
   return `${plan.displayName} · ${monthly} + ${variable} after ${Number(plan.includedRequests).toLocaleString()} included`;
+};
+
+const pluralUnit = (unitName: string, value?: number): string => {
+  const unit = normalizedUnitName(unitName);
+  if (value === 1) return unit;
+  return unit.endsWith('s') ? unit : `${unit}s`;
+};
+
+const quantity = (value: number | undefined, unitName: string, fallback: string): string =>
+  value === undefined || value === null
+    ? fallback
+    : `${Number(value).toLocaleString()} ${pluralUnit(unitName, Number(value))}`;
+
+const rateLimitLabel = (plan: Plan | Subscription): string =>
+  plan.rateLimitRequests === undefined || plan.rateLimitRequests === null
+    ? 'Unlimited'
+    : `${Number(plan.rateLimitRequests).toLocaleString()} ${pluralUnit('request', plan.rateLimitRequests)} / ${Number(plan.rateLimitWindowSeconds || 60).toLocaleString()}s`;
+
+const overageLabel = (plan: Plan | Subscription, unitName: string): string => {
+  const price = Number(plan.overageMicrosPerRequest || 0);
+  if (price <= 0) return 'No paid overage';
+  return `${unitPrice(price, normalizedUnitName(unitName))} beyond the included allowance`;
 };
 
 export const MonetizationPage = () => {
@@ -189,10 +217,9 @@ export const MonetizationPage = () => {
   const totals = useMemo(() => {
     const usage = state.value?.usage || [];
     const preview = state.value?.preview;
+    const nativeUsage = summarizeNativeUsage(usage);
     return {
-      accepted: usage.reduce((sum, item) => sum + Number(item.requests || 0), 0),
-      promptTokens: usage.reduce((sum, item) => sum + Number(item.promptTokens || 0), 0),
-      completionTokens: usage.reduce((sum, item) => sum + Number(item.completionTokens || 0), 0),
+      ...nativeUsage,
       revenue: preview
         ? Number(preview.totalCents || 0)
         : Math.round(
@@ -233,8 +260,8 @@ export const MonetizationPage = () => {
           </Box>
           <Grid container spacing={2}>
             <Grid item xs={12} sm={6} md={3}><Metric title="Active subscriptions" value={String(state.value.subscriptions.filter(item => item.status === 'active').length)} /></Grid>
-            <Grid item xs={12} sm={6} md={3}><Metric title="Accepted units" value={totals.accepted.toLocaleString()} /></Grid>
-            <Grid item xs={12} sm={6} md={3}><Metric title="AI tokens" value={(totals.promptTokens + totals.completionTokens).toLocaleString()} detail={`${totals.promptTokens.toLocaleString()} prompt · ${totals.completionTokens.toLocaleString()} completion`} /></Grid>
+            <Grid item xs={12} sm={6} md={3}><Metric title="API requests" value={totals.requestUnits.toLocaleString()} detail="Accepted request-based API calls" /></Grid>
+            <Grid item xs={12} sm={6} md={3}><Metric title="AI tokens" value={totals.tokenUnits.toLocaleString()} detail={`${totals.promptTokens.toLocaleString()} prompt · ${totals.completionTokens.toLocaleString()} completion`} /></Grid>
             <Grid item xs={12} sm={6} md={3}><Metric title={state.value.identity.admin ? 'Projected revenue' : 'Current estimate'} value={currency(totals.revenue)} /></Grid>
           </Grid>
 
@@ -381,6 +408,7 @@ export const MonetizationPage = () => {
                     ) || [];
                     const selectedPlan = planSelections[product.id] || subscription?.plan ||
                       (product.planIds.includes('free') ? 'free' : productPlans[0]?.id || '');
+                    const selectedPlanDefinition = productPlans.find(plan => plan.id === selectedPlan);
                     const actionKey = `${product.id}-action`;
                     return (
                       <Grid item xs={12} md={6} lg={4} key={product.id}>
@@ -442,6 +470,42 @@ export const MonetizationPage = () => {
                                   })}
                                 >Change plan</Button>
                               )}
+                            </Box>
+                            {selectedPlanDefinition && (
+                              <PlanSummary plan={selectedPlanDefinition} unitName={product.unitName} />
+                            )}
+                            <Box mt={1}>
+                              <details data-testid={`plan-comparison-${product.id}`}>
+                                <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
+                                  Compare all {productPlans.length} plans and limits
+                                </summary>
+                                <Box mt={1} style={{ overflowX: 'auto' }}>
+                                  <Table size="small" aria-label={`${product.displayName} plan comparison`}>
+                                    <TableHead>
+                                      <TableRow>
+                                        <TableCell>Plan</TableCell>
+                                        <TableCell>Monthly</TableCell>
+                                        <TableCell>Included</TableCell>
+                                        <TableCell>Request rate limit</TableCell>
+                                        <TableCell>Monthly cap</TableCell>
+                                        <TableCell>Overage / PAYG</TableCell>
+                                      </TableRow>
+                                    </TableHead>
+                                    <TableBody>
+                                      {productPlans.map(plan => (
+                                        <TableRow key={plan.id} selected={plan.id === selectedPlan}>
+                                          <TableCell><strong>{plan.displayName}</strong></TableCell>
+                                          <TableCell>{currency(plan.monthlyPriceCents)}/month</TableCell>
+                                          <TableCell>{quantity(plan.includedRequests, product.unitName, 'Custom allowance')}</TableCell>
+                                          <TableCell>{rateLimitLabel(plan)}</TableCell>
+                                          <TableCell>{quantity(plan.monthlyQuotaRequests, product.unitName, 'No hard cap')}</TableCell>
+                                          <TableCell>{overageLabel(plan, product.unitName)}</TableCell>
+                                        </TableRow>
+                                      ))}
+                                    </TableBody>
+                                  </Table>
+                                </Box>
+                              </details>
                             </Box>
                             {subscription && (
                               <>
@@ -558,19 +622,46 @@ export const MonetizationPage = () => {
             <Typography variant="h5" gutterBottom>{state.value.identity.admin ? 'All subscriptions and usage' : 'My subscriptions and usage'}</Typography>
             <TableContainer component={Paper} variant="outlined">
               <Table aria-label="API subscriptions and usage">
-                <TableHead><TableRow><TableCell>{state.value.identity.admin ? 'Customer' : 'Account'}</TableCell><TableCell>Product</TableCell><TableCell>Plan</TableCell><TableCell>Status</TableCell><TableCell align="right">Accepted</TableCell><TableCell align="right">Tokens</TableCell><TableCell align="right">Projected</TableCell></TableRow></TableHead>
+                <TableHead><TableRow><TableCell>{state.value.identity.admin ? 'Customer' : 'Account'}</TableCell><TableCell>Product</TableCell><TableCell>Plan</TableCell><TableCell>Status</TableCell><TableCell align="right">Billable usage</TableCell><TableCell>Included allowance</TableCell><TableCell>Enforced limits</TableCell><TableCell>Price</TableCell><TableCell align="right">Estimate</TableCell></TableRow></TableHead>
                 <TableBody>
-                  {state.value.subscriptions.length === 0 && <TableRow><TableCell colSpan={7}>No subscriptions yet. Subscribe to a production API above to begin.</TableCell></TableRow>}
+                  {state.value.subscriptions.length === 0 && <TableRow><TableCell colSpan={9}>No subscriptions yet. Subscribe to a production API above to begin.</TableCell></TableRow>}
                   {state.value.subscriptions.map(subscription => {
                     const usage = state.value?.usage.find(item => item.customer === subscription.customerId && item.product === subscription.product) || state.value?.usage.find(item => item.product === subscription.product);
+                    const catalogProduct = state.value?.catalog?.products.find(product => product.id === subscription.product);
+                    const unitName = normalizedUnitName(usage?.unitName || catalogProduct?.unitName);
+                    const consumed = billableUnitsFor(usage);
+                    const includedRemaining = remainingUnits(subscription.includedRequests, consumed);
+                    const quotaRemaining = remainingUnits(subscription.monthlyQuotaRequests, consumed);
                     return (
                       <TableRow key={subscription.id}>
                         <TableCell>{subscription.customer}</TableCell>
                         <TableCell>{subscription.product}</TableCell>
                         <TableCell>{subscription.planName}</TableCell>
                         <TableCell><Chip size="small" label={subscription.status} color={subscription.status === 'active' ? 'primary' : 'default'} /></TableCell>
-                        <TableCell align="right">{Number(usage?.requests || 0).toLocaleString()}</TableCell>
-                        <TableCell align="right">{(Number(usage?.promptTokens || 0) + Number(usage?.completionTokens || 0)).toLocaleString()}</TableCell>
+                        <TableCell align="right">
+                          <Typography variant="body2">{quantity(consumed, unitName, '0')}</Typography>
+                          {unitName === 'token' && (
+                            <Typography variant="caption" color="textSecondary">
+                              {Number(usage?.promptTokens || 0).toLocaleString()} prompt · {Number(usage?.completionTokens || 0).toLocaleString()} completion
+                            </Typography>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">{quantity(subscription.includedRequests, unitName, 'Custom allowance')}</Typography>
+                          <Typography variant="caption" color="textSecondary">
+                            {includedRemaining === undefined ? 'Contract-defined remaining usage' : `${quantity(includedRemaining, unitName, '0')} included remaining`}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">{rateLimitLabel(subscription)}</Typography>
+                          <Typography variant="caption" color="textSecondary">
+                            {quotaRemaining === undefined ? 'No hard monthly cap' : `${quantity(quotaRemaining, unitName, '0')} before monthly cap`}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">{currency(subscription.monthlyPriceCents)}/month</Typography>
+                          <Typography variant="caption" color="textSecondary">{overageLabel(subscription, unitName)}</Typography>
+                        </TableCell>
                         <TableCell align="right">{currency(Math.round(Number(usage?.projectedRevenueEuro || 0) * 100))}</TableCell>
                       </TableRow>
                     );
@@ -583,12 +674,20 @@ export const MonetizationPage = () => {
             <Typography variant="h5" gutterBottom>{state.value.identity.admin ? 'Invoices' : 'My invoices'}</Typography>
             <TableContainer component={Paper} variant="outlined">
               <Table aria-label="Invoices">
-                <TableHead><TableRow><TableCell>Customer</TableCell><TableCell>Period</TableCell><TableCell>Status</TableCell><TableCell align="right">Billable units</TableCell><TableCell align="right">Total</TableCell></TableRow></TableHead>
+                <TableHead><TableRow><TableCell>Customer</TableCell><TableCell>Period</TableCell><TableCell>Status</TableCell><TableCell>Billable usage by product</TableCell><TableCell align="right">Total</TableCell></TableRow></TableHead>
                 <TableBody>
                   {state.value.invoices.length === 0 && <TableRow><TableCell colSpan={5}>No persisted invoices yet.</TableCell></TableRow>}
                   {state.value.invoices.map((invoice, index) => (
                     <TableRow key={invoice.id || `${invoice.customerId}-${invoice.periodStart}-${index}`}>
-                      <TableCell>{invoice.customer}</TableCell><TableCell>{invoice.periodStart} – {invoice.periodEnd}</TableCell><TableCell>{invoice.status}</TableCell><TableCell align="right">{(invoice.items || []).reduce((sum, item) => sum + Number(item.billableUnits || 0), 0).toLocaleString()}</TableCell><TableCell align="right">{currency(invoice.totalCents, invoice.currency)}</TableCell>
+                      <TableCell>{invoice.customer}</TableCell><TableCell>{invoice.periodStart} – {invoice.periodEnd}</TableCell><TableCell>{invoice.status}</TableCell>
+                      <TableCell>
+                        {(invoice.items || []).map(item => (
+                          <Typography variant="body2" key={`${item.product}-${item.plan}`}>
+                            {item.product}: {quantity(Number(item.billableUnits || 0), item.unitName || 'request', '0')}
+                          </Typography>
+                        ))}
+                      </TableCell>
+                      <TableCell align="right">{currency(invoice.totalCents, invoice.currency)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -603,4 +702,37 @@ export const MonetizationPage = () => {
 
 const Metric = ({ title, value, detail }: { title: string; value: string; detail?: string }) => (
   <Paper variant="outlined"><Box p={2}><Typography variant="overline" color="textSecondary">{title}</Typography><Typography variant="h4">{value}</Typography>{detail && <Typography variant="body2" color="textSecondary">{detail}</Typography>}</Box></Paper>
+);
+
+const PlanSummary = ({ plan, unitName }: { plan: Plan; unitName: string }) => (
+  <Box
+    mt={1}
+    p={1.5}
+    data-testid={`selected-plan-${plan.id}`}
+    style={{ background: '#f5f5f5', borderLeft: '3px solid #0066cc' }}
+  >
+    <Typography variant="subtitle2">{plan.displayName} includes</Typography>
+    <Grid container spacing={1}>
+      <Grid item xs={6}>
+        <Typography variant="caption" color="textSecondary">Monthly price</Typography>
+        <Typography variant="body2">{currency(plan.monthlyPriceCents)}/month</Typography>
+      </Grid>
+      <Grid item xs={6}>
+        <Typography variant="caption" color="textSecondary">Included usage</Typography>
+        <Typography variant="body2">{quantity(plan.includedRequests, unitName, 'Custom allowance')}</Typography>
+      </Grid>
+      <Grid item xs={6}>
+        <Typography variant="caption" color="textSecondary">Request rate limit</Typography>
+        <Typography variant="body2">{rateLimitLabel(plan)}</Typography>
+      </Grid>
+      <Grid item xs={6}>
+        <Typography variant="caption" color="textSecondary">Monthly safety cap</Typography>
+        <Typography variant="body2">{quantity(plan.monthlyQuotaRequests, unitName, 'No hard cap')}</Typography>
+      </Grid>
+      <Grid item xs={12}>
+        <Typography variant="caption" color="textSecondary">Usage pricing</Typography>
+        <Typography variant="body2">{overageLabel(plan, unitName)}</Typography>
+      </Grid>
+    </Grid>
+  </Box>
 );

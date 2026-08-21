@@ -90,6 +90,7 @@ export interface Subscription {
   monthlyPriceCents?: number;
   includedRequests?: number;
   monthlyQuotaRequests?: number;
+  overageMicrosPerRequest?: number;
   rateLimitRequests?: number;
   rateLimitWindowSeconds?: number;
   version: number;
@@ -132,6 +133,9 @@ export interface CredentialState {
 export interface UsageSummary {
   customer: string;
   product: string;
+  unitName?: string;
+  billableUnits?: number;
+  /** @deprecated compatibility alias for billableUnits */
   requests: number;
   overageRequests: number;
   projectedRevenueEuro: number;
@@ -141,6 +145,7 @@ export interface UsageSummary {
 
 export interface InvoiceItem {
   product: string;
+  unitName?: string;
   plan: string;
   description: string;
   billableUnits: number;

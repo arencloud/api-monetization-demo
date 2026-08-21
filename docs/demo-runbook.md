@@ -177,8 +177,12 @@ reissued after Keycloak group membership changes.
 Sign in as `demo-admin` to show the cross-customer commercial view. The custom portal
 remains available as a rollback path and for the AI playground. Open
 **Subscriptions & Access**
-in RHDH to show the permission-scoped subscription, accepted usage,
-AI token totals, projected revenue, and persisted invoices. A developer sees
+in RHDH to compare each plan's price, included native units, rate limit,
+monthly cap, and overage terms before subscribing. Show the permission-scoped
+subscription, request usage, AI token totals, per-product remaining allowance,
+projected revenue, and persisted invoices. Request counts and token counts are
+never added into an artificial cross-unit total; only their monetary estimates
+are aggregated. A developer sees
 only the PostgreSQL customer mapped to their Keycloak subject; `demo-admin`
 sees the cross-customer view. The technical `/kuadrant/api-products` route is
 retained without a navigation entry for owners who need to inspect effective

@@ -33,3 +33,11 @@ The **Subscriptions & Access** route also contains the reviewed API-owner
 onboarding workflow. Consumers submit their own request; administrators can
 approve or reject it. The browser never receives a Keycloak management token,
 and the extension does not become a second identity authority.
+
+Before subscribing, consumers can inspect the selected plan and expand a full
+comparison of monthly price, included native units, request/token rate limit,
+monthly safety cap, and overage or PAYG price. Usage remains dimensionally
+correct: request-based API calls and AI tokens are displayed separately and
+only their currency estimates are aggregated. The control API publishes
+`billableUnits` with `unitName`; the legacy `requests` usage field remains a
+compatibility alias for existing demo automation.

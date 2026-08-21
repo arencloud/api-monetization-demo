@@ -72,7 +72,7 @@ plugins:
     integrity: sha512-bxW4S6ERZVFAdxjaAq8ic+q0aYvW9m8+aKpMvmKoQiaew2E4ty3uyH1NoCXOhZmATz3qFO++uVhsgJ7Rz2x9Zg==
     disabled: false
   - package: /opt/app-root/src/local-plugins/arencloud-rhdh-policy-catalog-dynamic-0.1.9.tgz
-    integrity: sha512-+wf4hwkiYT7+r8CiU6Khhp/Mmhx155GUYwZq1PUU7mwn9rNX8hIlk0wmOv8ubbO9cylE9xNuXrjmTDuV/pL6Dw==
+    integrity: sha512-Z21GMaL/H8WWSuw5YV5hQSoE8ubDx0pS3YX+3hwNLHF/0cRGxbqJDviJ1tDERDzQXePGTG+LxpSZlV6jyKt9CA==
     disabled: false
     pluginConfig:
       dynamicPlugins:

@@ -162,9 +162,10 @@ done
 
 usage=$(portal_request GET /api/me/usage)
 if ! jq -e '
-  any(.[]; .product == "inventory") and any(.[]; .product == "payments")
+  any(.[]; .product == "inventory" and .unitName == "request" and (.billableUnits | type) == "number") and
+  any(.[]; .product == "payments" and .unitName == "request" and (.billableUnits | type) == "number")
 ' <<<"$usage" >/dev/null; then
-  echo "error: commercial usage does not expose both product subscriptions" >&2
+  echo "error: commercial usage does not expose both request-based product subscriptions with native units" >&2
   exit 1
 fi
 echo "commercial usage is attributed independently to both products"

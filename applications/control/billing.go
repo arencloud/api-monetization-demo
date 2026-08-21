@@ -13,6 +13,7 @@ import (
 type invoiceItem struct {
 	SubscriptionID string `json:"subscriptionId"`
 	Product        string `json:"product"`
+	UnitName       string `json:"unitName"`
 	Plan           string `json:"plan"`
 	PlanName       string `json:"planName"`
 	Description    string `json:"description"`
@@ -69,13 +70,14 @@ func (a *app) calculateInvoice(ctx context.Context, customerID string, start, en
 		Items:       make([]invoiceItem, 0),
 	}
 	rows, err := a.db.Query(ctx, `
-		SELECT s.id::text, c.display_name, s.api_product_id, s.plan_id,
+		SELECT s.id::text, c.display_name, s.api_product_id, ap.unit_name, s.plan_id,
 		       p.display_name, COALESCE(pp.monthly_price_cents, p.monthly_price_cents, 0),
 		       COALESCE(pp.included_units, p.included_requests),
 		       COALESCE(pp.overage_micros_per_unit, p.overage_micros_per_request),
 		       COALESCE(SUM(u.billable_units), 0)::bigint
 		FROM monetization.subscriptions s
 		JOIN monetization.customers c ON c.id=s.customer_id
+		JOIN monetization.api_products ap ON ap.id=s.api_product_id
 		JOIN monetization.plans p ON p.id=s.plan_id
 		JOIN monetization.api_product_plans pp
 		  ON pp.api_product_id=s.api_product_id AND pp.plan_id=s.plan_id
@@ -85,7 +87,7 @@ func (a *app) calculateInvoice(ctx context.Context, customerID string, start, en
 		  AND s.starts_at < $3
 		  AND (s.ends_at IS NULL OR s.ends_at >= $2)
 		  AND s.status IN ('active', 'suspended', 'cancelled')
-		GROUP BY s.id, c.display_name, s.api_product_id, s.plan_id,
+		GROUP BY s.id, c.display_name, s.api_product_id, ap.unit_name, s.plan_id,
 		         p.display_name, p.monthly_price_cents,
 		         p.included_requests, p.overage_micros_per_request,
 		         pp.monthly_price_cents, pp.included_units, pp.overage_micros_per_unit
@@ -98,7 +100,7 @@ func (a *app) calculateInvoice(ctx context.Context, customerID string, start, en
 		var item invoiceItem
 		var customerName string
 		var overageMicros int64
-		if err = rows.Scan(&item.SubscriptionID, &customerName, &item.Product, &item.Plan,
+		if err = rows.Scan(&item.SubscriptionID, &customerName, &item.Product, &item.UnitName, &item.Plan,
 			&item.PlanName, &item.BaseCents, &item.IncludedUnits, &overageMicros,
 			&item.BillableUnits); err != nil {
 			return invoice{}, err
@@ -231,12 +233,13 @@ func (a *app) loadInvoices(ctx context.Context, customerID string) ([]invoice, e
 
 func (a *app) loadInvoiceItems(ctx context.Context, invoiceID string) ([]invoiceItem, error) {
 	rows, err := a.db.Query(ctx, `
-		SELECT ii.subscription_id::text, ii.api_product_id, ii.plan_id,
+		SELECT ii.subscription_id::text, ii.api_product_id, ap.unit_name, ii.plan_id,
 		       p.display_name, ii.description, ii.billable_units,
 		       ii.included_units, ii.overage_units, ii.base_cents,
 		       ii.overage_cents, ii.total_cents
 		FROM monetization.invoice_items ii
 		JOIN monetization.plans p ON p.id=ii.plan_id
+		JOIN monetization.api_products ap ON ap.id=ii.api_product_id
 		WHERE ii.invoice_id=$1::uuid ORDER BY ii.api_product_id`, invoiceID)
 	if err != nil {
 		return nil, err
@@ -245,7 +248,7 @@ func (a *app) loadInvoiceItems(ctx context.Context, invoiceID string) ([]invoice
 	result := make([]invoiceItem, 0)
 	for rows.Next() {
 		var item invoiceItem
-		if err = rows.Scan(&item.SubscriptionID, &item.Product, &item.Plan,
+		if err = rows.Scan(&item.SubscriptionID, &item.Product, &item.UnitName, &item.Plan,
 			&item.PlanName, &item.Description, &item.BillableUnits,
 			&item.IncludedUnits, &item.OverageUnits, &item.BaseCents,
 			&item.OverageCents, &item.TotalCents); err != nil {

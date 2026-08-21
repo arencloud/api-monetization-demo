@@ -288,7 +288,7 @@ frontend_plugin = plugin_by_package.get(frontend_plugin_package, {})
 if (
     frontend_plugin.get("disabled") is not False
     or frontend_plugin.get("integrity")
-    != "sha512-+wf4hwkiYT7+r8CiU6Khhp/Mmhx155GUYwZq1PUU7mwn9rNX8hIlk0wmOv8ubbO9cylE9xNuXrjmTDuV/pL6Dw=="
+    != "sha512-Z21GMaL/H8WWSuw5YV5hQSoE8ubDx0pS3YX+3hwNLHF/0cRGxbqJDviJ1tDERDzQXePGTG+LxpSZlV6jyKt9CA=="
 ):
     raise SystemExit("effective-policy RHDH plugin is not checksum-pinned")
 frontend_config = (
@@ -317,7 +317,7 @@ if {"isKind": "component"} not in devspaces_condition or {
 if not frontend_plugin_path.is_file() or frontend_plugin_path.stat().st_size >= 350_000:
     raise SystemExit("effective-policy plugin artifact is missing or too large for its ConfigMap")
 if hashlib.sha256(frontend_plugin_path.read_bytes()).hexdigest() != (
-    "af4e4f424b4dab3437698341eb832c0408b49e331ab8a864b53dc01aa7f31c00"
+    "8f29545b68c1b83b35d4a852c2520991454c7cd1cdebc0c2e7d4dee60b3dec72"
 ):
     raise SystemExit("effective-policy plugin artifact checksum changed; rebuild and review it")
 

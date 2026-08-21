@@ -299,9 +299,12 @@ func (a *app) entitlementByToken(w http.ResponseWriter, r *http.Request) {
 }
 
 type usageSummary struct {
-	Customer             string  `json:"customer"`
-	Product              string  `json:"product"`
-	Plan                 string  `json:"plan"`
+	Customer      string `json:"customer"`
+	Product       string `json:"product"`
+	Plan          string `json:"plan"`
+	UnitName      string `json:"unitName"`
+	BillableUnits int64  `json:"billableUnits"`
+	// Requests is retained as a compatibility alias for existing automation.
 	Requests             int64   `json:"requests"`
 	PromptTokens         int64   `json:"promptTokens"`
 	CompletionTokens     int64   `json:"completionTokens"`
@@ -328,11 +331,11 @@ func (a *app) usage(w http.ResponseWriter, r *http.Request) {
 func (a *app) loadUsage(ctx context.Context) ([]usageSummary, error) {
 	start, end := currentBillingPeriod(time.Now())
 	rows, err := a.db.Query(ctx, `
-		SELECT c.external_id, s.api_product_id, s.plan_id,
+		SELECT c.external_id, s.api_product_id, s.plan_id, ap.unit_name,
 		       COALESCE(SUM(u.billable_units), 0)::bigint,
-		       COALESCE(SUM(CASE WHEN s.api_product_id='ai-chat'
+		       COALESCE(SUM(CASE WHEN ap.unit_name='token'
 		         THEN COALESCE((u.attributes->>'promptTokens')::bigint, 0) ELSE 0 END), 0)::bigint,
-		       COALESCE(SUM(CASE WHEN s.api_product_id='ai-chat'
+		       COALESCE(SUM(CASE WHEN ap.unit_name='token'
 		         THEN COALESCE((u.attributes->>'completionTokens')::bigint, 0) ELSE 0 END), 0)::bigint,
 		       COALESCE(pp.included_units, p.included_requests),
 		       COALESCE(pp.monthly_quota_units, p.monthly_quota_requests),
@@ -349,13 +352,14 @@ func (a *app) loadUsage(ctx context.Context) ([]usageSummary, error) {
 		          * COALESCE(pp.overage_micros_per_unit, p.overage_micros_per_request)::numeric / 1000000))::double precision
 		FROM monetization.subscriptions s
 		JOIN monetization.customers c ON c.id=s.customer_id
+		JOIN monetization.api_products ap ON ap.id=s.api_product_id
 		JOIN monetization.plans p ON p.id=s.plan_id
 		JOIN monetization.api_product_plans pp
 		  ON pp.api_product_id=s.api_product_id AND pp.plan_id=s.plan_id
 		LEFT JOIN monetization.usage_events u ON u.subscription_id=s.id
 		  AND u.occurred_at >= $1 AND u.occurred_at < $2
 		WHERE s.status='active'
-		GROUP BY c.external_id, s.api_product_id, s.plan_id, p.included_requests,
+		GROUP BY c.external_id, s.api_product_id, s.plan_id, ap.unit_name, p.included_requests,
 		         p.monthly_quota_requests, p.rate_limit_requests,
 		         p.rate_limit_window_seconds, p.monthly_price_cents,
 		         p.overage_micros_per_request, pp.included_units,
@@ -370,14 +374,15 @@ func (a *app) loadUsage(ctx context.Context) ([]usageSummary, error) {
 	result := make([]usageSummary, 0)
 	for rows.Next() {
 		var item usageSummary
-		if err = rows.Scan(&item.Customer, &item.Product, &item.Plan,
-			&item.Requests, &item.PromptTokens, &item.CompletionTokens,
+		if err = rows.Scan(&item.Customer, &item.Product, &item.Plan, &item.UnitName,
+			&item.BillableUnits, &item.PromptTokens, &item.CompletionTokens,
 			&item.IncludedRequests, &item.MonthlyQuotaRequests,
 			&item.RateLimitRequests, &item.RateLimitWindowSecs,
 			&item.OverageRequests, &item.OverageRevenueEuro,
 			&item.ProjectedRevenueEuro); err != nil {
 			return nil, err
 		}
+		item.Requests = item.BillableUnits
 		item.PeriodStart = start.Format(time.DateOnly)
 		item.PeriodEnd = end.Format(time.DateOnly)
 		result = append(result, item)

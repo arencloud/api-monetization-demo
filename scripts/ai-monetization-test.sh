@@ -167,7 +167,11 @@ echo "waiting for asynchronous token usage attribution"
 recorded_units=0
 for _ in $(seq 1 30); do
   usage=$(portal_request GET /api/me/usage)
-  recorded_units=$(jq -r '[.[] | select(.product == "ai-chat")][0].requests // 0' <<<"$usage")
+  if ! jq -e 'any(.[]; .product == "ai-chat" and .unitName == "token" and (.billableUnits | type) == "number")' <<<"$usage" >/dev/null; then
+    echo "error: AI usage does not expose the native token billable-unit contract" >&2
+    exit 1
+  fi
+  recorded_units=$(jq -r '[.[] | select(.product == "ai-chat")][0].billableUnits // 0' <<<"$usage")
   (( recorded_units >= expected_units )) && break
   sleep 2
 done
