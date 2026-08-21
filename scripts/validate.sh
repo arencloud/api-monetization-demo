@@ -1175,6 +1175,48 @@ for product in ("inventory", "payments", "ai-chat"):
     if service_ports.get("http-openapi") != (8082, "openapi"):
         raise SystemExit(f"{product}: documentation-only Service port 8082 is missing")
 
+    contract_configmap = f"{product}-api-openapi-contracts"
+    with open(f"applications/{product}/kustomization.yaml", encoding="utf-8") as stream:
+        application_kustomization = yaml.safe_load(stream)
+    generated_contracts = next(
+        (
+            generated
+            for generated in application_kustomization.get("configMapGenerator", [])
+            if generated.get("name") == contract_configmap
+        ),
+        None,
+    )
+    if (
+        not generated_contracts
+        or set(generated_contracts.get("files", []))
+        != {"openapi/api-key.yaml", "openapi/keycloak-jwt.yaml"}
+        or not generated_contracts.get("options", {}).get("disableNameSuffixHash")
+    ):
+        raise SystemExit(f"{product}: immutable-name OpenAPI contract ConfigMap is incomplete")
+    with open(f"applications/{product}/deployment.yaml", encoding="utf-8") as stream:
+        deployment = yaml.safe_load(stream)
+    volumes = {
+        volume.get("name"): volume.get("configMap", {}).get("name")
+        for volume in deployment.get("spec", {}).get("template", {}).get("spec", {}).get("volumes", [])
+    }
+    if volumes.get("openapi") != contract_configmap:
+        raise SystemExit(f"{product}: Deployment must mount the versioned OpenAPI contract bundle")
+    with open(f"gitops/applications/{product}.yaml", encoding="utf-8") as stream:
+        application = yaml.safe_load(stream)
+    ignored_contract = next(
+        (
+            ignored
+            for ignored in application.get("spec", {}).get("ignoreDifferences", [])
+            if ignored.get("kind") == "ConfigMap"
+            and ignored.get("name") == contract_configmap
+        ),
+        None,
+    )
+    if not ignored_contract or set(ignored_contract.get("jsonPointers", [])) != {
+        "/data/api-key.yaml", "/data/keycloak-jwt.yaml"
+    }:
+        raise SystemExit(f"{product}: GitOps must preserve both cluster-admitted OpenAPI server URLs")
+
     for suffix, contract in (("api-product", "api-key"), ("jwt-api-product", "keycloak-jwt")):
         with open(f"platform/gateway/{product}-{suffix}.yaml", encoding="utf-8") as stream:
             api_product = yaml.safe_load(stream)

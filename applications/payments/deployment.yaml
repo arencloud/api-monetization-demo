@@ -58,7 +58,7 @@ spec:
               readOnly: true
       volumes:
         - name: openapi
-          configMap: {name: payments-api-openapi}
+          configMap: {name: payments-api-openapi-contracts}
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname

@@ -61,4 +61,4 @@ spec:
               readOnly: true
       volumes:
         - name: openapi
-          configMap: {name: ai-chat-api-openapi}
+          configMap: {name: ai-chat-api-openapi-contracts}

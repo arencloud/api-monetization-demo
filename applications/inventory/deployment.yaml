@@ -74,7 +74,7 @@ spec:
       volumes:
         - name: openapi
           configMap:
-            name: inventory-api-openapi
+            name: inventory-api-openapi-contracts
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname

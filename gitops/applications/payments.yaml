@@ -31,7 +31,7 @@ spec:
         - .spec.template.spec.containers[] | select(.name == "payments-api").image
     - group: ""
       kind: ConfigMap
-      name: payments-api-openapi
+      name: payments-api-openapi-contracts
       namespace: api-monetization-apps
       jsonPointers:
         - /data/api-key.yaml

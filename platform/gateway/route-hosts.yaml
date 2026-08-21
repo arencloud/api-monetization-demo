@@ -91,9 +91,9 @@ rules:
     resources:
       - configmaps
     resourceNames:
-      - inventory-api-openapi
-      - payments-api-openapi
-      - ai-chat-api-openapi
+      - inventory-api-openapi-contracts
+      - payments-api-openapi-contracts
+      - ai-chat-api-openapi-contracts
     verbs:
       - get
       - patch
@@ -452,7 +452,7 @@ spec:
                 local api_host=$1
                 local jwt_host=$2
                 local product=$3
-                local configmap="${product}-api-openapi"
+                local configmap="${product}-api-openapi-contracts"
                 local deployment="${product}-api"
                 local api_key_document=""
                 local jwt_document=""

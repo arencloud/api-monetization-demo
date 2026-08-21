@@ -7,7 +7,7 @@ resources:
   - service.yaml
   - monitoring.yaml
 configMapGenerator:
-  - name: payments-api-openapi
+  - name: payments-api-openapi-contracts
     namespace: api-monetization-apps
     files:
       - openapi/api-key.yaml
