@@ -1,10 +1,13 @@
 import {
+  BackstageIdentityApi,
   configApiRef,
   createApiFactory,
   createApiRef,
   discoveryApiRef,
   OAuthApi,
   oauthRequestApiRef,
+  ProfileInfoApi,
+  SessionApi,
 } from '@backstage/core-plugin-api';
 import { OAuth2 } from '@backstage/core-app-api';
 
@@ -13,7 +16,9 @@ import { OAuth2 } from '@backstage/core-app-api';
  * register a matching frontend API factory. Dynamic pages that need the
  * provider access token must register the factory explicitly.
  */
-export const oidcAuthApiRef = createApiRef<OAuthApi>({ id: 'auth.oidc' });
+export const oidcAuthApiRef = createApiRef<
+  OAuthApi & ProfileInfoApi & BackstageIdentityApi & SessionApi
+>({ id: 'auth.oidc' });
 
 export const oidcAuthApiFactory = createApiFactory({
   api: oidcAuthApiRef,

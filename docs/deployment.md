@@ -203,13 +203,16 @@ or OIDC clients initiate a sync and rerun the idempotent identity hook.
 
 ### Developer Hub consumer and owner onboarding
 
-The RHDH sign-in button redirects to the Operator-managed Red Hat build of
-Keycloak. The identity application builds the `api-monetization` login theme
-from the exact Argo CD commit with an OpenShift `BuildConfig`, promotes it under
-an immutable `git-<commit>` tag, and runs Keycloak with the optimized custom
-image. The theme extends `keycloak.v2`, preserves the supported forms and
-accessibility behavior, and applies Red Hat/PatternFly typography, spacing, and
-color. RHDH itself uses its supported `app.branding` logo settings.
+RHDH loads its responsive API Monetization welcome screen from a checksum-pinned
+dynamic frontend plugin through the supported `signInPage` extension point. It
+uses the source-controlled RHDH branding assets, explains the consumer and
+owner journeys, and starts the existing OIDC flow; authentication and identity
+resolution remain in the Operator-managed Red Hat build of Keycloak. The
+identity application builds the `api-monetization` login theme from the exact
+Argo CD commit with an OpenShift `BuildConfig`, promotes it under an immutable
+`git-<commit>` tag, and runs Keycloak with the optimized custom image. The theme
+extends `keycloak.v2`, preserves the supported forms and accessibility behavior,
+and applies Red Hat/PatternFly typography, spacing, and color.
 
 Keycloak registration is enabled in the demo realm. Every registered user is
 assigned to `api-consumers`; that group supplies both the RHDH consumer role

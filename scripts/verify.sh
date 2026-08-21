@@ -215,7 +215,7 @@ if ! grep -q "Loaded dynamic frontend plugin '@kuadrant/kuadrant-backstage-plugi
   echo "error: Developer Hub did not load the tested Kuadrant 0.4.0 frontend plugin" >&2
   exit 1
 fi
-if ! grep -q "Loaded dynamic frontend plugin '@arencloud/rhdh-policy-catalog-dynamic'.*0.1.7" <<<"$rhdh_logs"; then
+if ! grep -q "Loaded dynamic frontend plugin '@arencloud/rhdh-policy-catalog-dynamic'.*0.1.8" <<<"$rhdh_logs"; then
   echo "error: Developer Hub did not load the effective-policy catalog plugin" >&2
   exit 1
 fi

@@ -47,8 +47,6 @@ auth:
           resolvers:
             - resolver: oidcSubClaimMatchingKeycloakUserId
 
-signInPage: oidc
-
 kubernetes:
   serviceLocatorMethod:
     type: multiTenant
