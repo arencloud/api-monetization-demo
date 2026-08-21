@@ -36,6 +36,10 @@ spec:
               for product in inventory payments ai-chat; do
                 for contract in api-key keycloak-jwt; do
                   url="http://${product}-api.api-monetization-apps.svc.cluster.local:8082/openapi/${contract}.yaml"
+                  security_pattern='^      type: apiKey$'
+                  if [[ $contract == keycloak-jwt ]]; then
+                    security_pattern='^      scheme: bearer$'
+                  fi
                   ready=false
                   for attempt in $(seq 1 120); do
                     if document=$(curl --silent --show-error --fail \
@@ -44,8 +48,7 @@ spec:
                       grep -q '^paths:' <<<"$document" && \
                       grep -Eq '^  - url: https://' <<<"$document" && \
                       ! grep -Eq '^  - url: https://(jwt[.])?api-monetization[.]invalid$' <<<"$document" && \
-                      { [[ $contract == api-key ]] && grep -q '^      type: apiKey$' <<<"$document" ||
-                        [[ $contract == keycloak-jwt ]] && grep -q '^      scheme: bearer$' <<<"$document"; }; then
+                      grep -Eq "$security_pattern" <<<"$document"; then
                       echo "$product $contract OpenAPI contract is ready for APIProduct discovery"
                       ready=true
                       break
