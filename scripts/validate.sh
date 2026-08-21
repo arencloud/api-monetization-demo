@@ -278,17 +278,17 @@ if any(
     raise SystemExit("catalog entities must not expose direct Kuadrant API-key management")
 
 frontend_plugin_path = pathlib.Path(
-    "platform/developer-hub/arencloud-rhdh-policy-catalog-dynamic-0.1.7.tgz"
+    "platform/developer-hub/arencloud-rhdh-policy-catalog-dynamic-0.1.8.tgz"
 )
 frontend_plugin_package = (
     "/opt/app-root/src/local-plugins/"
-    "arencloud-rhdh-policy-catalog-dynamic-0.1.7.tgz"
+    "arencloud-rhdh-policy-catalog-dynamic-0.1.8.tgz"
 )
 frontend_plugin = plugin_by_package.get(frontend_plugin_package, {})
 if (
     frontend_plugin.get("disabled") is not False
     or frontend_plugin.get("integrity")
-    != "sha512-JNedD9pt/KV/qqWC5djZ4QIGpHfaf50IOS/pnUm0sTcJyMovIUVHrDzUlbORyPY15MjFxQEsrmbUnX1nsaX2Ag=="
+    != "sha512-S1q8CCDD9xrm6kbxPc+GdmCXcoySTyIxfICXMu4MVezrFohNP/ZVAnc/xc/skEPAt1kTRg9U9dyOV1csQIRnmA=="
 ):
     raise SystemExit("effective-policy RHDH plugin is not checksum-pinned")
 frontend_config = (
@@ -299,6 +299,8 @@ frontend_config = (
 )
 if frontend_config.get("apiFactories") != [{"importName": "oidcAuthApiFactory"}]:
     raise SystemExit("RHDH monetization UI must register its generic OIDC API factory")
+if frontend_config.get("signInPage") != {"importName": "CustomSignInPage"}:
+    raise SystemExit("RHDH must use the branded custom sign-in page extension")
 devspaces_mount = next(
     (
         mount for mount in frontend_config.get("mountPoints", [])
@@ -315,7 +317,7 @@ if {"isKind": "component"} not in devspaces_condition or {
 if not frontend_plugin_path.is_file() or frontend_plugin_path.stat().st_size >= 350_000:
     raise SystemExit("effective-policy plugin artifact is missing or too large for its ConfigMap")
 if hashlib.sha256(frontend_plugin_path.read_bytes()).hexdigest() != (
-    "33e53315c66eae6809b383c8ccbc9e5723eef2c0bb4f295d8e75da8813a6ca34"
+    "97bc52b4ce50d205617e5b82a3393cbe4801b9b25a781b285117bbfe531aa5e3"
 ):
     raise SystemExit("effective-policy plugin artifact checksum changed; rebuild and review it")
 
@@ -385,8 +387,8 @@ apis_menu = (
 )
 if apis_menu.get("to") != "monetized-apis" or apis_menu.get("enabled") is not True:
     raise SystemExit("RHDH's top-level APIs menu must open the entitlement-aware explorer")
-if rhdh_config.get("signInPage") != "oidc":
-    raise SystemExit("RHDH must use the Keycloak OIDC sign-in page")
+if "signInPage" in rhdh_config:
+    raise SystemExit("RHDH's legacy signInPage setting must not override the custom extension")
 resolvers = (
     rhdh_config.get("auth", {}).get("providers", {}).get("oidc", {})
     .get("production", {}).get("signIn", {}).get("resolvers", [])

@@ -58,8 +58,8 @@ spec:
                     subPath: arencloud-rhdh-monetization-backend-dynamic-0.1.5.tgz
                     readOnly: true
                   - name: api-monetization-rhdh-local-plugins
-                    mountPath: /opt/app-root/src/local-plugins/arencloud-rhdh-policy-catalog-dynamic-0.1.7.tgz
-                    subPath: arencloud-rhdh-policy-catalog-dynamic-0.1.7.tgz
+                    mountPath: /opt/app-root/src/local-plugins/arencloud-rhdh-policy-catalog-dynamic-0.1.8.tgz
+                    subPath: arencloud-rhdh-policy-catalog-dynamic-0.1.8.tgz
                     readOnly: true
             containers:
               - name: backstage-backend

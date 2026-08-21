@@ -75,7 +75,7 @@ The first profile follows the RHCL 1.4 support matrix:
 | Red Hat Developer Hub | 1.10 z-stream (`fast-1.10`) |
 | Red Hat OpenShift Dev Spaces | Latest `stable` channel z-stream |
 | Kuadrant Developer Hub plugin | 0.4.0, integrity-pinned |
-| Effective-policy catalog plugin | 0.1.7, source-controlled local TGZ |
+| Effective-policy catalog plugin | 0.1.8, source-controlled local TGZ |
 | Monetization backend plugin | 0.1.5, source-controlled local TGZ |
 | Red Hat OpenShift GitOps | Latest catalog channel, automatic upgrades |
 | Red Hat OpenShift AI | 3.4 stable channel, 3.4.3 starting CSV |
@@ -184,8 +184,12 @@ restricted AppProject, and the control plane adds the product to consumer
 subscriptions only after its APIProduct and OpenAPI contract are ready.
 
 Developer Hub delegates login to the existing Red Hat build of Keycloak realm.
-Its source-built login theme uses the Red Hat PatternFly visual language, while
-RHDH retains its native application shell with API Monetization branding.
+Its responsive, source-built welcome page uses the supported dynamic frontend
+`signInPage` extension point to introduce the API economy, subscriptions, Golden
+Paths, and billing before opening the secure OIDC flow. The source-built
+Keycloak login theme continues the Red Hat PatternFly visual language through
+registration and authentication. Neither layer replaces or bypasses the
+Operator-managed identity provider.
 Self-registration is enabled for consumers: every new account enters the
 `api-consumers` group and receives the developer realm role used by the
 subscription APIs. Owner access is never self-assigned. A consumer requests it

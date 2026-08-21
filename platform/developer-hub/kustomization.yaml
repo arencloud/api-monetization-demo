@@ -27,7 +27,7 @@ configMapGenerator:
     namespace: api-monetization-developer-hub
     files:
       - arencloud-rhdh-monetization-backend-dynamic-0.1.5.tgz
-      - arencloud-rhdh-policy-catalog-dynamic-0.1.7.tgz
+      - arencloud-rhdh-policy-catalog-dynamic-0.1.8.tgz
 generatorOptions:
   disableNameSuffixHash: true
   labels:
