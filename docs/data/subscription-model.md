@@ -1,5 +1,11 @@
 # Subscription data model
 
+[Project home](../../README.md) · [Documentation](../README.md) · [Architecture](../architecture.md) · **Subscription model**
+
+> PostgreSQL is the commercial system of record. Keycloak proves identity and
+> Connectivity Link enforces decisions, but neither stores the authoritative
+> customer plan or invoice state.
+
 The initial schema is bootstrapped into the `monetization` PostgreSQL database
 and owned by `monetization_app`. It provides the minimum durable model needed by
 the first vertical slice.
@@ -63,3 +69,7 @@ use `request`.
 The ConfigMap bootstrap creates an empty demo database at cluster initialization.
 The control service also applies idempotent, version-recorded migrations during
 startup so an existing installation receives later schema additions safely.
+
+---
+
+[Documentation home](../README.md) · [Architecture](../architecture.md) · [Live demo](../demo-runbook.md)

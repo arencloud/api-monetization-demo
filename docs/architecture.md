@@ -1,23 +1,31 @@
 # Architecture
 
+[Project home](../README.md) · [Documentation](README.md) · **Architecture** · [Deploy](deployment.md) · [Demo](demo-runbook.md) · [Golden Paths](golden-paths.md)
+
+> **Design rule:** request-time enforcement belongs in the data plane;
+> products, subscriptions, accepted usage, pricing, and invoices belong in the
+> commercial control plane.
+
 ## System context
 
 The platform separates the customer-facing product lifecycle from request-time
 enforcement. This prevents the gateway from becoming a billing database and
 allows commercial workflows to evolve without changing API workloads.
 
+![Detailed API Monetization architecture](assets/api-monetization-architecture.png)
+
+### How to read the diagram
+
+| Flow | Meaning |
+| --- | --- |
+| **Solid** | Synchronous API request path from consumer to workload |
+| **Blue dashed** | Identity, product metadata, usage, and telemetry signals |
+| **Green dashed** | Policy, secret, commercial-state, and GitOps reconciliation |
+
+The public request path is deliberately short:
+
 ```text
-                              CONTROL PLANE
- RHDH + Kuadrant plugin -> APIProduct/APIKey -> generated credential metadata
- RHDH/custom portal -> Keycloak login -> subscription / usage / live upgrade
-         |                        |                         |
-         +------------------------+-------------------------+
-                              |
-Internet -> OpenShift Route -> Gateway API -> RHCL policies -> Service Mesh -> OpenShift APIs
-                              |
-                              v
-          Prometheus / structured logs / Tempo -> billing dashboard
-                               DATA PLANE
+OpenShift Route → Gateway API → Connectivity Link → Service Mesh → API
 ```
 
 The OpenShift Route path is always available. A cluster with a functioning
@@ -339,3 +347,7 @@ observability, applications, gateways, policies
 Each box after bootstrap is an Argo CD child application. Retry and
 `SkipDryRunOnMissingResource` handle the short interval between OLM resolving a
 subscription and its CRDs becoming discoverable.
+
+---
+
+[Documentation home](README.md) · [Deploy the platform](deployment.md) · [Run the demo](demo-runbook.md)
