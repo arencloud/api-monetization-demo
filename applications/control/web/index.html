@@ -440,6 +440,20 @@ function currency(cents, code = 'EUR') {
   return new Intl.NumberFormat(undefined, {style: 'currency', currency: code}).format((cents || 0) / 100);
 }
 
+function nativeUsageLabel(value, unitName = 'request') {
+  const unit = value === 1 ? unitName : (unitName.endsWith('s') ? unitName : `${unitName}s`);
+  return `${Number(value || 0).toLocaleString()} ${unit}`;
+}
+
+function invoiceUsage(items = []) {
+  const totals = items.reduce((result, item) => {
+    const unit = item.unitName || 'request';
+    result[unit] = (result[unit] || 0) + Number(item.billableUnits || 0);
+    return result;
+  }, {});
+  return Object.entries(totals).map(([unit, value]) => nativeUsageLabel(value, unit)).join(' · ');
+}
+
 function renderInvoiceList(target, invoices) {
   target.replaceChildren();
   if (!invoices?.length) {
@@ -461,7 +475,7 @@ function renderInvoiceList(target, invoices) {
     title.append(period, total);
     const detail = document.createElement('div');
     detail.className = 'subvalue';
-    detail.textContent = `${invoice.customer} · ${invoice.status} · ${invoice.items?.reduce((sum, item) => sum + item.billableUnits, 0).toLocaleString()} billable units`;
+    detail.textContent = `${invoice.customer} · ${invoice.status} · ${invoiceUsage(invoice.items) || 'no billable usage'}`;
     row.append(title, detail);
     target.append(row);
   }
@@ -473,7 +487,7 @@ function renderBilling(billing) {
   $('#billing-total').textContent = currency(preview.totalCents, preview.currency);
   $('#billing-base').textContent = currency(preview.subtotalCents, preview.currency);
   $('#billing-overage').textContent = currency(preview.overageCents, preview.currency);
-  $('#billing-period').textContent = preview.periodStart ? `${preview.periodStart} through ${preview.periodEnd} · ${preview.items?.reduce((sum, item) => sum + item.billableUnits, 0).toLocaleString()} billable units` : 'Billing account starts after the first subscription.';
+  $('#billing-period').textContent = preview.periodStart ? `${preview.periodStart} through ${preview.periodEnd} · ${invoiceUsage(preview.items) || 'no billable usage'}` : 'Billing account starts after the first subscription.';
   const lines = $('#billing-preview-lines');
   lines.replaceChildren();
   for (const item of preview.items || []) {
@@ -488,8 +502,8 @@ function renderBilling(billing) {
     title.append(description, total);
     const detail = document.createElement('div');
     detail.className = 'subvalue';
-    const allowance = item.includedUnits == null ? 'custom allowance' : `${item.includedUnits.toLocaleString()} included`;
-    detail.textContent = `${item.billableUnits.toLocaleString()} units · ${allowance} · ${item.overageUnits.toLocaleString()} overage`;
+    const allowance = item.includedUnits == null ? 'custom allowance' : `${nativeUsageLabel(item.includedUnits, item.unitName)} included`;
+    detail.textContent = `${nativeUsageLabel(item.billableUnits, item.unitName)} · ${allowance} · ${nativeUsageLabel(item.overageUnits, item.unitName)} overage`;
     row.append(title, detail);
     lines.append(row);
   }

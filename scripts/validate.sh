@@ -288,7 +288,7 @@ frontend_plugin = plugin_by_package.get(frontend_plugin_package, {})
 if (
     frontend_plugin.get("disabled") is not False
     or frontend_plugin.get("integrity")
-    != "sha512-+wf4hwkiYT7+r8CiU6Khhp/Mmhx155GUYwZq1PUU7mwn9rNX8hIlk0wmOv8ubbO9cylE9xNuXrjmTDuV/pL6Dw=="
+    != "sha512-Z21GMaL/H8WWSuw5YV5hQSoE8ubDx0pS3YX+3hwNLHF/0cRGxbqJDviJ1tDERDzQXePGTG+LxpSZlV6jyKt9CA=="
 ):
     raise SystemExit("effective-policy RHDH plugin is not checksum-pinned")
 frontend_config = (
@@ -317,7 +317,7 @@ if {"isKind": "component"} not in devspaces_condition or {
 if not frontend_plugin_path.is_file() or frontend_plugin_path.stat().st_size >= 350_000:
     raise SystemExit("effective-policy plugin artifact is missing or too large for its ConfigMap")
 if hashlib.sha256(frontend_plugin_path.read_bytes()).hexdigest() != (
-    "af4e4f424b4dab3437698341eb832c0408b49e331ab8a864b53dc01aa7f31c00"
+    "8f29545b68c1b83b35d4a852c2520991454c7cd1cdebc0c2e7d4dee60b3dec72"
 ):
     raise SystemExit("effective-policy plugin artifact checksum changed; rebuild and review it")
 
@@ -332,13 +332,13 @@ backend_plugin = plugin_by_package.get(backend_plugin_package, {})
 if (
     backend_plugin.get("disabled") is not False
     or backend_plugin.get("integrity")
-    != "sha512-bxW4S6ERZVFAdxjaAq8ic+q0aYvW9m8+aKpMvmKoQiaew2E4ty3uyH1NoCXOhZmATz3qFO++uVhsgJ7Rz2x9Zg=="
+    != "sha512-0r0kba6OmjadEDMwCIQnPpT5tS++LgYGCfRHaQ6bDY7QB8UNOusOIK27AZZLbB41+Pz0zd0QMeix++jHaxjErA=="
 ):
     raise SystemExit("monetization RHDH backend plugin is not checksum-pinned")
 if not backend_plugin_path.is_file() or backend_plugin_path.stat().st_size >= 700_000:
     raise SystemExit("monetization backend artifact is missing or too large for its ConfigMap")
 if hashlib.sha256(backend_plugin_path.read_bytes()).hexdigest() != (
-    "a7efe56f85b3ac7efe520562cf597d662ef6ad5050eb63853869a71c3fc92ff6"
+    "671dbfb5576027b94e0c409e8211ee24755fea4a3b4cbba31b1f081f5229597b"
 ):
     raise SystemExit("monetization backend artifact checksum changed; rebuild and review it")
 if frontend_plugin_path.stat().st_size + backend_plugin_path.stat().st_size >= 1_000_000:

@@ -54,7 +54,7 @@ metadata:
 spec:
   publishStatus: Published
   documentation:
-    openAPISpecURL: http://time.api-monetization-apps.svc.cluster.local:8082/openapi.yaml
+    openAPISpecURL: http://time.api-monetization-apps.svc.cluster.local:8082/openapi/api-key.yaml
 ---
 apiVersion: devportal.kuadrant.io/v1alpha1
 kind: APIProduct
@@ -68,18 +68,68 @@ metadata:
 spec:
   publishStatus: Published
   documentation:
-    openAPISpecURL: http://time.api-monetization-apps.svc.cluster.local:8082/openapi.yaml
+    openAPISpecURL: http://time.api-monetization-apps.svc.cluster.local:8082/openapi/keycloak-jwt.yaml
 `,
   routes: `
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: time-api-key
+spec:
+  rules:
+    - matches:
+        - method: GET
+      filters:
+        - responseHeaderModifier:
+            set:
+              - name: Access-Control-Allow-Origin
+                value: "*"
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: time-jwt
+spec:
+  rules:
+    - matches:
+        - method: GET
+      filters:
+        - responseHeaderModifier:
+            set:
+              - name: Access-Control-Allow-Origin
+                value: "*"
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: time-api-key-preflight
+spec:
+  rules:
+    - matches:
+        - method: OPTIONS
+      filters:
+        - responseHeaderModifier:
+            set:
+              - name: Access-Control-Allow-Origin
+                value: "*"
+              - name: Access-Control-Allow-Headers
+                value: Authorization, Content-Type
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: time-jwt-preflight
+spec:
+  rules:
+    - matches:
+        - method: OPTIONS
+      filters:
+        - responseHeaderModifier:
+            set:
+              - name: Access-Control-Allow-Origin
+                value: "*"
+              - name: Access-Control-Allow-Headers
+                value: Authorization, Content-Type
 `,
   authPolicies: `
 apiVersion: kuadrant.io/v1
@@ -91,6 +141,26 @@ apiVersion: kuadrant.io/v1
 kind: AuthPolicy
 metadata:
   name: time-jwt
+---
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: time-api-key-preflight
+spec:
+  rules:
+    authentication:
+      browser-preflight:
+        anonymous: {}
+---
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: time-jwt-preflight
+spec:
+  rules:
+    authentication:
+      browser-preflight:
+        anonymous: {}
 `,
   peerAuthentication: `
 apiVersion: security.istio.io/v1
@@ -147,7 +217,7 @@ metadata:
 
 describe('generated API publication validation', () => {
   it('accepts the governed Time repository contract and extracts its limits', () => {
-    expect(validateGeneratedProject('arencloud', 'arencloud', 'time', files)).toEqual({
+    expect(validateGeneratedProject('arencloud', 'time', files)).toEqual({
       product: 'time',
       path: '/timer',
       unit: 'request',
@@ -160,28 +230,42 @@ describe('generated API publication validation', () => {
     });
   });
 
-  it('rejects another organization or an unpublished API', () => {
-    expect(() => validateGeneratedProject('arencloud', 'other', 'time', files)).toThrow(InputError);
-    expect(() => validateGeneratedProject('arencloud', 'arencloud', 'time', {
+  it('accepts a valid owner-selected organization and rejects unsafe coordinates', () => {
+    expect(validateGeneratedProject('api-team-2', 'time', {
+      ...files,
+      catalog: files.catalog.replace('arencloud/time', 'api-team-2/time'),
+    }).product).toBe('time');
+    expect(() => validateGeneratedProject('other/path', 'time', files)).toThrow(InputError);
+  });
+
+  it('rejects an unpublished API', () => {
+    expect(() => validateGeneratedProject('arencloud', 'time', {
       ...files,
       apiProducts: files.apiProducts.replaceAll('Published', 'Draft'),
     })).toThrow('both APIProducts must be Published');
   });
 
   it('rejects a duplicate static API catalog entity', () => {
-    expect(() => validateGeneratedProject('arencloud', 'arencloud', 'time', {
+    expect(() => validateGeneratedProject('arencloud', 'time', {
       ...files,
       catalog: `${files.catalog}\n---\napiVersion: backstage.io/v1alpha1\nkind: API\nmetadata:\n  name: time\n`,
     })).toThrow('must not define static API entities');
   });
 
   it('rejects a Component relation that consumers cannot resolve', () => {
-    expect(() => validateGeneratedProject('arencloud', 'arencloud', 'time', {
+    expect(() => validateGeneratedProject('arencloud', 'time', {
       ...files,
       catalog: files.catalog.replace(
         '  owner: group:default/api-owners',
         "  owner: group:default/api-owners\n  providesApis: ['time-api', 'time-api-jwt']",
       ),
     })).toThrow('consumers cannot read owner Components');
+  });
+
+  it('rejects a generated API without browser preflight governance', () => {
+    expect(() => validateGeneratedProject('arencloud', 'time', {
+      ...files,
+      routes: files.routes.replace('method: OPTIONS', 'method: DELETE'),
+    })).toThrow('anonymous browser preflight');
   });
 });

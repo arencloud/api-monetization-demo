@@ -2,6 +2,7 @@ import { InputError } from '@backstage/errors';
 import { KubernetesApiError, kubernetesRequest } from './kubernetes';
 
 const repositorySegment = /^[a-z][a-z0-9-]{2,39}$/;
+const githubOwnerSegment = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 const apiPath = /^\/[a-z0-9][a-z0-9/_-]*$/;
 const applicationNamespace = 'openshift-gitops';
 const workloadNamespace = 'api-monetization-apps';
@@ -149,13 +150,12 @@ const planLimits = (planPolicy: string, tier: string): { minute: number; month: 
 };
 
 export function validateGeneratedProject(
-  allowedOwner: string,
   owner: string,
   repository: string,
   files: GeneratedProjectFiles,
 ): ValidatedProject {
-  if (owner !== allowedOwner || !repositorySegment.test(repository)) {
-    throw new InputError(`repository must be a DNS-safe project in the ${allowedOwner} organization`);
+  if (!githubOwnerSegment.test(owner) || !repositorySegment.test(repository)) {
+    throw new InputError('GitHub organization and repository coordinates are invalid');
   }
 
   const component = namedDocument(files.catalog, 'Component', repository);
@@ -203,10 +203,35 @@ export function validateGeneratedProject(
     throw new InputError('both APIProducts must be Published and contain the generated product and path annotations');
   }
 
-  namedDocument(files.routes, 'HTTPRoute', `${repository}-api-key`);
-  namedDocument(files.routes, 'HTTPRoute', `${repository}-jwt`);
+  const apiKeyRoute = namedDocument(files.routes, 'HTTPRoute', `${repository}-api-key`);
+  const jwtRoute = namedDocument(files.routes, 'HTTPRoute', `${repository}-jwt`);
+  const apiKeyPreflightRoute = namedDocument(
+    files.routes, 'HTTPRoute', `${repository}-api-key-preflight`,
+  );
+  const jwtPreflightRoute = namedDocument(
+    files.routes, 'HTTPRoute', `${repository}-jwt-preflight`,
+  );
+  if ([apiKeyRoute, jwtRoute].some(route =>
+    !/name:\s*Access-Control-Allow-Origin(?:,\s*|\s*\n\s*)value:\s*["']?\*["']?/m.test(route))) {
+    throw new InputError('API routes must expose portable browser CORS response headers');
+  }
+  for (const route of [apiKeyPreflightRoute, jwtPreflightRoute]) {
+    if (
+      !/^\s*-\s*method:\s*OPTIONS\s*$/m.test(route) ||
+      !/name:\s*Access-Control-Allow-Origin(?:,\s*|\s*\n\s*)value:\s*["']?\*["']?/m.test(route) ||
+      !/name:\s*Access-Control-Allow-Headers(?:,\s*|\s*\n\s*)value:\s*["']?Authorization, Content-Type["']?/m.test(route)
+    ) {
+      throw new InputError('API routes must include anonymous browser preflight handling');
+    }
+  }
   namedDocument(files.authPolicies, 'AuthPolicy', `${repository}-api-key`);
   namedDocument(files.authPolicies, 'AuthPolicy', `${repository}-jwt`);
+  for (const name of [`${repository}-api-key-preflight`, `${repository}-jwt-preflight`]) {
+    const policy = namedDocument(files.authPolicies, 'AuthPolicy', name);
+    if (!/^\s*browser-preflight:\s*\n\s*anonymous:\s*\{\}\s*$/m.test(policy)) {
+      throw new InputError('browser preflight policies must allow only anonymous OPTIONS requests');
+    }
+  }
   const peerAuthentication = namedDocument(
     files.peerAuthentication, 'PeerAuthentication', repository,
   );
@@ -217,8 +242,11 @@ export function validateGeneratedProject(
   ) {
     throw new InputError('PeerAuthentication must retain STRICT mTLS and exempt only documentation port 8082');
   }
-  if (!/svc[.]cluster[.]local:8082\/openapi[.]yaml/m.test(files.apiProducts)) {
-    throw new InputError('APIProducts must publish OpenAPI from the dedicated documentation port 8082');
+  if (
+    !/svc[.]cluster[.]local:8082\/openapi\/api-key[.]yaml/m.test(apiKeyProduct) ||
+    !/svc[.]cluster[.]local:8082\/openapi\/keycloak-jwt[.]yaml/m.test(jwtProduct)
+  ) {
+    throw new InputError('APIProducts must publish distinct API-key and Keycloak JWT OpenAPI contracts');
   }
   const deployment = namedDocument(files.deployment, 'Deployment', repository);
   if (
@@ -361,6 +389,13 @@ function applicationFor(
         kustomize: {
           patches: [
             {
+              target: { group: 'apps', version: 'v1', kind: 'Deployment', name: repository },
+              patch: jsonPatch([
+                { op: 'add', path: '/spec/template/spec/containers/0/env/-', value: { name: 'API_KEY_BASE_URL', value: `https://${hosts.api}` } },
+                { op: 'add', path: '/spec/template/spec/containers/0/env/-', value: { name: 'JWT_BASE_URL', value: `https://${hosts.jwt}` } },
+              ]),
+            },
+            {
               target: { group: 'gateway.networking.k8s.io', version: 'v1', kind: 'HTTPRoute', name: `${repository}-api-key` },
               patch: jsonPatch([{ op: 'add', path: '/spec/hostnames', value: [hosts.api] }]),
             },
@@ -424,12 +459,11 @@ const applicationPath = (repository: string): string =>
   `/apis/argoproj.io/v1alpha1/namespaces/${applicationNamespace}/applications/${repository}`;
 
 export async function publishGeneratedProject(
-  allowedOwner: string,
   owner: string,
   repository: string,
 ): Promise<PublicationStatus> {
   const files = await fetchRepositoryFiles(owner, repository);
-  const project = validateGeneratedProject(allowedOwner, owner, repository, files);
+  const project = validateGeneratedProject(owner, repository, files);
   const [apiHost, jwtHost, keycloakHost] = await Promise.all([
     routeHost(gatewayNamespace, 'api-monetization'),
     routeHost(gatewayNamespace, 'api-monetization-jwt'),
@@ -509,7 +543,7 @@ export async function publicationStatus(
   if (!path) {
     try {
       const files = await fetchRepositoryFiles(owner, repository);
-      path = validateGeneratedProject(owner, owner, repository, files).path;
+      path = validateGeneratedProject(owner, repository, files).path;
     } catch {
       path = undefined;
     }

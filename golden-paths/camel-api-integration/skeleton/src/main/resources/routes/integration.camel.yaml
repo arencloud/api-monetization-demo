@@ -16,3 +16,15 @@
             name: Content-Type
             constant: application/json
         - to: bean:usageReporter?method=record
+- route:
+    id: ${{ values.name }}-browser-preflight
+    from:
+      uri: platform-http:${{ values.apiPath }}
+      parameters:
+        httpMethodRestrict: OPTIONS
+      steps:
+        - setHeader:
+            name: CamelHttpResponseCode
+            constant: "204"
+        - setBody:
+            constant: ""

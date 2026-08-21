@@ -133,8 +133,6 @@ export async function createRouter({
   const controlBaseUrl = config.getOptionalString('apiMonetization.controlBaseUrl') ||
     'http://monetization-control.api-monetization-data.svc.cluster.local:8080';
   const devSpacesBaseUrl = config.getString('apiMonetization.devSpacesBaseUrl');
-  const publicationOwner = config.getOptionalString('apiMonetization.publication.githubOwner') || 'arencloud';
-
   router.use(express.json());
 
   router.get('/devspaces/open', (req, res) => {
@@ -152,16 +150,12 @@ export async function createRouter({
 
   router.get('/publications/:owner/:repository', async (req, res) => {
     await requirePermission(req, httpAuth, permissions, publicationReadPermission);
-    if (req.params.owner !== publicationOwner) {
-      throw new InputError(`publications are restricted to the ${publicationOwner} organization`);
-    }
     res.json(await publicationStatus(req.params.owner, req.params.repository));
   });
 
   router.post('/publications/:owner/:repository', async (req, res) => {
     await requirePermission(req, httpAuth, permissions, publicationCreatePermission);
     const result = await publishGeneratedProject(
-      publicationOwner,
       req.params.owner,
       req.params.repository,
     );

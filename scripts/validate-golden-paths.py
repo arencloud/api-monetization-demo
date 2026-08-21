@@ -51,10 +51,11 @@ VALUES = {
     "businessMonthlyQuota": "50000000",
     "businessOverageMicrosPerUnit": "500",
     "enterpriseMonthlyPriceCents": "0",
-    "repoOwner": "arencloud",
+    "repoOwner": "api-team-2",
 }
 VALUE_EXPRESSION = re.compile(r"\$\{\{\s*values\.([A-Za-z0-9_]+)\s*\}\}")
-TEMPLATE_VERSION = "1.3.0"
+TEMPLATE_VERSION = "1.4.1"
+GITHUB_OWNER_PATTERN = r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$"
 
 
 def fail(message: str) -> None:
@@ -99,8 +100,13 @@ def assert_template(path: pathlib.Path) -> None:
     sections = spec.get("parameters", [])
     repo_section = next((section for section in sections if section.get("title") == "Dedicated GitHub repository"), {})
     properties = repo_section.get("properties", {})
-    if properties.get("repoOwner", {}).get("enum") != ["arencloud"]:
-        fail(f"{path}: repository owner must match the Argo CD source allowlist")
+    repo_owner = properties.get("repoOwner", {})
+    if (
+        repo_owner.get("pattern") != GITHUB_OWNER_PATTERN
+        or repo_owner.get("maxLength") != 39
+        or "enum" in repo_owner
+    ):
+        fail(f"{path}: repository owner must be a validated, owner-supplied GitHub organization")
     if properties.get("repoVisibility", {}).get("enum") != ["public"]:
         fail(f"{path}: portable catalog registration requires a public repository")
     if properties.get("githubToken", {}).get("ui:field") != "Secret":
@@ -166,8 +172,8 @@ def assert_platform_configuration() -> None:
         fail("RHDH must inject the discovered Dev Spaces URL into every Golden Path")
     if app_config.get("apiMonetization", {}).get("devSpacesBaseUrl") != "${DEV_SPACES_URL}":
         fail("RHDH monetization backend must consume the discovered Dev Spaces URL")
-    if app_config.get("apiMonetization", {}).get("publication", {}).get("githubOwner") != "arencloud":
-        fail("RHDH publication must be restricted to the approved GitHub organization")
+    if "publication" in app_config.get("apiMonetization", {}):
+        fail("RHDH publication must use the validated organization from each generated Component")
     custom_resources = {
         (resource.get("group"), resource.get("apiVersion"), resource.get("plural"))
         for resource in app_config.get("kubernetes", {}).get("customResources", [])
@@ -279,8 +285,8 @@ def assert_platform_configuration() -> None:
 
     project = yaml.safe_load((ROOT / "gitops/applications/api-owner-project.yaml").read_text(encoding="utf-8"))
     spec = project.get("spec", {})
-    if spec.get("sourceRepos") != ["https://github.com/arencloud/*.git"]:
-        fail("API-owner AppProject source allowlist does not match the template organization")
+    if spec.get("sourceRepos") != ["https://github.com/*/*.git"]:
+        fail("API-owner AppProject must accept generated repositories from validated GitHub organizations")
     if spec.get("destinations") != [{"server": "https://kubernetes.default.svc", "namespace": "api-monetization-apps"}]:
         fail("API-owner AppProject must be confined to api-monetization-apps")
     allowed = {(item.get("group"), item.get("kind")) for item in spec.get("namespaceResourceWhitelist", [])}
@@ -327,9 +333,9 @@ def assert_platform_configuration() -> None:
         None,
     )
     if not rendered_project or rendered_project.get("spec", {}).get("sourceRepos") != [
-        "https://github.com/arencloud/*.git"
+        "https://github.com/*/*.git"
     ]:
-        fail("rendering must preserve the dedicated API-owner repository allowlist")
+        fail("rendering must preserve the portable API-owner repository allowlist")
 
 
 def assert_rendered_project(kind: str, project: pathlib.Path) -> None:
@@ -392,7 +398,7 @@ def assert_rendered_project(kind: str, project: pathlib.Path) -> None:
             fail(f"{kind}: catalog metadata link must be an absolute HTTP(S) URL: {url!r}")
     deployment = yaml.safe_load((project / "gitops/deployment.yaml").read_text(encoding="utf-8"))
     annotations = deployment.get("metadata", {}).get("annotations", {})
-    if annotations.get("app.openshift.io/vcs-uri") != "https://github.com/arencloud/orders-edge.git":
+    if annotations.get("app.openshift.io/vcs-uri") != "https://github.com/api-team-2/orders-edge.git":
         fail(f"{kind}: workload is missing its Dev Spaces Git source annotation")
     if annotations.get("app.openshift.io/vcs-ref") != "main":
         fail(f"{kind}: workload is missing its Dev Spaces Git branch annotation")
@@ -420,9 +426,82 @@ def assert_rendered_project(kind: str, project: pathlib.Path) -> None:
     plans = (project / "gitops/plans.yaml").read_text(encoding="utf-8")
     if "api-monetization.invalid" not in routes or "jwt.api-monetization.invalid" not in routes:
         fail(f"{kind}: generated routes must use portable publication placeholders")
+    route_documents = {
+        resource.get("metadata", {}).get("name"): resource
+        for resource in yaml.safe_load_all(routes)
+        if resource
+    }
+    auth_documents = {
+        resource.get("metadata", {}).get("name"): resource
+        for resource in yaml.safe_load_all(auth)
+        if resource
+    }
+    for credential_route in ("orders-edge-api-key", "orders-edge-jwt"):
+        resource = route_documents.get(credential_route, {})
+        response_headers = {
+            header.get("name", "").lower(): header.get("value", "")
+            for rule in resource.get("spec", {}).get("rules", [])
+            for item in rule.get("filters", [])
+            for header in item.get("responseHeaderModifier", {}).get("set", [])
+        }
+        if response_headers.get("access-control-allow-origin") != "*":
+            fail(f"{kind}: {credential_route} must expose portable browser CORS headers")
+    for preflight_route in ("orders-edge-api-key-preflight", "orders-edge-jwt-preflight"):
+        resource = route_documents.get(preflight_route, {})
+        rules = resource.get("spec", {}).get("rules", [])
+        matches = [match for rule in rules for match in rule.get("matches", [])]
+        response_headers = {
+            header.get("name", "").lower(): header.get("value", "")
+            for rule in rules
+            for item in rule.get("filters", [])
+            for header in item.get("responseHeaderModifier", {}).get("set", [])
+        }
+        if (
+            not any(match.get("method") == "OPTIONS" for match in matches)
+            or response_headers.get("access-control-allow-origin") != "*"
+            or "Authorization" not in response_headers.get("access-control-allow-headers", "")
+        ):
+            fail(f"{kind}: {preflight_route} must provide portable browser preflight handling")
+        authentication = (
+            auth_documents.get(preflight_route, {})
+            .get("spec", {}).get("rules", {}).get("authentication", {})
+        )
+        if authentication != {"browser-preflight": {"anonymous": {}}}:
+            fail(f"{kind}: {preflight_route} must allow only anonymous browser preflight")
     api_products = (project / "gitops/api-products.yaml").read_text(encoding="utf-8")
-    if api_products.count("svc.cluster.local:8082/openapi.yaml") != 2:
-        fail(f"{kind}: both APIProducts must use the mesh-exempt documentation port")
+    if (
+        api_products.count("svc.cluster.local:8082/openapi/api-key.yaml") != 1
+        or api_products.count("svc.cluster.local:8082/openapi/keycloak-jwt.yaml") != 1
+    ):
+        fail(f"{kind}: APIProducts must use authentication-specific contracts on the mesh-exempt documentation port")
+
+    if kind == "api-interface":
+        api_key_contract_path = project / "openapi/api-key.yaml"
+        jwt_contract_path = project / "openapi/keycloak-jwt.yaml"
+    else:
+        api_key_contract_path = project / "src/main/resources/META-INF/resources/openapi-api-key.yaml"
+        jwt_contract_path = project / "src/main/resources/META-INF/resources/openapi-keycloak-jwt.yaml"
+    api_key_contract = yaml.safe_load(api_key_contract_path.read_text(encoding="utf-8"))
+    jwt_contract = yaml.safe_load(jwt_contract_path.read_text(encoding="utf-8"))
+    api_key_schemes = api_key_contract.get("components", {}).get("securitySchemes", {})
+    jwt_schemes = jwt_contract.get("components", {}).get("securitySchemes", {})
+    if api_key_schemes != {
+        "apiKey": {
+            "type": "apiKey",
+            "in": "header",
+            "name": "Authorization",
+            "description": "Paste the complete authorization value, including the prefix — `APIKEY <credential>`. OpenAPI clients do not add this custom prefix automatically.",
+        }
+    }:
+        fail(f"{kind}: API-key contract must expose only the APIKEY Authorization header")
+    jwt_bearer = jwt_schemes.get("keycloakBearer", {})
+    if (
+        set(jwt_schemes) != {"keycloakBearer"}
+        or jwt_bearer.get("type") != "http"
+        or jwt_bearer.get("scheme") != "bearer"
+        or jwt_bearer.get("bearerFormat") != "JWT"
+    ):
+        fail(f"{kind}: JWT contract must expose only a Keycloak Bearer JWT scheme")
     peer_authentication = yaml.safe_load(
         (project / "gitops/peer-authentication.yaml").read_text(encoding="utf-8")
     )

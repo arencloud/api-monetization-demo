@@ -17,6 +17,12 @@ spec:
     - matches:
         - method: POST
           path: {type: PathPrefix, value: '${{ values.apiPath }}'}
+      filters:
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            set:
+              - {name: Access-Control-Allow-Origin, value: "*"}
+              - {name: Access-Control-Expose-Headers, value: "X-Monetization-Billable-Units, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset"}
       backendRefs:
         - {group: '', kind: Service, name: '${{ values.name }}', port: 8080, weight: 1}
 ---
@@ -39,5 +45,71 @@ spec:
     - matches:
         - method: POST
           path: {type: PathPrefix, value: '${{ values.apiPath }}'}
+      filters:
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            set:
+              - {name: Access-Control-Allow-Origin, value: "*"}
+              - {name: Access-Control-Expose-Headers, value: "X-Monetization-Billable-Units, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset"}
+      backendRefs:
+        - {group: '', kind: Service, name: '${{ values.name }}', port: 8080, weight: 1}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ${{ values.name }}-api-key-preflight
+  namespace: api-monetization-apps
+  annotations: {argocd.argoproj.io/sync-wave: "10"}
+  labels: {app.kubernetes.io/name: '${{ values.name }}'}
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: api-monetization
+      namespace: api-monetization-gateway
+      sectionName: http
+  hostnames: [api-monetization.invalid]
+  rules:
+    - matches:
+        - method: OPTIONS
+          path: {type: PathPrefix, value: '${{ values.apiPath }}'}
+      filters:
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            set:
+              - {name: Access-Control-Allow-Origin, value: "*"}
+              - {name: Access-Control-Allow-Methods, value: "POST, OPTIONS"}
+              - {name: Access-Control-Allow-Headers, value: "Authorization, Content-Type"}
+              - {name: Access-Control-Max-Age, value: "600"}
+      backendRefs:
+        - {group: '', kind: Service, name: '${{ values.name }}', port: 8080, weight: 1}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ${{ values.name }}-jwt-preflight
+  namespace: api-monetization-apps
+  annotations: {argocd.argoproj.io/sync-wave: "10"}
+  labels: {app.kubernetes.io/name: '${{ values.name }}'}
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: api-monetization
+      namespace: api-monetization-gateway
+      sectionName: http
+  hostnames: [jwt.api-monetization.invalid]
+  rules:
+    - matches:
+        - method: OPTIONS
+          path: {type: PathPrefix, value: '${{ values.apiPath }}'}
+      filters:
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            set:
+              - {name: Access-Control-Allow-Origin, value: "*"}
+              - {name: Access-Control-Allow-Methods, value: "POST, OPTIONS"}
+              - {name: Access-Control-Allow-Headers, value: "Authorization, Content-Type"}
+              - {name: Access-Control-Max-Age, value: "600"}
       backendRefs:
         - {group: '', kind: Service, name: '${{ values.name }}', port: 8080, weight: 1}

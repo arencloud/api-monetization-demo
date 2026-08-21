@@ -176,16 +176,17 @@ Members of `api-owners` receive two governed templates in Developer Hub:
 
 | Template | Generated project |
 | --- | --- |
-| **Monetized API interface** | Go 1.26 service, OpenAPI, tests, OpenShift build, Service Mesh, Gateway API, Connectivity Link policies, plans, APIProducts, TechDocs, and GitOps |
-| **Monetized Camel API integration** | Red Hat Camel Quarkus on Java 21, Kaoto-editable route, OpenAPI, tests, and the same governed platform resources |
+| **Monetized API interface** | Go 1.26 service, API-key and Keycloak JWT OpenAPI contracts, tests, OpenShift build, Service Mesh, Gateway API, Connectivity Link policies, plans, APIProducts, TechDocs, and GitOps |
+| **Monetized Camel API integration** | Red Hat Camel Quarkus on Java 21, Kaoto-editable route, authentication-specific OpenAPI contracts, tests, and the same governed platform resources |
 
-Each run creates a dedicated GitHub repository. The owner opens it in OpenShift
+Each run creates a dedicated repository in the GitHub organization selected by
+the API owner. The owner opens it in OpenShift
 Dev Spaces, develops through pull requests, publishes from the Component page,
 and receives API-key plus Keycloak JWT presentations only when the APIProduct
 and OpenAPI contract are ready. Consumers cannot discover draft projects and
 cannot open a production API until they subscribe.
 
-Template 1.3 generates all five commercial tiers, lets the API owner set
+Template 1.4.1 generates all five commercial tiers, lets the API owner set
 product-specific prices and limits under pull-request review, and wires accepted
 request or AI-token usage into the billing control plane automatically.
 

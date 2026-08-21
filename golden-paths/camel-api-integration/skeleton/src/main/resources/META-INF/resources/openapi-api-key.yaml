@@ -1,0 +1,48 @@
+openapi: 3.0.3
+info:
+  title: ${{ values.displayName }}
+  version: 1.0.0
+  description: ${{ values.description }}
+servers:
+  - url: https://api.example.invalid
+    description: API-key endpoint; replaced by the admitted Gateway API hostname during publication
+paths:
+  ${{ values.apiPath }}:
+    post:
+      operationId: map${{ values.name }}WithApiKey
+      summary: Transform a partner payload using an API key
+      security:
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              properties:
+                correlationId: {type: string}
+                payload: {type: object, additionalProperties: true}
+      responses:
+        '200':
+          description: Canonical payload
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [interface, payload, mappedAt]
+                properties:
+                  interface: {type: string}
+                  correlationId: {type: string}
+                  payload: {type: object, additionalProperties: true}
+                  mappedAt: {type: string, format: date-time}
+        '401': {description: A valid API key is required}
+        '403': {description: An active subscription is required}
+        '429': {description: The selected plan limit has been reached}
+components:
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: Paste the complete authorization value, including the prefix — `APIKEY <credential>`. OpenAPI clients do not add this custom prefix automatically.
