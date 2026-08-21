@@ -25,6 +25,31 @@ type productDefinition struct {
 	Description string
 	UnitName    string
 	Plans       []string
+	PlanTerms   map[string]commercialPlanTerms
+}
+
+type commercialPlanTerms struct {
+	MonthlyPriceCents      *int64 `json:"monthlyPriceCents"`
+	IncludedUnits          *int64 `json:"includedUnits"`
+	MonthlyQuotaUnits      *int64 `json:"monthlyQuotaUnits"`
+	OverageMicrosPerUnit   int64  `json:"overageMicrosPerUnit"`
+	RateLimitRequests      *int32 `json:"rateLimitRequests"`
+	RateLimitWindowSeconds *int32 `json:"rateLimitWindowSeconds"`
+}
+
+func validCommercialPlanTerms(terms commercialPlanTerms) bool {
+	if (terms.MonthlyPriceCents != nil && *terms.MonthlyPriceCents < 0) ||
+		(terms.IncludedUnits != nil && *terms.IncludedUnits < 0) ||
+		(terms.MonthlyQuotaUnits != nil && *terms.MonthlyQuotaUnits < 1) ||
+		terms.OverageMicrosPerUnit < 0 {
+		return false
+	}
+	if terms.IncludedUnits != nil && terms.MonthlyQuotaUnits != nil && *terms.IncludedUnits > *terms.MonthlyQuotaUnits {
+		return false
+	}
+	return (terms.RateLimitRequests == nil && terms.RateLimitWindowSeconds == nil) ||
+		(terms.RateLimitRequests != nil && terms.RateLimitWindowSeconds != nil &&
+			*terms.RateLimitRequests > 0 && *terms.RateLimitWindowSeconds > 0)
 }
 
 var builtInProductDefaults = map[string]productDefinition{
@@ -115,6 +140,25 @@ func (k *kubeClient) publishedProductDefinitions(ctx context.Context, namespace 
 		}
 		if len(definition.Plans) == 0 {
 			continue
+		}
+		if encoded := item.Metadata.Annotations["monetization.arencloud.com/plans"]; encoded != "" {
+			var terms map[string]commercialPlanTerms
+			if err := json.Unmarshal([]byte(encoded), &terms); err != nil {
+				slog.Warn("ignoring APIProduct with invalid commercial plan JSON", "product", product, "error", err)
+				continue
+			}
+			for _, plan := range definition.Plans {
+				value, ok := terms[plan]
+				if !ok || !validCommercialPlanTerms(value) {
+					slog.Warn("ignoring APIProduct with missing or invalid commercial plan terms", "product", product, "plan", plan)
+					terms = nil
+					break
+				}
+			}
+			if terms == nil {
+				continue
+			}
+			definition.PlanTerms = terms
 		}
 		result[product] = definition
 	}
@@ -210,9 +254,19 @@ func (a *app) syncPublishedProducts(ctx context.Context) (map[string]productDefi
 			return nil, err
 		}
 		for _, plan := range definition.Plans {
+			terms, hasTerms := definition.PlanTerms[plan]
+			var monthlyPrice, included, monthlyQuota, overage, rateLimit, rateWindow any
+			if hasTerms {
+				monthlyPrice, included, monthlyQuota = terms.MonthlyPriceCents, terms.IncludedUnits, terms.MonthlyQuotaUnits
+				overage, rateLimit, rateWindow = terms.OverageMicrosPerUnit, terms.RateLimitRequests, terms.RateLimitWindowSeconds
+			}
 			if _, err = tx.Exec(ctx, `
-				INSERT INTO monetization.api_product_plans (api_product_id, plan_id)
-				VALUES ($1, $2) ON CONFLICT DO NOTHING`, id, plan); err != nil {
+				INSERT INTO monetization.api_product_plans
+				(api_product_id, plan_id, monthly_price_cents, included_units,
+				 monthly_quota_units, overage_micros_per_unit,
+				 rate_limit_requests, rate_limit_window_seconds)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, id, plan,
+				monthlyPrice, included, monthlyQuota, overage, rateLimit, rateWindow); err != nil {
 				return nil, err
 			}
 		}
@@ -274,9 +328,15 @@ func (a *app) catalog(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		definition, available := definitions[id]
+		plans, planErr := a.loadProductPlans(r.Context(), id)
+		if planErr != nil {
+			serverError(w, planErr)
+			return
+		}
 		result = append(result, map[string]any{
 			"id": id, "displayName": name, "description": description,
 			"unitName": unit, "available": available, "planIds": definition.Plans,
+			"plans": plans,
 		})
 	}
 	if err = products.Err(); err != nil {
@@ -289,6 +349,42 @@ func (a *app) catalog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"products": result, "plans": plans})
+}
+
+func (a *app) loadProductPlans(ctx context.Context, product string) ([]map[string]any, error) {
+	rows, err := a.db.Query(ctx, `
+		SELECT p.id, p.display_name,
+		       COALESCE(pp.monthly_price_cents, p.monthly_price_cents),
+		       COALESCE(pp.included_units, p.included_requests),
+		       COALESCE(pp.monthly_quota_units, p.monthly_quota_requests),
+		       COALESCE(pp.overage_micros_per_unit, p.overage_micros_per_request),
+		       COALESCE(pp.rate_limit_requests, p.rate_limit_requests),
+		       COALESCE(pp.rate_limit_window_seconds, p.rate_limit_window_seconds)
+		FROM monetization.api_product_plans pp
+		JOIN monetization.plans p ON p.id=pp.plan_id
+		WHERE pp.api_product_id=$1 AND p.active
+		ORDER BY COALESCE(pp.monthly_price_cents, p.monthly_price_cents) NULLS LAST, p.id`, product)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make([]map[string]any, 0)
+	for rows.Next() {
+		var id, name string
+		var monthly, included, quota *int64
+		var overage int64
+		var limit, window *int32
+		if err = rows.Scan(&id, &name, &monthly, &included, &quota, &overage, &limit, &window); err != nil {
+			return nil, err
+		}
+		result = append(result, map[string]any{
+			"id": id, "displayName": name, "monthlyPriceCents": monthly,
+			"includedRequests": included, "monthlyQuotaRequests": quota,
+			"overageMicrosPerRequest": overage, "rateLimitRequests": limit,
+			"rateLimitWindowSeconds": window,
+		})
+	}
+	return result, rows.Err()
 }
 
 func (a *app) loadPlans(ctx context.Context) ([]map[string]any, error) {

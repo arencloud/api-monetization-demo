@@ -70,12 +70,15 @@ func (a *app) calculateInvoice(ctx context.Context, customerID string, start, en
 	}
 	rows, err := a.db.Query(ctx, `
 		SELECT s.id::text, c.display_name, s.api_product_id, s.plan_id,
-		       p.display_name, COALESCE(p.monthly_price_cents, 0),
-		       p.included_requests, p.overage_micros_per_request,
+		       p.display_name, COALESCE(pp.monthly_price_cents, p.monthly_price_cents, 0),
+		       COALESCE(pp.included_units, p.included_requests),
+		       COALESCE(pp.overage_micros_per_unit, p.overage_micros_per_request),
 		       COALESCE(SUM(u.billable_units), 0)::bigint
 		FROM monetization.subscriptions s
 		JOIN monetization.customers c ON c.id=s.customer_id
 		JOIN monetization.plans p ON p.id=s.plan_id
+		JOIN monetization.api_product_plans pp
+		  ON pp.api_product_id=s.api_product_id AND pp.plan_id=s.plan_id
 		LEFT JOIN monetization.usage_events u ON u.subscription_id=s.id
 		  AND u.occurred_at >= $2 AND u.occurred_at < $3
 		WHERE c.external_id=$1
@@ -84,7 +87,8 @@ func (a *app) calculateInvoice(ctx context.Context, customerID string, start, en
 		  AND s.status IN ('active', 'suspended', 'cancelled')
 		GROUP BY s.id, c.display_name, s.api_product_id, s.plan_id,
 		         p.display_name, p.monthly_price_cents,
-		         p.included_requests, p.overage_micros_per_request
+		         p.included_requests, p.overage_micros_per_request,
+		         pp.monthly_price_cents, pp.included_units, pp.overage_micros_per_unit
 		ORDER BY s.created_at, s.api_product_id`, customerID, start, end)
 	if err != nil {
 		return invoice{}, err

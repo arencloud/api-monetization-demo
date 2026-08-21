@@ -34,8 +34,8 @@ Choose template → Create repository → Open Dev Spaces → Develop and review
 1. Sign in to Developer Hub as a member of `api-owners`.
 2. Select **Golden Paths** in the main navigation.
 3. Choose the normal API or Camel integration template.
-4. Define the API identity, unique gateway path, approval mode, and Free and
-   Developer technical limits.
+4. Define the API identity, unique gateway path, billing unit, approval mode,
+   and the prices, allowances, quotas, and request rates for all five plans.
 5. Keep the initial catalog status at **Draft** while the API and commercial
    model are reviewed.
 6. Provide a GitHub token for this task. The portable profile creates a public
@@ -53,7 +53,8 @@ Choose template → Create repository → Open Dev Spaces → Develop and review
     updates its constrained Argo CD Application, and reports synchronization,
     health, and the API-key and Keycloak JWT endpoints.
 11. Wait for `Ready=True` and `OpenAPISpecReady=True`. The control plane then
-    discovers the product and its generated Free, Developer, and Enterprise tiers, making it
+    discovers the product and its generated Free, Pay as you go, Developer,
+    Business, and Enterprise tiers, making it
     available for consumer subscription without editing this platform repository.
 
 Draft is the safe default: consumers do not receive a production product or
@@ -131,16 +132,23 @@ to reopen the same repository in Dev Spaces.
 The templates generate:
 
 - API-key and Keycloak JWT routes and AuthPolicies;
-- API-key `PlanPolicy` limits for Free, Developer, and unlimited Enterprise;
-- a plan-aware JWT `RateLimitPolicy` with per-consumer Free and Developer limits;
+- API-key `PlanPolicy` limits for Free, Pay as you go, Developer, Business, and
+  unlimited Enterprise;
+- a plan-aware JWT `RateLimitPolicy` with matching per-consumer limits;
 - separate APIProduct entries for API-key and OIDC discovery.
 
-API owners define the technical safety envelope. After the published APIProduct
-is healthy, the monetization control plane dynamically registers the product and
-attaches only the tiers declared by its admitted PlanPolicy. Prices, billable
-units, subscription lifecycle, and invoice behavior remain centrally governed:
-the built-in Free and Developer commercial definitions are reused rather than
-allowing repository owners to set prices.
+API owners define the technical safety envelope and product-specific commercial
+terms. The APIProduct stores prices as integer euro cents and micro-euros per
+native unit; the PlanPolicy remains the enforcement contract. Developer Hub
+rejects publication when the two contracts disagree. After admission, the
+control plane stores those product-specific terms and uses them for selections,
+usage estimates, and invoices. Subscription lifecycle and payment state remain
+centrally governed.
+
+Both generated runtimes send authenticated successful usage to the internal
+billing sink. Request products emit one unit per accepted response. Token
+products emit the nonnegative `X-Monetization-Billable-Units` value produced by
+their model adapter; a missing token count is safely recorded as zero.
 
 ## Camel mapping development
 
@@ -182,7 +190,7 @@ For an affected repository, remove the `metadata.links` block containing
 `/api/api-monetization/devspaces/open` from `catalog-info.yaml` and push the
 change. RHDH will reprocess the existing Location; no repository recreation is
 required. The Scaffolder task remains failed as immutable history, but the
-Component becomes available after catalog refresh. Template 1.2.1 and later do
+Component becomes available after catalog refresh. Template 1.3.0 and later do
 not write that link, while the Component Overview card continues to provide the
 Dev Spaces action.
 

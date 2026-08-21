@@ -9,6 +9,8 @@ import (
 	"os"
 	"sync/atomic"
 	"time"
+
+	"github.com/${{ values.repoOwner }}/${{ values.name }}/internal/telemetry"
 )
 
 //go:embed openapi/openapi.yaml
@@ -17,10 +19,11 @@ var openAPISpec []byte
 var requestCount atomic.Uint64
 
 func main() {
+	recorder := telemetry.New("${{ values.name }}", "${{ values.name }}")
 	mux := routes()
 	apiServer := &http.Server{
 		Addr:              env("HTTP_ADDR", ":8080"),
-		Handler:           mux,
+		Handler:           recorder.Middleware(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      15 * time.Second,

@@ -11,6 +11,7 @@ const identityNamespace = 'api-monetization-identity';
 interface GeneratedProjectFiles {
   catalog: string;
   kustomization: string;
+  deployment: string;
   apiProducts: string;
   plans: string;
   authPolicies: string;
@@ -57,10 +58,17 @@ export interface PublicationStatus {
 interface ValidatedProject {
   product: string;
   path: string;
-  freeRequestsPerMinute: number;
-  freeMonthlyQuota: number;
-  developerRequestsPerMinute: number;
-  developerMonthlyQuota: number;
+  unit: 'request' | 'token';
+  limits: Record<string, { minute: number; month: number }>;
+}
+
+interface CommercialTerms {
+  monthlyPriceCents: number;
+  includedUnits: number | null;
+  monthlyQuotaUnits: number | null;
+  overageMicrosPerUnit: number;
+  rateLimitRequests: number | null;
+  rateLimitWindowSeconds: number | null;
 }
 
 const escapeRegExp = (value: string): string =>
@@ -82,6 +90,49 @@ const positiveInteger = (value: unknown, field: string): number => {
     throw new InputError(`${field} must be a positive integer`);
   }
   return Number(value);
+};
+
+const nonNegativeInteger = (value: unknown, field: string): number => {
+  if (!Number.isInteger(value) || Number(value) < 0) {
+    throw new InputError(`${field} must be a non-negative integer`);
+  }
+  return Number(value);
+};
+
+const commercialTerms = (apiProduct: string): Record<string, CommercialTerms> => {
+  const encoded = apiProduct.match(
+    /^\s*monetization[.]arencloud[.]com\/plans:\s*'([^']+)'\s*$/m,
+  )?.[1];
+  if (!encoded) throw new InputError('APIProducts must contain product-scoped commercial plan terms');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(encoded);
+  } catch {
+    throw new InputError('commercial plan terms annotation must be valid JSON');
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new InputError('commercial plan terms must be a JSON object');
+  }
+  const result = parsed as Record<string, CommercialTerms>;
+  for (const tier of ['free', 'payg', 'developer', 'business', 'enterprise']) {
+    const terms = result[tier];
+    if (!terms || typeof terms !== 'object') throw new InputError(`${tier} commercial terms are required`);
+    nonNegativeInteger(terms.monthlyPriceCents, `${tier} monthly price`);
+    nonNegativeInteger(terms.overageMicrosPerUnit, `${tier} unit price`);
+    if (terms.includedUnits !== null) nonNegativeInteger(terms.includedUnits, `${tier} included units`);
+    if (terms.monthlyQuotaUnits !== null) positiveInteger(terms.monthlyQuotaUnits, `${tier} monthly quota`);
+    if (terms.includedUnits !== null && terms.monthlyQuotaUnits !== null && terms.includedUnits > terms.monthlyQuotaUnits) {
+      throw new InputError(`${tier} included units cannot exceed its monthly quota`);
+    }
+    if ((terms.rateLimitRequests === null) !== (terms.rateLimitWindowSeconds === null)) {
+      throw new InputError(`${tier} rate limit and window must both be set or both be null`);
+    }
+    if (terms.rateLimitRequests !== null) {
+      positiveInteger(terms.rateLimitRequests, `${tier} request rate limit`);
+      positiveInteger(terms.rateLimitWindowSeconds, `${tier} rate-limit window`);
+    }
+  }
+  return result;
 };
 
 const planLimits = (planPolicy: string, tier: string): { minute: number; month: number } => {
@@ -139,8 +190,13 @@ export function validateGeneratedProject(
   const jwtProduct = namedDocument(files.apiProducts, 'APIProduct', `${repository}-api-jwt`);
   const product = apiKeyProduct.match(/^\s*monetization[.]arencloud[.]com\/product:\s*([^\s]+)\s*$/m)?.[1];
   const path = apiKeyProduct.match(/^\s*monetization[.]arencloud[.]com\/path:\s*([^\s]+)\s*$/m)?.[1];
+  const unit = apiKeyProduct.match(/^\s*monetization[.]arencloud[.]com\/unit:\s*([^\s]+)\s*$/m)?.[1];
+  const jwtProductID = jwtProduct.match(/^\s*monetization[.]arencloud[.]com\/product:\s*([^\s]+)\s*$/m)?.[1];
+  const jwtPath = jwtProduct.match(/^\s*monetization[.]arencloud[.]com\/path:\s*([^\s]+)\s*$/m)?.[1];
+  const jwtUnit = jwtProduct.match(/^\s*monetization[.]arencloud[.]com\/unit:\s*([^\s]+)\s*$/m)?.[1];
   if (
-    product !== repository || !apiPath.test(path || '') ||
+    product !== repository || !apiPath.test(path || '') || !['request', 'token'].includes(unit || '') ||
+    jwtProductID !== product || jwtPath !== path || jwtUnit !== unit ||
     !/^\s*publishStatus:\s*Published\s*$/m.test(apiKeyProduct) ||
     !/^\s*publishStatus:\s*Published\s*$/m.test(jwtProduct)
   ) {
@@ -164,18 +220,39 @@ export function validateGeneratedProject(
   if (!/svc[.]cluster[.]local:8082\/openapi[.]yaml/m.test(files.apiProducts)) {
     throw new InputError('APIProducts must publish OpenAPI from the dedicated documentation port 8082');
   }
+  const deployment = namedDocument(files.deployment, 'Deployment', repository);
+  if (
+    !/^\s*-\s*name:\s*USAGE_SINK_URL\s*\n\s*value:\s*\S+\/internal\/usage\s*$/m.test(deployment) ||
+    !new RegExp(`^\\s*-\\s*name:\\s*MONETIZATION_PRODUCT\\s*\\n\\s*value:\\s*['"]?${escapeRegExp(repository)}['"]?\\s*$`, 'm').test(deployment) ||
+    !new RegExp(`^\\s*-\\s*name:\\s*MONETIZATION_UNIT\\s*\\n\\s*value:\\s*${unit}\\s*$`, 'm').test(deployment)
+  ) {
+    throw new InputError('Deployment must report attributed usage to the platform billing sink');
+  }
 
   const planPolicy = namedDocument(files.plans, 'PlanPolicy', `${repository}-plans`);
   namedDocument(files.plans, 'RateLimitPolicy', `${repository}-jwt`);
-  const free = planLimits(planPolicy, 'free');
-  const developer = planLimits(planPolicy, 'developer');
+  const pricing = commercialTerms(apiKeyProduct);
+  const jwtPricing = commercialTerms(jwtProduct);
+  const pricingFields: Array<keyof CommercialTerms> = [
+    'monthlyPriceCents', 'includedUnits', 'monthlyQuotaUnits',
+    'overageMicrosPerUnit', 'rateLimitRequests', 'rateLimitWindowSeconds',
+  ];
+  if (['free', 'payg', 'developer', 'business', 'enterprise'].some(tier =>
+    pricingFields.some(field => pricing[tier][field] !== jwtPricing[tier][field]))) {
+    throw new InputError('API-key and JWT APIProducts must publish identical commercial terms');
+  }
+  const limits = Object.fromEntries(['free', 'payg', 'developer', 'business'].map(tier => {
+    const limit = planLimits(planPolicy, tier);
+    if (pricing[tier].monthlyQuotaUnits !== limit.month || pricing[tier].rateLimitRequests !== limit.minute) {
+      throw new InputError(`${tier} commercial terms must match its Connectivity Link limits`);
+    }
+    return [tier, limit];
+  }));
   return {
     product,
     path: path!,
-    freeRequestsPerMinute: free.minute,
-    freeMonthlyQuota: free.month,
-    developerRequestsPerMinute: developer.minute,
-    developerMonthlyQuota: developer.month,
+    unit: unit as 'request' | 'token',
+    limits,
   };
 }
 
@@ -184,6 +261,7 @@ async function fetchRepositoryFiles(owner: string, repository: string): Promise<
   const paths: Record<keyof GeneratedProjectFiles, string> = {
     catalog: 'catalog-info.yaml',
     kustomization: 'gitops/kustomization.yaml',
+    deployment: 'gitops/deployment.yaml',
     apiProducts: 'gitops/api-products.yaml',
     plans: 'gitops/plans.yaml',
     authPolicies: 'gitops/auth-policies.yaml',
@@ -236,24 +314,14 @@ function applicationFor(
       selector: 'auth.metadata.subscription.status', operator: 'eq', value: 'active',
     }] },
   };
-  const jwtLimits = {
-    free: {
-      rates: [
-        { limit: project.freeRequestsPerMinute, window: '1m' },
-        { limit: project.freeMonthlyQuota, window: '720h' },
-      ],
-      counters: [{ expression: 'auth.kuadrant.customer' }],
-      when: [{ predicate: 'auth.kuadrant.plan == "free"' }],
-    },
-    developer: {
-      rates: [
-        { limit: project.developerRequestsPerMinute, window: '1m' },
-        { limit: project.developerMonthlyQuota, window: '720h' },
-      ],
-      counters: [{ expression: 'auth.kuadrant.customer' }],
-      when: [{ predicate: 'auth.kuadrant.plan == "developer"' }],
-    },
-  };
+  const jwtLimits = Object.fromEntries(Object.entries(project.limits).map(([tier, limit]) => [tier, {
+    rates: [
+      { limit: limit.minute, window: '1m' },
+      { limit: limit.month, window: '720h' },
+    ],
+    counters: [{ expression: 'auth.kuadrant.customer' }],
+    when: [{ predicate: `auth.kuadrant.plan == "${tier}"` }],
+  }]));
   const apiSuccess = {
     headers: {
       'x-monetization-customer': {

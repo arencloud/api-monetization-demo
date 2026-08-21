@@ -29,14 +29,32 @@ VALUES = {
     "lifecycle": "production",
     "approvalMode": "automatic",
     "publishStatus": "Draft",
+    "billingUnit": "request",
+    "freeMonthlyPriceCents": "0",
+    "freeIncludedUnits": "1000",
     "freeRequestsPerMinute": "10",
     "freeMonthlyQuota": "1000",
+    "freeOverageMicrosPerUnit": "0",
+    "paygMonthlyPriceCents": "0",
+    "paygIncludedUnits": "0",
+    "paygRequestsPerMinute": "100",
+    "paygMonthlyQuota": "10000",
+    "paygOverageMicrosPerUnit": "10000",
+    "developerMonthlyPriceCents": "4900",
+    "developerIncludedUnits": "100000",
     "developerRequestsPerMinute": "1000",
     "developerMonthlyQuota": "1000000",
+    "developerOverageMicrosPerUnit": "1000",
+    "businessMonthlyPriceCents": "49900",
+    "businessIncludedUnits": "5000000",
+    "businessRequestsPerMinute": "10000",
+    "businessMonthlyQuota": "50000000",
+    "businessOverageMicrosPerUnit": "500",
+    "enterpriseMonthlyPriceCents": "0",
     "repoOwner": "arencloud",
 }
 VALUE_EXPRESSION = re.compile(r"\$\{\{\s*values\.([A-Za-z0-9_]+)\s*\}\}")
-TEMPLATE_VERSION = "1.2.1"
+TEMPLATE_VERSION = "1.3.0"
 
 
 def fail(message: str) -> None:
@@ -380,6 +398,18 @@ def assert_rendered_project(kind: str, project: pathlib.Path) -> None:
         fail(f"{kind}: workload is missing its Dev Spaces Git branch annotation")
     if deployment.get("metadata", {}).get("labels", {}).get("backstage.io/kubernetes-id") != "orders-edge":
         fail(f"{kind}: workload is not discoverable by RHDH Topology")
+    environment = {
+        item.get("name"): item.get("value")
+        for item in deployment.get("spec", {}).get("template", {}).get("spec", {}).get("containers", [])[0].get("env", [])
+    }
+    if environment.get("MONETIZATION_PRODUCT") != "orders-edge" or environment.get("MONETIZATION_UNIT") != "request":
+        fail(f"{kind}: workload is missing its generated metering identity")
+    if not environment.get("USAGE_SINK_URL", "").endswith("/internal/usage"):
+        fail(f"{kind}: workload is not connected to the billing usage sink")
+    if kind == "api-interface":
+        containerfile = (project / "Containerfile").read_text(encoding="utf-8")
+        if "COPY internal/ internal/" not in containerfile:
+            fail("Go API image must include the generated metering package")
 
     for suffix in ("api-key", "jwt"):
         if not (project / "gitops/api-products.yaml").read_text(encoding="utf-8").count(f"orders-edge-{suffix}"):
@@ -408,8 +438,9 @@ def assert_rendered_project(kind: str, project: pathlib.Path) -> None:
         if required not in auth:
             fail(f"{kind}: generated AuthPolicies are missing {required}")
     for required in (
-        'auth.kuadrant.plan == "free"', 'auth.kuadrant.plan == "developer"',
-        "auth.kuadrant.customer",
+        'auth.kuadrant.plan == "free"', 'auth.kuadrant.plan == "payg"',
+        'auth.kuadrant.plan == "developer"', 'auth.kuadrant.plan == "business"',
+        "auth.kuadrant.customer", "tier: enterprise",
     ):
         if required not in plans:
             fail(f"{kind}: generated JWT plan policy is missing {required}")
@@ -421,7 +452,7 @@ def assert_rendered_project(kind: str, project: pathlib.Path) -> None:
         for required in ("3.33.3.redhat-00001", "quarkus-camel-bom", "camel-quarkus-yaml-dsl"):
             if required not in pom:
                 fail(f"Camel project is missing {required}")
-        if "platform-http:/orders" not in route or "bean:canonicalMapping" not in route:
+        if "platform-http:/orders" not in route or "bean:canonicalMapping" not in route or "bean:usageReporter" not in route:
             fail("Camel project does not render its mapping route")
 
 

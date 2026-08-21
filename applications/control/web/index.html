@@ -691,7 +691,7 @@ async function refreshAdmin() {
   $('#included').textContent = `${usageItem.requests.toLocaleString()} accepted ${selectedProduct?.unitName || 'request'} units · ${planTerms(state.subscription, selectedProduct?.unitName)} · HTTP 429 attempts are rejected, not billed`;
   $('#revenue').textContent = new Intl.NumberFormat(undefined, {style: 'currency', currency: 'EUR'}).format(usageItem.projectedRevenueEuro);
   $('#overage').textContent = `${usageItem.overageRequests.toLocaleString()} accepted ${selectedProduct?.unitName || 'request'} units above the included allowance`;
-  $('#plans').replaceChildren(...plans.map(plan => {
+  $('#plans').replaceChildren(...(selectedProduct?.plans || plans).map(plan => {
     const option = document.createElement('option');
     option.value = plan.id;
     option.textContent = `${plan.displayName} — ${money(plan.monthlyPriceCents)} · ${planTerms(plan, selectedProduct?.unitName)}`;
@@ -769,8 +769,9 @@ async function refreshDeveloper() {
   $('#developer-product').textContent = product?.displayName || 'Inventory API';
   $('#developer-description').textContent = product?.description || 'Product and stock inventory operations';
   updateProductLinks();
-  planOptions($('#developer-plans'), state.plans, 'free', product?.unitName);
-  planOptions($('#developer-upgrade-plan'), state.plans, state.subscription?.plan, product?.unitName);
+  const productPlans = product?.plans || state.plans;
+  planOptions($('#developer-plans'), productPlans, 'free', product?.unitName);
+  planOptions($('#developer-upgrade-plan'), productPlans, state.subscription?.plan, product?.unitName);
   $('#subscribe-controls').classList.toggle('hidden', Boolean(state.subscription));
   $('#developer-subscription').classList.toggle('hidden', !state.subscription);
   $('#ai-playground').classList.toggle('hidden', state.selectedProduct !== 'ai-chat' || state.subscription?.status !== 'active');

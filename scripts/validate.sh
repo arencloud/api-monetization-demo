@@ -278,17 +278,17 @@ if any(
     raise SystemExit("catalog entities must not expose direct Kuadrant API-key management")
 
 frontend_plugin_path = pathlib.Path(
-    "platform/developer-hub/arencloud-rhdh-policy-catalog-dynamic-0.1.8.tgz"
+    "platform/developer-hub/arencloud-rhdh-policy-catalog-dynamic-0.1.9.tgz"
 )
 frontend_plugin_package = (
     "/opt/app-root/src/local-plugins/"
-    "arencloud-rhdh-policy-catalog-dynamic-0.1.8.tgz"
+    "arencloud-rhdh-policy-catalog-dynamic-0.1.9.tgz"
 )
 frontend_plugin = plugin_by_package.get(frontend_plugin_package, {})
 if (
     frontend_plugin.get("disabled") is not False
     or frontend_plugin.get("integrity")
-    != "sha512-S1q8CCDD9xrm6kbxPc+GdmCXcoySTyIxfICXMu4MVezrFohNP/ZVAnc/xc/skEPAt1kTRg9U9dyOV1csQIRnmA=="
+    != "sha512-+wf4hwkiYT7+r8CiU6Khhp/Mmhx155GUYwZq1PUU7mwn9rNX8hIlk0wmOv8ubbO9cylE9xNuXrjmTDuV/pL6Dw=="
 ):
     raise SystemExit("effective-policy RHDH plugin is not checksum-pinned")
 frontend_config = (
@@ -317,28 +317,28 @@ if {"isKind": "component"} not in devspaces_condition or {
 if not frontend_plugin_path.is_file() or frontend_plugin_path.stat().st_size >= 350_000:
     raise SystemExit("effective-policy plugin artifact is missing or too large for its ConfigMap")
 if hashlib.sha256(frontend_plugin_path.read_bytes()).hexdigest() != (
-    "97bc52b4ce50d205617e5b82a3393cbe4801b9b25a781b285117bbfe531aa5e3"
+    "af4e4f424b4dab3437698341eb832c0408b49e331ab8a864b53dc01aa7f31c00"
 ):
     raise SystemExit("effective-policy plugin artifact checksum changed; rebuild and review it")
 
 backend_plugin_path = pathlib.Path(
-    "platform/developer-hub/arencloud-rhdh-monetization-backend-dynamic-0.1.5.tgz"
+    "platform/developer-hub/arencloud-rhdh-monetization-backend-dynamic-0.1.6.tgz"
 )
 backend_plugin_package = (
     "/opt/app-root/src/local-plugins/"
-    "arencloud-rhdh-monetization-backend-dynamic-0.1.5.tgz"
+    "arencloud-rhdh-monetization-backend-dynamic-0.1.6.tgz"
 )
 backend_plugin = plugin_by_package.get(backend_plugin_package, {})
 if (
     backend_plugin.get("disabled") is not False
     or backend_plugin.get("integrity")
-    != "sha512-KgtFFDf5J+IjYdrQ18OqEsMJTpr0Yd2mC1zXKygWjt9v1ROevPr6MeiLQ31Tyh+uRDtxRqQft6FhT3nJW+EzKw=="
+    != "sha512-bxW4S6ERZVFAdxjaAq8ic+q0aYvW9m8+aKpMvmKoQiaew2E4ty3uyH1NoCXOhZmATz3qFO++uVhsgJ7Rz2x9Zg=="
 ):
     raise SystemExit("monetization RHDH backend plugin is not checksum-pinned")
 if not backend_plugin_path.is_file() or backend_plugin_path.stat().st_size >= 700_000:
     raise SystemExit("monetization backend artifact is missing or too large for its ConfigMap")
 if hashlib.sha256(backend_plugin_path.read_bytes()).hexdigest() != (
-    "bbd736c966468cc1a620466f974b090502099d4ba323a6b9789e53514e88008f"
+    "a7efe56f85b3ac7efe520562cf597d662ef6ad5050eb63853869a71c3fc92ff6"
 ):
     raise SystemExit("monetization backend artifact checksum changed; rebuild and review it")
 if frontend_plugin_path.stat().st_size + backend_plugin_path.stat().st_size >= 1_000_000:

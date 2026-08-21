@@ -2,6 +2,7 @@ FROM registry.access.redhat.com/ubi9/go-toolset:1.26.5 AS builder
 WORKDIR /opt/app-root/src
 COPY go.mod ./
 COPY main.go ./
+COPY internal/ internal/
 COPY openapi/ openapi/
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /tmp/api .
 

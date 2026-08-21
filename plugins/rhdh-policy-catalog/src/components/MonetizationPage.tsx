@@ -33,6 +33,7 @@ import {
   OwnerAccessState,
   PortalIdentity,
   ProductCatalog,
+  Plan,
   Subscription,
   UsageSummary,
 } from '../types';
@@ -76,6 +77,19 @@ const currency = (cents: number | undefined, code = 'EUR') =>
   new Intl.NumberFormat(undefined, { style: 'currency', currency: code }).format(
     Number(cents || 0) / 100,
   );
+
+const unitPrice = (micros: number | undefined, unit: string): string =>
+  `${new Intl.NumberFormat(undefined, {
+    style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 6,
+  }).format(Number(micros || 0) / 1_000_000)}/${unit}`;
+
+export const planPriceLabel = (plan: Plan, unit: string): string => {
+  const monthly = `${currency(plan.monthlyPriceCents)}/month`;
+  if (Number(plan.overageMicrosPerRequest || 0) <= 0) return `${plan.displayName} · ${monthly}`;
+  const variable = unitPrice(plan.overageMicrosPerRequest, unit);
+  if (Number(plan.includedRequests || 0) === 0) return `${plan.displayName} · ${variable}`;
+  return `${plan.displayName} · ${monthly} + ${variable} after ${Number(plan.includedRequests).toLocaleString()} included`;
+};
 
 export const MonetizationPage = () => {
   const discoveryApi = useApi(discoveryApiRef);
@@ -362,7 +376,7 @@ export const MonetizationPage = () => {
                   {state.value.catalog.products.filter(product => product.available).map(product => {
                     const subscription = state.value?.subscriptions.find(item => item.product === product.id);
                     const credential = state.value?.credentials[product.id];
-                    const productPlans = state.value?.catalog?.plans.filter(
+                    const productPlans = product.plans || state.value?.catalog?.plans.filter(
                       plan => product.planIds.includes(plan.id),
                     ) || [];
                     const selectedPlan = planSelections[product.id] || subscription?.plan ||
@@ -395,7 +409,7 @@ export const MonetizationPage = () => {
                                 >
                                   {productPlans.map(plan => (
                                     <MenuItem key={plan.id} value={plan.id}>
-                                      {plan.displayName} · {currency(plan.monthlyPriceCents)}/month
+                                      {planPriceLabel(plan, product.unitName)}
                                     </MenuItem>
                                   ))}
                                 </Select>

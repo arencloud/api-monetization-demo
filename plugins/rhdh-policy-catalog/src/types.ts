@@ -113,6 +113,7 @@ export interface CatalogProduct {
   unitName: string;
   available: boolean;
   planIds: string[];
+  plans?: Plan[];
 }
 
 export interface ProductCatalog {
