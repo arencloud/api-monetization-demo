@@ -12,7 +12,7 @@ The platform separates the customer-facing product lifecycle from request-time
 enforcement. This prevents the gateway from becoming a billing database and
 allows commercial workflows to evolve without changing API workloads.
 
-![Detailed API Monetization architecture](assets/api-monetization-architecture.svg)
+![Detailed API Monetization architecture](assets/api-monetization-architecture.png)
 
 ### How to read the diagram
 

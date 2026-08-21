@@ -6,7 +6,7 @@
 > from developer onboarding and API publication to request enforcement, usage
 > attribution, live plan changes, and billing evidence.
 
-![API Monetization architecture](assets/api-monetization-architecture.svg)
+![API Monetization architecture](assets/api-monetization-architecture.png)
 
 ## Choose your journey
 

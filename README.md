@@ -55,7 +55,7 @@ gateway, token, or workload restart is required.
 
 ## Architecture at a glance
 
-![API Monetization architecture showing consumers, Connectivity Link, Service Mesh, APIs, commercial control plane, OpenShift AI, observability, secrets, and GitOps](docs/assets/api-monetization-architecture.svg)
+![API Monetization architecture showing consumers, Connectivity Link, Service Mesh, APIs, commercial control plane, OpenShift AI, observability, secrets, and GitOps](docs/assets/api-monetization-architecture.png)
 
 <p align="center"><em>Request enforcement stays in the data plane. Products, subscriptions, usage, and billing stay in the commercial control plane.</em></p>
 
