@@ -334,29 +334,34 @@ func (a *app) loadUsage(ctx context.Context) ([]usageSummary, error) {
 		         THEN COALESCE((u.attributes->>'promptTokens')::bigint, 0) ELSE 0 END), 0)::bigint,
 		       COALESCE(SUM(CASE WHEN s.api_product_id='ai-chat'
 		         THEN COALESCE((u.attributes->>'completionTokens')::bigint, 0) ELSE 0 END), 0)::bigint,
-		       p.included_requests,
-		       p.monthly_quota_requests,
-		       p.rate_limit_requests,
-		       p.rate_limit_window_seconds,
+		       COALESCE(pp.included_units, p.included_requests),
+		       COALESCE(pp.monthly_quota_units, p.monthly_quota_requests),
+		       COALESCE(pp.rate_limit_requests, p.rate_limit_requests),
+		       COALESCE(pp.rate_limit_window_seconds, p.rate_limit_window_seconds),
 		       GREATEST(COALESCE(SUM(u.billable_units), 0)::bigint
-		         - COALESCE(p.included_requests, COALESCE(SUM(u.billable_units), 0)::bigint), 0),
+		         - COALESCE(pp.included_units, p.included_requests, COALESCE(SUM(u.billable_units), 0)::bigint), 0),
 		       (GREATEST(COALESCE(SUM(u.billable_units), 0)::bigint
-		          - COALESCE(p.included_requests, COALESCE(SUM(u.billable_units), 0)::bigint), 0)
-		         * p.overage_micros_per_request::numeric / 1000000)::double precision,
-		       ((COALESCE(p.monthly_price_cents, 0)::numeric / 100)
+		          - COALESCE(pp.included_units, p.included_requests, COALESCE(SUM(u.billable_units), 0)::bigint), 0)
+		         * COALESCE(pp.overage_micros_per_unit, p.overage_micros_per_request)::numeric / 1000000)::double precision,
+		       ((COALESCE(pp.monthly_price_cents, p.monthly_price_cents, 0)::numeric / 100)
 		       + (GREATEST(COALESCE(SUM(u.billable_units), 0)::bigint
-		            - COALESCE(p.included_requests, COALESCE(SUM(u.billable_units), 0)::bigint), 0)
-		          * p.overage_micros_per_request::numeric / 1000000))::double precision
+		            - COALESCE(pp.included_units, p.included_requests, COALESCE(SUM(u.billable_units), 0)::bigint), 0)
+		          * COALESCE(pp.overage_micros_per_unit, p.overage_micros_per_request)::numeric / 1000000))::double precision
 		FROM monetization.subscriptions s
 		JOIN monetization.customers c ON c.id=s.customer_id
 		JOIN monetization.plans p ON p.id=s.plan_id
+		JOIN monetization.api_product_plans pp
+		  ON pp.api_product_id=s.api_product_id AND pp.plan_id=s.plan_id
 		LEFT JOIN monetization.usage_events u ON u.subscription_id=s.id
 		  AND u.occurred_at >= $1 AND u.occurred_at < $2
 		WHERE s.status='active'
 		GROUP BY c.external_id, s.api_product_id, s.plan_id, p.included_requests,
 		         p.monthly_quota_requests, p.rate_limit_requests,
 		         p.rate_limit_window_seconds, p.monthly_price_cents,
-		         p.overage_micros_per_request
+		         p.overage_micros_per_request, pp.included_units,
+		         pp.monthly_quota_units, pp.rate_limit_requests,
+		         pp.rate_limit_window_seconds, pp.monthly_price_cents,
+		         pp.overage_micros_per_unit
 		ORDER BY c.external_id, s.api_product_id`, start, end)
 	if err != nil {
 		return nil, err
@@ -405,6 +410,13 @@ func (a *app) recordUsage(w http.ResponseWriter, r *http.Request) {
 	if billableUnits < 0 || event.RequestBytes < 0 || event.ResponseBytes < 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "usage values must be nonnegative"})
 		return
+	}
+	if event.StatusCode < 100 || event.StatusCode > 599 || event.OccurredAt.IsZero() {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "usage status and occurrence time are required"})
+		return
+	}
+	if event.StatusCode < 200 || event.StatusCode >= 300 {
+		billableUnits = 0
 	}
 	if event.Attributes == nil {
 		event.Attributes = map[string]any{}
@@ -502,15 +514,18 @@ func (a *app) loadManagedSubscriptions(ctx context.Context, customer, product st
 func (a *app) loadSubscriptionsByState(ctx context.Context, customer, product string, includeSuspended bool) ([]subscription, error) {
 	query := `
 		SELECT s.id::text, c.external_id, c.display_name, p.id, s.plan_id,
-		       pl.display_name, pl.monthly_price_cents, pl.included_requests,
-		       pl.monthly_quota_requests, pl.overage_micros_per_request,
-		       pl.rate_limit_requests,
-		       pl.rate_limit_window_seconds, s.version,
+		       pl.display_name, COALESCE(pp.monthly_price_cents, pl.monthly_price_cents),
+		       COALESCE(pp.included_units, pl.included_requests),
+		       COALESCE(pp.monthly_quota_units, pl.monthly_quota_requests),
+		       COALESCE(pp.overage_micros_per_unit, pl.overage_micros_per_request),
+		       COALESCE(pp.rate_limit_requests, pl.rate_limit_requests),
+		       COALESCE(pp.rate_limit_window_seconds, pl.rate_limit_window_seconds), s.version,
 		       s.status, s.starts_at, s.ends_at
 		FROM monetization.subscriptions s
 		JOIN monetization.customers c ON c.id = s.customer_id
 		JOIN monetization.api_products p ON p.id = s.api_product_id
 		JOIN monetization.plans pl ON pl.id = s.plan_id
+		JOIN monetization.api_product_plans pp ON pp.api_product_id=s.api_product_id AND pp.plan_id=s.plan_id
 		WHERE s.status = 'active'`
 	if includeSuspended {
 		query = strings.Replace(query, "WHERE s.status = 'active'", "WHERE s.status IN ('active', 'suspended')", 1)
@@ -552,16 +567,19 @@ func (a *app) loadManagedSubscriptionsByIdentity(ctx context.Context, provider, 
 func (a *app) loadSubscriptionsByIdentityState(ctx context.Context, provider, subject, product string, includeSuspended bool) ([]subscription, error) {
 	query := `
 		SELECT s.id::text, c.external_id, c.display_name, p.id, s.plan_id,
-		       pl.display_name, pl.monthly_price_cents, pl.included_requests,
-		       pl.monthly_quota_requests, pl.overage_micros_per_request,
-		       pl.rate_limit_requests,
-		       pl.rate_limit_window_seconds, s.version,
+		       pl.display_name, COALESCE(pp.monthly_price_cents, pl.monthly_price_cents),
+		       COALESCE(pp.included_units, pl.included_requests),
+		       COALESCE(pp.monthly_quota_units, pl.monthly_quota_requests),
+		       COALESCE(pp.overage_micros_per_unit, pl.overage_micros_per_request),
+		       COALESCE(pp.rate_limit_requests, pl.rate_limit_requests),
+		       COALESCE(pp.rate_limit_window_seconds, pl.rate_limit_window_seconds), s.version,
 		       s.status, s.starts_at, s.ends_at
 		FROM monetization.subscription_identities i
 		JOIN monetization.customers c ON c.id = i.customer_id
 		JOIN monetization.subscriptions s ON s.customer_id = c.id
 		JOIN monetization.api_products p ON p.id = s.api_product_id
 		JOIN monetization.plans pl ON pl.id = s.plan_id
+		JOIN monetization.api_product_plans pp ON pp.api_product_id=s.api_product_id AND pp.plan_id=s.plan_id
 		WHERE i.provider = $1 AND i.subject = $2 AND i.status = 'active'
 		  AND s.status = 'active'`
 	if includeSuspended {

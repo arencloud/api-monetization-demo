@@ -23,6 +23,24 @@ resources:
   - plans.yaml
   - api-products.yaml
 `,
+  deployment: `
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: time
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          env:
+            - name: USAGE_SINK_URL
+              value: http://monetization-control.api-monetization-data.svc.cluster.local:8081/internal/usage
+            - name: MONETIZATION_PRODUCT
+              value: time
+            - name: MONETIZATION_UNIT
+              value: request
+`,
   apiProducts: `
 apiVersion: devportal.kuadrant.io/v1alpha1
 kind: APIProduct
@@ -31,6 +49,8 @@ metadata:
   annotations:
     monetization.arencloud.com/product: time
     monetization.arencloud.com/path: /timer
+    monetization.arencloud.com/unit: request
+    monetization.arencloud.com/plans: '{"free":{"monthlyPriceCents":0,"includedUnits":1000,"monthlyQuotaUnits":1000,"overageMicrosPerUnit":0,"rateLimitRequests":10,"rateLimitWindowSeconds":60},"payg":{"monthlyPriceCents":0,"includedUnits":0,"monthlyQuotaUnits":10000,"overageMicrosPerUnit":10000,"rateLimitRequests":100,"rateLimitWindowSeconds":60},"developer":{"monthlyPriceCents":4900,"includedUnits":100000,"monthlyQuotaUnits":1000000,"overageMicrosPerUnit":1000,"rateLimitRequests":1000,"rateLimitWindowSeconds":60},"business":{"monthlyPriceCents":49900,"includedUnits":5000000,"monthlyQuotaUnits":50000000,"overageMicrosPerUnit":500,"rateLimitRequests":10000,"rateLimitWindowSeconds":60},"enterprise":{"monthlyPriceCents":0,"includedUnits":null,"monthlyQuotaUnits":null,"overageMicrosPerUnit":0,"rateLimitRequests":null,"rateLimitWindowSeconds":null}}'
 spec:
   publishStatus: Published
   documentation:
@@ -40,6 +60,11 @@ apiVersion: devportal.kuadrant.io/v1alpha1
 kind: APIProduct
 metadata:
   name: time-api-jwt
+  annotations:
+    monetization.arencloud.com/product: time
+    monetization.arencloud.com/path: /timer
+    monetization.arencloud.com/unit: request
+    monetization.arencloud.com/plans: '{"free":{"monthlyPriceCents":0,"includedUnits":1000,"monthlyQuotaUnits":1000,"overageMicrosPerUnit":0,"rateLimitRequests":10,"rateLimitWindowSeconds":60},"payg":{"monthlyPriceCents":0,"includedUnits":0,"monthlyQuotaUnits":10000,"overageMicrosPerUnit":10000,"rateLimitRequests":100,"rateLimitWindowSeconds":60},"developer":{"monthlyPriceCents":4900,"includedUnits":100000,"monthlyQuotaUnits":1000000,"overageMicrosPerUnit":1000,"rateLimitRequests":1000,"rateLimitWindowSeconds":60},"business":{"monthlyPriceCents":49900,"includedUnits":5000000,"monthlyQuotaUnits":50000000,"overageMicrosPerUnit":500,"rateLimitRequests":10000,"rateLimitWindowSeconds":60},"enterprise":{"monthlyPriceCents":0,"includedUnits":null,"monthlyQuotaUnits":null,"overageMicrosPerUnit":0,"rateLimitRequests":null,"rateLimitWindowSeconds":null}}'
 spec:
   publishStatus: Published
   documentation:
@@ -98,6 +123,20 @@ spec:
         custom:
           - limit: 1000
             window: 1m
+    - tier: payg
+      limits:
+        monthly: 10000
+        custom:
+          - limit: 100
+            window: 1m
+    - tier: business
+      limits:
+        monthly: 50000000
+        custom:
+          - limit: 10000
+            window: 1m
+    - tier: enterprise
+      limits: {}
 ---
 apiVersion: kuadrant.io/v1
 kind: RateLimitPolicy
@@ -111,10 +150,13 @@ describe('generated API publication validation', () => {
     expect(validateGeneratedProject('arencloud', 'arencloud', 'time', files)).toEqual({
       product: 'time',
       path: '/timer',
-      freeRequestsPerMinute: 10,
-      freeMonthlyQuota: 1000,
-      developerRequestsPerMinute: 1000,
-      developerMonthlyQuota: 1000000,
+      unit: 'request',
+      limits: {
+        free: { minute: 10, month: 1000 },
+        payg: { minute: 100, month: 10000 },
+        developer: { minute: 1000, month: 1000000 },
+        business: { minute: 10000, month: 50000000 },
+      },
     });
   });
 

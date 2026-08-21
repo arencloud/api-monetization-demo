@@ -91,6 +91,26 @@ func TestAdmittedCommercialPlansRejectsRepositoryOnlyPricingTiers(t *testing.T) 
 	}
 }
 
+func TestProductCommercialTermsValidation(t *testing.T) {
+	t.Parallel()
+	monthly, included, quota := int64(0), int64(0), int64(10_000)
+	limit, window := int32(100), int32(60)
+	valid := commercialPlanTerms{
+		MonthlyPriceCents: &monthly, IncludedUnits: &included,
+		MonthlyQuotaUnits: &quota, OverageMicrosPerUnit: 10_000,
+		RateLimitRequests: &limit, RateLimitWindowSeconds: &window,
+	}
+	if !validCommercialPlanTerms(valid) {
+		t.Fatal("valid Pay-as-you-go product terms were rejected")
+	}
+	invalid := valid
+	overAllowance := int64(10_001)
+	invalid.IncludedUnits = &overAllowance
+	if validCommercialPlanTerms(invalid) {
+		t.Fatal("included units above the hard quota were accepted")
+	}
+}
+
 func TestPortalPublishesAIChatPlayground(t *testing.T) {
 	t.Parallel()
 	content, err := web.ReadFile("web/index.html")

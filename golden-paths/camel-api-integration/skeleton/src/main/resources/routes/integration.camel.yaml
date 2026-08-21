@@ -15,4 +15,4 @@
         - setHeader:
             name: Content-Type
             constant: application/json
-
+        - to: bean:usageReporter?method=record

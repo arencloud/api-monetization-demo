@@ -194,6 +194,39 @@ CREATE INDEX IF NOT EXISTS owner_access_requests_status_time
   ON monetization.owner_access_requests (status, created_at DESC);
 `
 
+const productPlanPricingMigration = `
+ALTER TABLE monetization.api_product_plans
+  ADD COLUMN IF NOT EXISTS monthly_price_cents bigint,
+  ADD COLUMN IF NOT EXISTS included_units bigint,
+  ADD COLUMN IF NOT EXISTS monthly_quota_units bigint,
+  ADD COLUMN IF NOT EXISTS overage_micros_per_unit bigint,
+  ADD COLUMN IF NOT EXISTS rate_limit_requests integer,
+  ADD COLUMN IF NOT EXISTS rate_limit_window_seconds integer;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='api_product_plans_terms_nonnegative') THEN
+    ALTER TABLE monetization.api_product_plans ADD CONSTRAINT api_product_plans_terms_nonnegative CHECK (
+      (monthly_price_cents IS NULL OR monthly_price_cents >= 0)
+      AND (included_units IS NULL OR included_units >= 0)
+      AND (monthly_quota_units IS NULL OR monthly_quota_units > 0)
+      AND (overage_micros_per_unit IS NULL OR overage_micros_per_unit >= 0)
+    );
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='api_product_plans_allowance_within_quota') THEN
+    ALTER TABLE monetization.api_product_plans ADD CONSTRAINT api_product_plans_allowance_within_quota CHECK (
+      monthly_quota_units IS NULL OR included_units IS NULL OR included_units <= monthly_quota_units
+    );
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='api_product_plans_rate_limit_pair') THEN
+    ALTER TABLE monetization.api_product_plans ADD CONSTRAINT api_product_plans_rate_limit_pair CHECK (
+      (rate_limit_requests IS NULL AND rate_limit_window_seconds IS NULL)
+      OR (rate_limit_requests > 0 AND rate_limit_window_seconds > 0)
+    );
+  END IF;
+END $$;
+`
+
 func applyDatabaseMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
@@ -224,6 +257,9 @@ func applyDatabaseMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	if _, err = tx.Exec(ctx, ownerAccessRequestMigration); err != nil {
 		return fmt.Errorf("apply owner access request migration: %w", err)
+	}
+	if _, err = tx.Exec(ctx, productPlanPricingMigration); err != nil {
+		return fmt.Errorf("apply product plan pricing migration: %w", err)
 	}
 	if _, err = tx.Exec(ctx, `
 		INSERT INTO monetization.schema_migrations (version, description)
@@ -266,6 +302,12 @@ func applyDatabaseMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 		VALUES (7, 'audited API owner access requests and approval decisions')
 		ON CONFLICT (version) DO NOTHING`); err != nil {
 		return fmt.Errorf("record owner access request migration: %w", err)
+	}
+	if _, err = tx.Exec(ctx, `
+		INSERT INTO monetization.schema_migrations (version, description)
+		VALUES (8, 'product-scoped prices, allowances, quotas, and rate limits')
+		ON CONFLICT (version) DO NOTHING`); err != nil {
+		return fmt.Errorf("record product plan pricing migration: %w", err)
 	}
 	return tx.Commit(ctx)
 }

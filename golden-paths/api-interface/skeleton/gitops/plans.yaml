@@ -17,6 +17,20 @@ spec:
         custom:
           - limit: ${{ values.developerRequestsPerMinute }}
             window: 1m
+    - tier: business
+      predicate: auth.identity.metadata.annotations['secret.kuadrant.io/plan-id'] == "business"
+      limits:
+        monthly: ${{ values.businessMonthlyQuota }}
+        custom:
+          - limit: ${{ values.businessRequestsPerMinute }}
+            window: 1m
+    - tier: payg
+      predicate: auth.identity.metadata.annotations['secret.kuadrant.io/plan-id'] == "payg"
+      limits:
+        monthly: ${{ values.paygMonthlyQuota }}
+        custom:
+          - limit: ${{ values.paygRequestsPerMinute }}
+            window: 1m
     - tier: free
       predicate: auth.identity.metadata.annotations['secret.kuadrant.io/plan-id'] == "free"
       limits:
@@ -34,6 +48,12 @@ metadata:
 spec:
   targetRef: {group: gateway.networking.k8s.io, kind: HTTPRoute, name: '${{ values.name }}-jwt'}
   limits:
+    business:
+      rates:
+        - {limit: '${{ values.businessRequestsPerMinute }}', window: 1m}
+        - {limit: '${{ values.businessMonthlyQuota }}', window: 720h}
+      counters: [{expression: auth.kuadrant.customer}]
+      when: [{predicate: 'auth.kuadrant.plan == "business"'}]
     free:
       rates:
         - limit: ${{ values.freeRequestsPerMinute }}
@@ -44,6 +64,12 @@ spec:
         - expression: auth.kuadrant.customer
       when:
         - predicate: auth.kuadrant.plan == "free"
+    payg:
+      rates:
+        - {limit: '${{ values.paygRequestsPerMinute }}', window: 1m}
+        - {limit: '${{ values.paygMonthlyQuota }}', window: 720h}
+      counters: [{expression: auth.kuadrant.customer}]
+      when: [{predicate: 'auth.kuadrant.plan == "payg"'}]
     developer:
       rates:
         - limit: ${{ values.developerRequestsPerMinute }}

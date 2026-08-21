@@ -157,9 +157,12 @@ peer authentication protect the facade-to-model hop.
 The control plane discovers API-key APIProducts dynamically. A product enters
 the subscription catalog only when it is `Published` and reports both
 `Ready=True` and `OpenAPISpecReady=True`; its available tiers come from the
-admitted PlanPolicy. Discovery never trusts repository-defined prices. It maps
-the generated plan identifiers to centrally governed commercial
-plan records, and hides a product again if its APIProduct ceases to be healthy.
+admitted PlanPolicy. Platform-owned products use central plan defaults. Golden
+Path products publish reviewed, product-scoped commercial terms alongside the
+same five plan identifiers. Publication validates their types and confirms that
+commercial quotas and request rates match the Connectivity Link policies before
+the control plane persists them. A product is hidden again if its APIProduct
+ceases to be healthy.
 Generated services expose their OpenAPI document on dedicated port 8082. A
 workload-scoped PeerAuthentication keeps API port 8080 in STRICT mTLS and
 exempts only the documentation port for the out-of-mesh Kuadrant portal
@@ -235,7 +238,8 @@ current plan; issuing and payment remain asynchronous business workflows.
 
 Commercial included allowance is deliberately distinct from enforcement quota.
 Free is a hard-capped tier and therefore cannot accrue paid overage. Pay as you
-go includes zero units and charges every accepted request until its separate
+go includes zero units and charges every accepted native unit—an API request or
+an AI token—until its separate
 monthly safety cap. Developer and Business also have hard quotas above their
 included allowances so production-scale usage can accrue overage without
 disabling abuse protection. Requests rejected with HTTP 429 never reach the API

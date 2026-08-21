@@ -37,9 +37,9 @@ Developer Hub validates the repository contract, creates a constrained Argo CD
 Application, and discovers the cluster's gateway and Keycloak hostnames. Argo CD
 then builds `main` with the integrated registry and reconciles `gitops/`. The API
 becomes available for consumer subscription only after the APIProduct reports
-both `Ready=True` and `OpenAPISpecReady=True`. Matching centrally governed
-commercial plans are attached automatically; API owners control their generated technical
-limits, while centrally governed prices remain unchanged.
+both `Ready=True` and `OpenAPISpecReady=True`. The reviewed APIProduct terms and
+Connectivity Link limits publish all five plans. Accepted request or token usage
+is sent to Billing automatically; rejected exchanges are not billed.
 
 The checked-in `bootstrap/argocd-application.yaml` is retained as a reviewable
 reference and disaster-recovery fallback. Normal publication must use Developer

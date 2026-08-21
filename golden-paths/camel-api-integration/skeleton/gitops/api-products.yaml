@@ -8,7 +8,8 @@ metadata:
     backstage.io/owner: ${{ values.owner }}
     monetization.arencloud.com/product: ${{ values.name }}
     monetization.arencloud.com/path: ${{ values.apiPath }}
-    monetization.arencloud.com/unit: request
+    monetization.arencloud.com/unit: ${{ values.billingUnit }}
+    monetization.arencloud.com/plans: '{"free":{"monthlyPriceCents":${{ values.freeMonthlyPriceCents }},"includedUnits":${{ values.freeIncludedUnits }},"monthlyQuotaUnits":${{ values.freeMonthlyQuota }},"overageMicrosPerUnit":${{ values.freeOverageMicrosPerUnit }},"rateLimitRequests":${{ values.freeRequestsPerMinute }},"rateLimitWindowSeconds":60},"payg":{"monthlyPriceCents":${{ values.paygMonthlyPriceCents }},"includedUnits":${{ values.paygIncludedUnits }},"monthlyQuotaUnits":${{ values.paygMonthlyQuota }},"overageMicrosPerUnit":${{ values.paygOverageMicrosPerUnit }},"rateLimitRequests":${{ values.paygRequestsPerMinute }},"rateLimitWindowSeconds":60},"developer":{"monthlyPriceCents":${{ values.developerMonthlyPriceCents }},"includedUnits":${{ values.developerIncludedUnits }},"monthlyQuotaUnits":${{ values.developerMonthlyQuota }},"overageMicrosPerUnit":${{ values.developerOverageMicrosPerUnit }},"rateLimitRequests":${{ values.developerRequestsPerMinute }},"rateLimitWindowSeconds":60},"business":{"monthlyPriceCents":${{ values.businessMonthlyPriceCents }},"includedUnits":${{ values.businessIncludedUnits }},"monthlyQuotaUnits":${{ values.businessMonthlyQuota }},"overageMicrosPerUnit":${{ values.businessOverageMicrosPerUnit }},"rateLimitRequests":${{ values.businessRequestsPerMinute }},"rateLimitWindowSeconds":60},"enterprise":{"monthlyPriceCents":${{ values.enterpriseMonthlyPriceCents }},"includedUnits":null,"monthlyQuotaUnits":null,"overageMicrosPerUnit":0,"rateLimitRequests":null,"rateLimitWindowSeconds":null}}'
 spec:
   displayName: ${{ values.displayName }}
   description: ${{ values.description }}
@@ -33,7 +34,8 @@ metadata:
     backstage.io/owner: ${{ values.owner }}
     monetization.arencloud.com/product: ${{ values.name }}
     monetization.arencloud.com/path: ${{ values.apiPath }}
-    monetization.arencloud.com/unit: request
+    monetization.arencloud.com/unit: ${{ values.billingUnit }}
+    monetization.arencloud.com/plans: '{"free":{"monthlyPriceCents":${{ values.freeMonthlyPriceCents }},"includedUnits":${{ values.freeIncludedUnits }},"monthlyQuotaUnits":${{ values.freeMonthlyQuota }},"overageMicrosPerUnit":${{ values.freeOverageMicrosPerUnit }},"rateLimitRequests":${{ values.freeRequestsPerMinute }},"rateLimitWindowSeconds":60},"payg":{"monthlyPriceCents":${{ values.paygMonthlyPriceCents }},"includedUnits":${{ values.paygIncludedUnits }},"monthlyQuotaUnits":${{ values.paygMonthlyQuota }},"overageMicrosPerUnit":${{ values.paygOverageMicrosPerUnit }},"rateLimitRequests":${{ values.paygRequestsPerMinute }},"rateLimitWindowSeconds":60},"developer":{"monthlyPriceCents":${{ values.developerMonthlyPriceCents }},"includedUnits":${{ values.developerIncludedUnits }},"monthlyQuotaUnits":${{ values.developerMonthlyQuota }},"overageMicrosPerUnit":${{ values.developerOverageMicrosPerUnit }},"rateLimitRequests":${{ values.developerRequestsPerMinute }},"rateLimitWindowSeconds":60},"business":{"monthlyPriceCents":${{ values.businessMonthlyPriceCents }},"includedUnits":${{ values.businessIncludedUnits }},"monthlyQuotaUnits":${{ values.businessMonthlyQuota }},"overageMicrosPerUnit":${{ values.businessOverageMicrosPerUnit }},"rateLimitRequests":${{ values.businessRequestsPerMinute }},"rateLimitWindowSeconds":60},"enterprise":{"monthlyPriceCents":${{ values.enterpriseMonthlyPriceCents }},"includedUnits":null,"monthlyQuotaUnits":null,"overageMicrosPerUnit":0,"rateLimitRequests":null,"rateLimitWindowSeconds":null}}'
 spec:
   displayName: ${{ values.displayName }} (Keycloak JWT)
   description: ${{ values.description }}

@@ -14,6 +14,7 @@ the first vertical slice.
 | --- | --- |
 | `plans` | Commercial price, included units, hard quota, overage rate, and enforcement window |
 | `api_products` | APIs available for subscription and usage attribution |
+| `api_product_plans` | Product availability plus optional owner-defined prices, allowances, quotas, and request-rate overrides |
 | `customers` | Stable customer identity independent of login identity |
 | `subscriptions` | Customer/product/plan relationship with optimistic version field |
 | `subscription_identities` | External provider identity mapped to one commercial customer |
@@ -30,6 +31,11 @@ plans; Inventory, Payment, and AI Chat products; and one Free Inventory
 subscription for Demo Company. All three products are enabled end to end. AI
 Chat uses `token` as its native commercial unit, while Inventory and Payment
 use `request`.
+
+Built-in products inherit the defaults in `plans`. A published Golden Path
+product stores reviewed overrides in `api_product_plans`, so the same plan name
+can cost €0.01 per request for one product and €0.02 per request for another.
+Subscriptions and invoices always resolve the terms for their product and plan.
 
 ## Important boundaries
 

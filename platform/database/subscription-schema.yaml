@@ -51,8 +51,27 @@ data:
     CREATE TABLE monetization.api_product_plans (
       api_product_id text NOT NULL REFERENCES monetization.api_products(id) ON DELETE CASCADE,
       plan_id text NOT NULL REFERENCES monetization.plans(id),
+      monthly_price_cents bigint,
+      included_units bigint,
+      monthly_quota_units bigint,
+      overage_micros_per_unit bigint,
+      rate_limit_requests integer,
+      rate_limit_window_seconds integer,
       created_at timestamptz NOT NULL DEFAULT now(),
-      PRIMARY KEY (api_product_id, plan_id)
+      PRIMARY KEY (api_product_id, plan_id),
+      CONSTRAINT api_product_plans_terms_nonnegative CHECK (
+        (monthly_price_cents IS NULL OR monthly_price_cents >= 0)
+        AND (included_units IS NULL OR included_units >= 0)
+        AND (monthly_quota_units IS NULL OR monthly_quota_units > 0)
+        AND (overage_micros_per_unit IS NULL OR overage_micros_per_unit >= 0)
+      ),
+      CONSTRAINT api_product_plans_allowance_within_quota CHECK (
+        monthly_quota_units IS NULL OR included_units IS NULL OR included_units <= monthly_quota_units
+      ),
+      CONSTRAINT api_product_plans_rate_limit_pair CHECK (
+        (rate_limit_requests IS NULL AND rate_limit_window_seconds IS NULL)
+        OR (rate_limit_requests > 0 AND rate_limit_window_seconds > 0)
+      )
     );
 
     CREATE TABLE monetization.customers (

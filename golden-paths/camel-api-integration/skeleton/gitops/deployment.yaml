@@ -31,6 +31,13 @@ spec:
         - name: camel
           image: image-registry.openshift-image-registry.svc:5000/api-monetization-apps/${{ values.name }}:latest
           imagePullPolicy: Always
+          env:
+            - name: USAGE_SINK_URL
+              value: http://monetization-control.api-monetization-data.svc.cluster.local:8081/internal/usage
+            - name: MONETIZATION_PRODUCT
+              value: ${{ values.name }}
+            - name: MONETIZATION_UNIT
+              value: ${{ values.billingUnit }}
           ports:
             - {name: http, containerPort: 8080}
             - {name: openapi, containerPort: 8082}
