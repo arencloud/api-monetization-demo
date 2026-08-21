@@ -69,6 +69,7 @@ func routes() http.Handler {
 	mux.HandleFunc("GET /openapi/keycloak-jwt.yaml", openAPIDocument(keycloakJWTOpenAPISpec, "JWT_BASE_URL", "https://jwt.api.example.invalid"))
 	mux.HandleFunc("GET /metrics", metrics)
 	mux.HandleFunc("GET ${{ values.apiPath }}", api)
+	mux.HandleFunc("OPTIONS ${{ values.apiPath }}", preflight)
 	return mux
 }
 
@@ -83,6 +84,10 @@ func api(w http.ResponseWriter, r *http.Request) {
 
 func health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func preflight(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func openAPIDocument(specification []byte, environmentName, placeholder string) http.HandlerFunc {

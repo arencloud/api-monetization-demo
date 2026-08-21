@@ -8,6 +8,7 @@ surface:
 
 - Go 1.26 service and tests;
 - separate OpenAPI contracts for API-key and Keycloak Bearer JWT consumers;
+- browser-ready CORS preflight and response handling for Developer Hub's OpenAPI console;
 - OpenShift BuildConfig and ImageStream;
 - hardened, mesh-enabled workload resources;
 - Gateway API routes for API-key and Keycloak JWT traffic;
@@ -26,6 +27,10 @@ go test ./...
 go run .
 curl http://localhost:8080${{ values.apiPath }}
 ```
+
+In Developer Hub's OpenAPI console, paste `APIKEY <credential>` into the API-key
+authorization field. The Keycloak contract accepts the JWT alone and adds the
+standard `Bearer` prefix automatically.
 
 ## Publish through Developer Hub
 

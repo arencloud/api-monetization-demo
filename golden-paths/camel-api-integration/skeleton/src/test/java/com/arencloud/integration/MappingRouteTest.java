@@ -36,6 +36,15 @@ class MappingRouteTest {
         org.junit.jupiter.api.Assertions.assertFalse(jwt.contains("type: apiKey"));
     }
 
+    @Test
+    void acceptsBrowserPreflight() {
+        given()
+        .when()
+            .options("${{ values.apiPath }}")
+        .then()
+            .statusCode(204);
+    }
+
     private static String resource(String name) throws IOException {
         try (var stream = Thread.currentThread().getContextClassLoader().getResourceAsStream(name)) {
             org.junit.jupiter.api.Assertions.assertNotNull(stream, name + " is missing");

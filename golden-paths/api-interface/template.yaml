@@ -6,7 +6,7 @@ metadata:
   description: Create a contract-first API with RHCL policies, plans, OpenShift builds, and GitOps.
   annotations:
     backstage.io/techdocs-ref: dir:.
-    backstage.io/template-version: 1.4.0
+    backstage.io/template-version: 1.4.1
   tags:
     - api
     - gateway-api

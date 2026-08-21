@@ -186,7 +186,7 @@ and receives API-key plus Keycloak JWT presentations only when the APIProduct
 and OpenAPI contract are ready. Consumers cannot discover draft projects and
 cannot open a production API until they subscribe.
 
-Template 1.4 generates all five commercial tiers, lets the API owner set
+Template 1.4.1 generates all five commercial tiers, lets the API owner set
 product-specific prices and limits under pull-request review, and wires accepted
 request or AI-token usage into the billing control plane automatically.
 

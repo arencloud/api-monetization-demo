@@ -203,10 +203,35 @@ export function validateGeneratedProject(
     throw new InputError('both APIProducts must be Published and contain the generated product and path annotations');
   }
 
-  namedDocument(files.routes, 'HTTPRoute', `${repository}-api-key`);
-  namedDocument(files.routes, 'HTTPRoute', `${repository}-jwt`);
+  const apiKeyRoute = namedDocument(files.routes, 'HTTPRoute', `${repository}-api-key`);
+  const jwtRoute = namedDocument(files.routes, 'HTTPRoute', `${repository}-jwt`);
+  const apiKeyPreflightRoute = namedDocument(
+    files.routes, 'HTTPRoute', `${repository}-api-key-preflight`,
+  );
+  const jwtPreflightRoute = namedDocument(
+    files.routes, 'HTTPRoute', `${repository}-jwt-preflight`,
+  );
+  if ([apiKeyRoute, jwtRoute].some(route =>
+    !/name:\s*Access-Control-Allow-Origin(?:,\s*|\s*\n\s*)value:\s*["']?\*["']?/m.test(route))) {
+    throw new InputError('API routes must expose portable browser CORS response headers');
+  }
+  for (const route of [apiKeyPreflightRoute, jwtPreflightRoute]) {
+    if (
+      !/^\s*-\s*method:\s*OPTIONS\s*$/m.test(route) ||
+      !/name:\s*Access-Control-Allow-Origin(?:,\s*|\s*\n\s*)value:\s*["']?\*["']?/m.test(route) ||
+      !/name:\s*Access-Control-Allow-Headers(?:,\s*|\s*\n\s*)value:\s*["']?Authorization, Content-Type["']?/m.test(route)
+    ) {
+      throw new InputError('API routes must include anonymous browser preflight handling');
+    }
+  }
   namedDocument(files.authPolicies, 'AuthPolicy', `${repository}-api-key`);
   namedDocument(files.authPolicies, 'AuthPolicy', `${repository}-jwt`);
+  for (const name of [`${repository}-api-key-preflight`, `${repository}-jwt-preflight`]) {
+    const policy = namedDocument(files.authPolicies, 'AuthPolicy', name);
+    if (!/^\s*browser-preflight:\s*\n\s*anonymous:\s*\{\}\s*$/m.test(policy)) {
+      throw new InputError('browser preflight policies must allow only anonymous OPTIONS requests');
+    }
+  }
   const peerAuthentication = namedDocument(
     files.peerAuthentication, 'PeerAuthentication', repository,
   );

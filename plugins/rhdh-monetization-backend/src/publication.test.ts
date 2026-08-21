@@ -75,11 +75,61 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: time-api-key
+spec:
+  rules:
+    - matches:
+        - method: GET
+      filters:
+        - responseHeaderModifier:
+            set:
+              - name: Access-Control-Allow-Origin
+                value: "*"
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: time-jwt
+spec:
+  rules:
+    - matches:
+        - method: GET
+      filters:
+        - responseHeaderModifier:
+            set:
+              - name: Access-Control-Allow-Origin
+                value: "*"
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: time-api-key-preflight
+spec:
+  rules:
+    - matches:
+        - method: OPTIONS
+      filters:
+        - responseHeaderModifier:
+            set:
+              - name: Access-Control-Allow-Origin
+                value: "*"
+              - name: Access-Control-Allow-Headers
+                value: Authorization, Content-Type
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: time-jwt-preflight
+spec:
+  rules:
+    - matches:
+        - method: OPTIONS
+      filters:
+        - responseHeaderModifier:
+            set:
+              - name: Access-Control-Allow-Origin
+                value: "*"
+              - name: Access-Control-Allow-Headers
+                value: Authorization, Content-Type
 `,
   authPolicies: `
 apiVersion: kuadrant.io/v1
@@ -91,6 +141,26 @@ apiVersion: kuadrant.io/v1
 kind: AuthPolicy
 metadata:
   name: time-jwt
+---
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: time-api-key-preflight
+spec:
+  rules:
+    authentication:
+      browser-preflight:
+        anonymous: {}
+---
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: time-jwt-preflight
+spec:
+  rules:
+    authentication:
+      browser-preflight:
+        anonymous: {}
 `,
   peerAuthentication: `
 apiVersion: security.istio.io/v1
@@ -190,5 +260,12 @@ describe('generated API publication validation', () => {
         "  owner: group:default/api-owners\n  providesApis: ['time-api', 'time-api-jwt']",
       ),
     })).toThrow('consumers cannot read owner Components');
+  });
+
+  it('rejects a generated API without browser preflight governance', () => {
+    expect(() => validateGeneratedProject('arencloud', 'time', {
+      ...files,
+      routes: files.routes.replace('method: OPTIONS', 'method: DELETE'),
+    })).toThrow('anonymous browser preflight');
   });
 });

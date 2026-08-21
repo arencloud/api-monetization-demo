@@ -170,14 +170,13 @@ workload-scoped PeerAuthentication keeps API port 8080 in STRICT mTLS and
 exempts only the documentation port for the out-of-mesh Kuadrant portal
 controller.
 
-The AI Chat playground runs in the existing developer portal but sends
-inference directly to the cluster-admitted API-key or JWT Gateway hostname.
-Dedicated method-specific `OPTIONS` HTTPRoutes use anonymous AuthPolicies only
-for browser preflight. `POST` remains on the authenticated routes and all
-responses, including RHCL denials, receive non-credentialed portable CORS
-headers. API keys are retained only in the current browser memory after their
-one-time reveal; the playground neither persists them nor sends browser
-cookies to an API route.
+Developer Hub's OpenAPI console and the AI Chat playground send requests
+directly to cluster-admitted API-key or JWT Gateway hostnames. Dedicated
+method-specific `OPTIONS` HTTPRoutes use anonymous AuthPolicies only for browser
+preflight. The API operations remain on authenticated routes and all responses,
+including RHCL denials, receive non-credentialed portable CORS headers. API
+keys are retained only in the current browser memory after their one-time
+reveal; browser clients neither persist them nor send cookies to an API route.
 
 ## Request lifecycle
 

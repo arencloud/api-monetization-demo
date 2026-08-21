@@ -54,7 +54,7 @@ VALUES = {
     "repoOwner": "api-team-2",
 }
 VALUE_EXPRESSION = re.compile(r"\$\{\{\s*values\.([A-Za-z0-9_]+)\s*\}\}")
-TEMPLATE_VERSION = "1.4.0"
+TEMPLATE_VERSION = "1.4.1"
 GITHUB_OWNER_PATTERN = r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$"
 
 
@@ -426,6 +426,48 @@ def assert_rendered_project(kind: str, project: pathlib.Path) -> None:
     plans = (project / "gitops/plans.yaml").read_text(encoding="utf-8")
     if "api-monetization.invalid" not in routes or "jwt.api-monetization.invalid" not in routes:
         fail(f"{kind}: generated routes must use portable publication placeholders")
+    route_documents = {
+        resource.get("metadata", {}).get("name"): resource
+        for resource in yaml.safe_load_all(routes)
+        if resource
+    }
+    auth_documents = {
+        resource.get("metadata", {}).get("name"): resource
+        for resource in yaml.safe_load_all(auth)
+        if resource
+    }
+    for credential_route in ("orders-edge-api-key", "orders-edge-jwt"):
+        resource = route_documents.get(credential_route, {})
+        response_headers = {
+            header.get("name", "").lower(): header.get("value", "")
+            for rule in resource.get("spec", {}).get("rules", [])
+            for item in rule.get("filters", [])
+            for header in item.get("responseHeaderModifier", {}).get("set", [])
+        }
+        if response_headers.get("access-control-allow-origin") != "*":
+            fail(f"{kind}: {credential_route} must expose portable browser CORS headers")
+    for preflight_route in ("orders-edge-api-key-preflight", "orders-edge-jwt-preflight"):
+        resource = route_documents.get(preflight_route, {})
+        rules = resource.get("spec", {}).get("rules", [])
+        matches = [match for rule in rules for match in rule.get("matches", [])]
+        response_headers = {
+            header.get("name", "").lower(): header.get("value", "")
+            for rule in rules
+            for item in rule.get("filters", [])
+            for header in item.get("responseHeaderModifier", {}).get("set", [])
+        }
+        if (
+            not any(match.get("method") == "OPTIONS" for match in matches)
+            or response_headers.get("access-control-allow-origin") != "*"
+            or "Authorization" not in response_headers.get("access-control-allow-headers", "")
+        ):
+            fail(f"{kind}: {preflight_route} must provide portable browser preflight handling")
+        authentication = (
+            auth_documents.get(preflight_route, {})
+            .get("spec", {}).get("rules", {}).get("authentication", {})
+        )
+        if authentication != {"browser-preflight": {"anonymous": {}}}:
+            fail(f"{kind}: {preflight_route} must allow only anonymous browser preflight")
     api_products = (project / "gitops/api-products.yaml").read_text(encoding="utf-8")
     if (
         api_products.count("svc.cluster.local:8082/openapi/api-key.yaml") != 1
@@ -448,7 +490,7 @@ def assert_rendered_project(kind: str, project: pathlib.Path) -> None:
             "type": "apiKey",
             "in": "header",
             "name": "Authorization",
-            "description": "Use `APIKEY <credential>`.",
+            "description": "Paste the complete authorization value, including the prefix — `APIKEY <credential>`. OpenAPI clients do not add this custom prefix automatically.",
         }
     }:
         fail(f"{kind}: API-key contract must expose only the APIKEY Authorization header")

@@ -4,7 +4,7 @@ ${{ values.description }}
 
 This repository was created by the **Monetized Camel API integration** Golden
 Path. It uses the supported Red Hat Camel Quarkus platform and includes a
-Kaoto-editable YAML route, authentication-specific OpenAPI contracts, tests, OpenShift builds, Service Mesh,
+Kaoto-editable YAML route, authentication-specific OpenAPI contracts, browser-ready CORS handling, tests, OpenShift builds, Service Mesh,
 Gateway API, RHCL authentication and plans, APIProducts, monitoring, and
 governed self-service publication through Red Hat Developer Hub.
 
@@ -20,6 +20,10 @@ curl -X POST http://localhost:8080${{ values.apiPath }} \
   -H 'content-type: application/json' \
   -d '{"correlationId":"order-42","payload":{"amount":49}}'
 ```
+
+In Developer Hub's OpenAPI console, paste `APIKEY <credential>` into the API-key
+authorization field. The Keycloak contract accepts the JWT alone and adds the
+standard `Bearer` prefix automatically.
 
 Open `src/main/resources/routes/integration.camel.yaml` in Kaoto to extend the
 route visually. Keep transformations in focused CDI beans so they remain easy

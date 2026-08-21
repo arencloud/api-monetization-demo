@@ -139,10 +139,18 @@ The templates generate:
 - API-key and Keycloak JWT routes and AuthPolicies;
 - separate OpenAPI documents: API-key products show only the `APIKEY` header,
   while Keycloak products show only an HTTP Bearer JWT authorization control;
+- authenticated response headers plus anonymous, method-specific `OPTIONS`
+  routes so the Developer Hub OpenAPI console can call either endpoint without
+  weakening the protected API operation;
 - API-key `PlanPolicy` limits for Free, Pay as you go, Developer, Business, and
   unlimited Enterprise;
 - a plan-aware JWT `RateLimitPolicy` with matching per-consumer limits;
 - separate APIProduct entries for API-key and OIDC discovery.
+
+For API-key execution in the OpenAPI console, paste the complete authorization
+value as `APIKEY <credential>`. OpenAPI's standard `apiKey` scheme sends the
+entered header value verbatim; unlike the Keycloak `bearer` scheme, it cannot
+add a custom prefix automatically.
 
 API owners define the technical safety envelope and product-specific commercial
 terms. The APIProduct stores prices as integer euro cents and micro-euros per
