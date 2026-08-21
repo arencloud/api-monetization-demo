@@ -54,7 +54,7 @@ metadata:
 spec:
   publishStatus: Published
   documentation:
-    openAPISpecURL: http://time.api-monetization-apps.svc.cluster.local:8082/openapi.yaml
+    openAPISpecURL: http://time.api-monetization-apps.svc.cluster.local:8082/openapi/api-key.yaml
 ---
 apiVersion: devportal.kuadrant.io/v1alpha1
 kind: APIProduct
@@ -68,7 +68,7 @@ metadata:
 spec:
   publishStatus: Published
   documentation:
-    openAPISpecURL: http://time.api-monetization-apps.svc.cluster.local:8082/openapi.yaml
+    openAPISpecURL: http://time.api-monetization-apps.svc.cluster.local:8082/openapi/keycloak-jwt.yaml
 `,
   routes: `
 apiVersion: gateway.networking.k8s.io/v1
@@ -147,7 +147,7 @@ metadata:
 
 describe('generated API publication validation', () => {
   it('accepts the governed Time repository contract and extracts its limits', () => {
-    expect(validateGeneratedProject('arencloud', 'arencloud', 'time', files)).toEqual({
+    expect(validateGeneratedProject('arencloud', 'time', files)).toEqual({
       product: 'time',
       path: '/timer',
       unit: 'request',
@@ -160,23 +160,30 @@ describe('generated API publication validation', () => {
     });
   });
 
-  it('rejects another organization or an unpublished API', () => {
-    expect(() => validateGeneratedProject('arencloud', 'other', 'time', files)).toThrow(InputError);
-    expect(() => validateGeneratedProject('arencloud', 'arencloud', 'time', {
+  it('accepts a valid owner-selected organization and rejects unsafe coordinates', () => {
+    expect(validateGeneratedProject('api-team-2', 'time', {
+      ...files,
+      catalog: files.catalog.replace('arencloud/time', 'api-team-2/time'),
+    }).product).toBe('time');
+    expect(() => validateGeneratedProject('other/path', 'time', files)).toThrow(InputError);
+  });
+
+  it('rejects an unpublished API', () => {
+    expect(() => validateGeneratedProject('arencloud', 'time', {
       ...files,
       apiProducts: files.apiProducts.replaceAll('Published', 'Draft'),
     })).toThrow('both APIProducts must be Published');
   });
 
   it('rejects a duplicate static API catalog entity', () => {
-    expect(() => validateGeneratedProject('arencloud', 'arencloud', 'time', {
+    expect(() => validateGeneratedProject('arencloud', 'time', {
       ...files,
       catalog: `${files.catalog}\n---\napiVersion: backstage.io/v1alpha1\nkind: API\nmetadata:\n  name: time\n`,
     })).toThrow('must not define static API entities');
   });
 
   it('rejects a Component relation that consumers cannot resolve', () => {
-    expect(() => validateGeneratedProject('arencloud', 'arencloud', 'time', {
+    expect(() => validateGeneratedProject('arencloud', 'time', {
       ...files,
       catalog: files.catalog.replace(
         '  owner: group:default/api-owners',

@@ -7,14 +7,18 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/${{ values.repoOwner }}/${{ values.name }}/internal/telemetry"
 )
 
-//go:embed openapi/openapi.yaml
-var openAPISpec []byte
+//go:embed openapi/api-key.yaml
+var apiKeyOpenAPISpec []byte
+
+//go:embed openapi/keycloak-jwt.yaml
+var keycloakJWTOpenAPISpec []byte
 
 var requestCount atomic.Uint64
 
@@ -31,7 +35,9 @@ func main() {
 	}
 	docsMux := http.NewServeMux()
 	docsMux.HandleFunc("GET /healthz", health)
-	docsMux.HandleFunc("GET /openapi.yaml", openAPI)
+	docsMux.HandleFunc("GET /openapi.yaml", openAPIDocument(apiKeyOpenAPISpec, "API_KEY_BASE_URL", "https://api.example.invalid"))
+	docsMux.HandleFunc("GET /openapi/api-key.yaml", openAPIDocument(apiKeyOpenAPISpec, "API_KEY_BASE_URL", "https://api.example.invalid"))
+	docsMux.HandleFunc("GET /openapi/keycloak-jwt.yaml", openAPIDocument(keycloakJWTOpenAPISpec, "JWT_BASE_URL", "https://jwt.api.example.invalid"))
 	docsServer := &http.Server{
 		Addr:              env("DOCS_ADDR", ":8082"),
 		Handler:           docsMux,
@@ -58,7 +64,9 @@ func routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", health)
 	mux.HandleFunc("GET /readyz", health)
-	mux.HandleFunc("GET /openapi.yaml", openAPI)
+	mux.HandleFunc("GET /openapi.yaml", openAPIDocument(apiKeyOpenAPISpec, "API_KEY_BASE_URL", "https://api.example.invalid"))
+	mux.HandleFunc("GET /openapi/api-key.yaml", openAPIDocument(apiKeyOpenAPISpec, "API_KEY_BASE_URL", "https://api.example.invalid"))
+	mux.HandleFunc("GET /openapi/keycloak-jwt.yaml", openAPIDocument(keycloakJWTOpenAPISpec, "JWT_BASE_URL", "https://jwt.api.example.invalid"))
 	mux.HandleFunc("GET /metrics", metrics)
 	mux.HandleFunc("GET ${{ values.apiPath }}", api)
 	return mux
@@ -77,10 +85,13 @@ func health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func openAPI(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/yaml")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(openAPISpec)
+func openAPIDocument(specification []byte, environmentName, placeholder string) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		body := strings.ReplaceAll(string(specification), placeholder, env(environmentName, placeholder))
+		w.Header().Set("Content-Type", "application/yaml")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(body))
+	}
 }
 
 func metrics(w http.ResponseWriter, _ *http.Request) {

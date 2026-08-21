@@ -10,26 +10,45 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 /** Serves the API contract on the mesh-exempt documentation-only port. */
 @ApplicationScoped
 public class OpenApiDocumentationServer {
     private HttpServer server;
-    private byte[] specification;
+    private Map<String, byte[]> specifications;
 
     void start(@Observes StartupEvent ignored) throws IOException {
-        try (InputStream stream = Thread.currentThread().getContextClassLoader()
-                .getResourceAsStream("META-INF/resources/openapi.yaml")) {
-            if (stream == null) {
-                throw new IOException("openapi.yaml is missing from the application");
-            }
-            specification = stream.readAllBytes();
-        }
+        byte[] apiKey = loadSpecification(
+                "META-INF/resources/openapi-api-key.yaml",
+                "API_KEY_BASE_URL",
+                "https://api.example.invalid");
+        byte[] keycloakJwt = loadSpecification(
+                "META-INF/resources/openapi-keycloak-jwt.yaml",
+                "JWT_BASE_URL",
+                "https://jwt.api.example.invalid");
+        specifications = Map.of(
+                "/openapi.yaml", apiKey,
+                "/openapi/api-key.yaml", apiKey,
+                "/openapi/keycloak-jwt.yaml", keycloakJwt);
         int port = Integer.parseInt(System.getenv().getOrDefault("DOCS_PORT", "8082"));
         server = HttpServer.create(new InetSocketAddress(port), 0);
         server.createContext("/healthz", exchange -> respond(exchange, "text/plain", "ok\n".getBytes(StandardCharsets.UTF_8)));
-        server.createContext("/openapi.yaml", exchange -> respond(exchange, "application/yaml", specification));
+        specifications.forEach((path, body) ->
+                server.createContext(path, exchange -> respond(exchange, "application/yaml", body)));
         server.start();
+    }
+
+    private static byte[] loadSpecification(String resource, String environmentName, String placeholder)
+            throws IOException {
+        try (InputStream stream = Thread.currentThread().getContextClassLoader().getResourceAsStream(resource)) {
+            if (stream == null) {
+                throw new IOException(resource + " is missing from the application");
+            }
+            String source = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+            String endpoint = System.getenv().getOrDefault(environmentName, placeholder);
+            return source.replace(placeholder, endpoint).getBytes(StandardCharsets.UTF_8);
+        }
     }
 
     void stop(@Observes ShutdownEvent ignored) {

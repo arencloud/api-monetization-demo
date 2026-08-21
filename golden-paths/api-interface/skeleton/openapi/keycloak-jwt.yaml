@@ -1,16 +1,18 @@
 openapi: 3.0.3
 info:
-  title: ${{ values.displayName }}
+  title: ${{ values.displayName }} (Keycloak JWT)
   version: 1.0.0
   description: ${{ values.description }}
 servers:
-  - url: https://api.example.invalid
-    description: Replaced by the admitted Gateway API hostname after onboarding
+  - url: https://jwt.api.example.invalid
+    description: Keycloak JWT endpoint; replaced by the admitted Gateway API hostname during publication
 paths:
   ${{ values.apiPath }}:
     get:
-      operationId: get${{ values.name }}
-      summary: Invoke ${{ values.displayName }}
+      operationId: get${{ values.name }}WithKeycloakJwt
+      summary: Invoke ${{ values.displayName }} with a Keycloak access token
+      security:
+        - keycloakBearer: []
       responses:
         '200':
           description: Successful response
@@ -23,20 +25,13 @@ paths:
                   api: {type: string}
                   message: {type: string}
                   request: {type: string}
-        '401': {description: A valid API key or Keycloak token is required}
+        '401': {description: A valid Keycloak bearer token is required}
         '403': {description: An active subscription is required}
         '429': {description: The selected plan limit has been reached}
 components:
   securitySchemes:
-    apiKey:
-      type: apiKey
-      in: header
-      name: Authorization
-      description: Use `APIKEY <credential>`.
-    keycloak:
-      type: openIdConnect
-      openIdConnectUrl: https://keycloak.example.invalid/realms/api-monetization/.well-known/openid-configuration
-security:
-  - apiKey: []
-  - keycloak: []
-
+    keycloakBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'Paste the Keycloak access token. Swagger sends it as `Authorization: Bearer <token>`.'

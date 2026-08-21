@@ -6,7 +6,7 @@ metadata:
   description: Create a Red Hat Camel Quarkus mapping/orchestration API with RHCL plans and GitOps.
   annotations:
     backstage.io/techdocs-ref: dir:.
-    backstage.io/template-version: 1.3.0
+    backstage.io/template-version: 1.4.0
   tags:
     - api
     - camel
@@ -120,10 +120,12 @@ spec:
       required: [repoOwner, repoVisibility, githubToken]
       properties:
         repoOwner:
-          title: Approved GitHub organization
+          title: GitHub organization
           type: string
+          description: Organization where the dedicated repository will be created. The task token must have repository creation permission in this organization.
           default: arencloud
-          enum: [arencloud]
+          pattern: '^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$'
+          maxLength: 39
         repoVisibility:
           title: Repository visibility
           type: string

@@ -7,7 +7,7 @@ Red Hat Developer Hub. It is contract-first and includes the complete API owner
 surface:
 
 - Go 1.26 service and tests;
-- OpenAPI contract;
+- separate OpenAPI contracts for API-key and Keycloak Bearer JWT consumers;
 - OpenShift BuildConfig and ImageStream;
 - hardened, mesh-enabled workload resources;
 - Gateway API routes for API-key and Keycloak JWT traffic;

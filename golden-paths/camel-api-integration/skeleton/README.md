@@ -4,7 +4,7 @@ ${{ values.description }}
 
 This repository was created by the **Monetized Camel API integration** Golden
 Path. It uses the supported Red Hat Camel Quarkus platform and includes a
-Kaoto-editable YAML route, OpenAPI, tests, OpenShift builds, Service Mesh,
+Kaoto-editable YAML route, authentication-specific OpenAPI contracts, tests, OpenShift builds, Service Mesh,
 Gateway API, RHCL authentication and plans, APIProducts, monitoring, and
 governed self-service publication through Red Hat Developer Hub.
 

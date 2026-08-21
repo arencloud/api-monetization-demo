@@ -38,8 +38,10 @@ Choose template → Create repository → Open Dev Spaces → Develop and review
    and the prices, allowances, quotas, and request rates for all five plans.
 5. Keep the initial catalog status at **Draft** while the API and commercial
    model are reviewed.
-6. Provide a GitHub token for this task. The portable profile creates a public
-   repository so catalog registration and OpenShift builds work immediately.
+6. Enter the GitHub organization that will own the repository and provide a
+   GitHub token for this task. The token must be allowed to create a repository
+   in that organization. The portable profile creates a public repository so
+   catalog registration and OpenShift builds work immediately.
 7. Select **Open in OpenShift Dev Spaces** from the task output or the
    Component Overview page. Dev Spaces clones the new repository and offers
    the generated test and run commands. The Overview action also supports
@@ -91,7 +93,8 @@ The form treats the token as a Developer Hub scaffolder secret. The token is
 passed directly to `publish:github` for the current task and is not rendered
 into the generated repository, Kubernetes resources, task parameters, or Git
 history. It must belong to an identity allowed to create repositories in the
-`arencloud` organization and write their initial contents.
+organization entered in the form and write their initial contents. Organization
+names are syntax-validated before the task starts; the default is `arencloud`.
 
 For a longer-lived production setup, configure a centrally managed GitHub App
 for Developer Hub and rotate its credentials through the platform secret
@@ -111,8 +114,10 @@ Generated repositories cannot deploy arbitrary cluster resources. Their Argo
 CD Applications use the `api-monetization-api-owners` AppProject, which permits
 only approved namespaced workload, build, monitoring, Gateway API, RHCL, and
 APIProduct kinds in `api-monetization-apps`. It excludes Secrets, RBAC, and all
-cluster-scoped resources and accepts sources only from the approved GitHub
-organization.
+cluster-scoped resources. The source pattern accepts a generated repository
+from any GitHub organization, while the publication backend validates the
+organization and repository coordinates, generated catalog identity, complete
+resource set, and commercial contract before it is allowed into that project.
 
 The checked-in bootstrap Application intentionally omits automated sync and is
 kept as a review and recovery artifact. Normal publication is performed by the
@@ -132,6 +137,8 @@ to reopen the same repository in Dev Spaces.
 The templates generate:
 
 - API-key and Keycloak JWT routes and AuthPolicies;
+- separate OpenAPI documents: API-key products show only the `APIKEY` header,
+  while Keycloak products show only an HTTP Bearer JWT authorization control;
 - API-key `PlanPolicy` limits for Free, Pay as you go, Developer, Business, and
   unlimited Enterprise;
 - a plan-aware JWT `RateLimitPolicy` with matching per-consumer limits;

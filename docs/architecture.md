@@ -105,12 +105,14 @@ administrator concerns. API-owner Components with a validated
 `github.com/project-slug` annotation receive an **Open in Dev Spaces** action,
 including projects created by earlier Golden Path template versions. Current
 Golden Path repositories additionally receive a **Publish API** action. The
-backend accepts only the configured GitHub organization, validates catalog
-ownership and the governed resource set, and creates an Argo CD Application in
+backend accepts the validated GitHub organization selected by the owner,
+validates repository coordinates, catalog ownership and the governed resource
+set, and creates an Argo CD Application in
 the restricted `api-monetization-api-owners` AppProject. It discovers Route and
-Keycloak hosts at publication time and overlays mandatory active-subscription
-authorization and plan-aware JWT limits; API owners cannot replace those
-platform controls.
+Keycloak hosts at publication time, injects the admitted API-key and JWT
+endpoints into separate authentication-specific OpenAPI documents, and overlays
+mandatory active-subscription authorization and plan-aware JWT limits; API
+owners cannot replace those platform controls.
 
 `TokenRateLimitPolicy` discovery is implemented in the custom backend because
 the tested Kuadrant 0.4.0 backend does not expose that CRD. The endpoint uses
