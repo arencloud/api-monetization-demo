@@ -1,0 +1,78 @@
+openapi: 3.0.3
+info:
+  title: Inventory API
+  version: 1.0.0
+  description: Product and stock availability API protected and monetized by Red Hat Connectivity Link.
+servers:
+  - url: https://api-monetization.invalid
+    description: API-key endpoint; replaced by the admitted Gateway API hostname during publication
+tags:
+  - name: inventory
+    description: Product availability operations
+paths:
+  /inventory:
+    get:
+      tags: [inventory]
+      operationId: listInventoryWithApiKey
+      summary: List inventory
+      description: Returns all demonstration inventory items available to the subscribed consumer.
+      security:
+        - apiKey: []
+      responses:
+        '200':
+          description: Current inventory
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryList'
+        '401': {description: A valid API key is required}
+        '403': {description: An active subscription is required}
+        '429': {description: The selected plan limit has been reached}
+  /inventory/{sku}:
+    get:
+      tags: [inventory]
+      operationId: getInventoryItemWithApiKey
+      summary: Get one inventory item
+      security:
+        - apiKey: []
+      parameters:
+        - name: sku
+          in: path
+          required: true
+          description: Stock keeping unit identifier
+          schema: {type: string, example: RHCL-001}
+      responses:
+        '200':
+          description: Inventory item
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryItem'
+        '401': {description: A valid API key is required}
+        '403': {description: An active subscription is required}
+        '404': {description: Item not found}
+        '429': {description: The selected plan limit has been reached}
+components:
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: "Paste the API key only. Developer Hub automatically sends it as `Authorization: APIKEY <credential>`."
+  schemas:
+    InventoryItem:
+      type: object
+      required: [sku, name, available, region]
+      properties:
+        sku: {type: string, example: RHCL-001}
+        name: {type: string, example: Connectivity Link}
+        available: {type: integer, example: 42}
+        region: {type: string, example: primary}
+    InventoryList:
+      type: object
+      required: [items, count]
+      properties:
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/InventoryItem'}
+        count: {type: integer, example: 3}

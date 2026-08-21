@@ -159,8 +159,10 @@ hostname_ignores = {
 }
 required_hostname_ignores = {
     "inventory-api-key", "inventory-jwt", "payments-api-key", "payments-jwt",
-    "ai-chat-api-key", "ai-chat-jwt", "ai-chat-api-key-preflight",
-    "ai-chat-jwt-preflight",
+    "ai-chat-api-key", "ai-chat-jwt",
+    "inventory-api-key-preflight", "inventory-jwt-preflight",
+    "payments-api-key-preflight", "payments-jwt-preflight",
+    "ai-chat-api-key-preflight", "ai-chat-jwt-preflight",
 }
 if not required_hostname_ignores.issubset(hostname_ignores):
     raise SystemExit(
@@ -766,21 +768,49 @@ for policy in ai_auth_policies:
     if response_properties != expected_properties:
         raise SystemExit(f"{policy['metadata']['name']}: AuthPolicy must publish customer, plan, and subscription metadata for RHCL token accounting")
 
-with open("platform/gateway/ai-chat-routes.yaml", encoding="utf-8") as stream:
-    ai_routes = [resource for resource in yaml.safe_load_all(stream) if resource]
-preflight_route_names = {"ai-chat-api-key-preflight", "ai-chat-jwt-preflight"}
-for route in ai_routes:
-    route_name = route.get("metadata", {}).get("name")
-    rules = route.get("spec", {}).get("rules", [])
-    if route_name in preflight_route_names:
+browser_products = {
+    "inventory": ("/inventory", "platform/gateway/inventory-routes.yaml", "platform/gateway/inventory-auth-policies.yaml"),
+    "payments": ("/payments", "platform/gateway/payments-routes.yaml", "platform/gateway/payments-auth-policies.yaml"),
+    "ai-chat": ("/v1/chat/completions", "platform/gateway/ai-chat-routes.yaml", "platform/gateway/ai-chat-auth-policies.yaml"),
+}
+for product, (path, route_file, policy_file) in browser_products.items():
+    with open(route_file, encoding="utf-8") as stream:
+        routes = [resource for resource in yaml.safe_load_all(stream) if resource]
+    with open(policy_file, encoding="utf-8") as stream:
+        policies = [resource for resource in yaml.safe_load_all(stream) if resource]
+    primary_route_names = {f"{product}-api-key", f"{product}-jwt"}
+    preflight_route_names = {
+        f"{product}-api-key-preflight", f"{product}-jwt-preflight"
+    }
+    route_index = {
+        route.get("metadata", {}).get("name"): route for route in routes
+    }
+    if not primary_route_names.issubset(route_index):
+        raise SystemExit(f"{product}: both credential HTTPRoutes are required")
+    for name in primary_route_names:
+        filters = [
+            item
+            for rule in route_index[name].get("spec", {}).get("rules", [])
+            for item in rule.get("filters", [])
+        ]
+        header_sets = {
+            header.get("name", "").lower(): header.get("value")
+            for item in filters
+            for header in item.get("responseHeaderModifier", {}).get("set", [])
+        }
+        if header_sets.get("access-control-allow-origin") != "*":
+            raise SystemExit(f"{name}: browser responses must publish portable CORS headers")
+    for name in preflight_route_names:
+        route = route_index.get(name, {})
+        rules = route.get("spec", {}).get("rules", [])
         matches = [match for rule in rules for match in rule.get("matches", [])]
         filters = [item for rule in rules for item in rule.get("filters", [])]
         if not any(
             match.get("method") == "OPTIONS"
-            and match.get("path", {}).get("value") == "/v1/chat/completions"
+            and match.get("path", {}).get("value") == path
             for match in matches
         ):
-            raise SystemExit(f"{route_name}: portable browser preflight route is missing")
+            raise SystemExit(f"{name}: portable browser preflight route is missing")
         header_sets = {
             header.get("name", "").lower(): header.get("value")
             for item in filters
@@ -790,19 +820,18 @@ for route in ai_routes:
             header_sets.get("access-control-allow-origin") != "*"
             or "Authorization" not in header_sets.get("access-control-allow-headers", "")
         ):
-            raise SystemExit(f"{route_name}: portable non-cookie CORS headers are incomplete")
-
-preflight_policies = {
-    policy.get("metadata", {}).get("name"): policy
-    for policy in ai_auth_policies
-    if policy.get("metadata", {}).get("name") in preflight_route_names
-}
-if set(preflight_policies) != preflight_route_names:
-    raise SystemExit("Both AI Chat credential routes require an explicit preflight AuthPolicy")
-for name, policy in preflight_policies.items():
-    authentication = policy.get("spec", {}).get("rules", {}).get("authentication", {})
-    if authentication != {"browser-preflight": {"anonymous": {}}}:
-        raise SystemExit(f"{name}: only browser OPTIONS preflight may be anonymous")
+            raise SystemExit(f"{name}: portable non-cookie CORS headers are incomplete")
+    preflight_policies = {
+        policy.get("metadata", {}).get("name"): policy
+        for policy in policies
+        if policy.get("metadata", {}).get("name") in preflight_route_names
+    }
+    if set(preflight_policies) != preflight_route_names:
+        raise SystemExit(f"{product}: both credential routes require an explicit preflight AuthPolicy")
+    for name, policy in preflight_policies.items():
+        authentication = policy.get("spec", {}).get("rules", {}).get("authentication", {})
+        if authentication != {"browser-preflight": {"anonymous": {}}}:
+            raise SystemExit(f"{name}: only browser OPTIONS preflight may be anonymous")
 
 with open("platform/gateway/openshift-routes.yaml", encoding="utf-8") as stream:
     gateway_routes = [resource for resource in yaml.safe_load_all(stream) if resource]
@@ -1088,12 +1117,54 @@ if (
     raise SystemExit("Grafana OAuth client secret is not mirrored from the identity namespace")
 
 for product in ("inventory", "payments", "ai-chat"):
-    with open(f"applications/{product}/openapi.yaml", encoding="utf-8") as stream:
-        openapi = yaml.safe_load(stream)
-    if not str(openapi.get("openapi", "")).startswith("3.") or not openapi.get("paths"):
-        raise SystemExit(f"{product}: OpenAPI document is incomplete")
-    if openapi.get("servers", [{}])[0].get("url") != "https://api-monetization.invalid":
-        raise SystemExit(f"{product}: OpenAPI document is missing its portable server placeholder")
+    contracts = {
+        "api-key": {
+            "placeholder": "https://api-monetization.invalid",
+            "scheme": "apiKey",
+            "definition": {
+                "type": "apiKey",
+                "in": "header",
+                "name": "Authorization",
+                "description": "Paste the API key only. Developer Hub automatically sends it as `Authorization: APIKEY <credential>`.",
+            },
+        },
+        "keycloak-jwt": {
+            "placeholder": "https://jwt.api-monetization.invalid",
+            "scheme": "keycloakBearer",
+            "definition": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+                "description": "Paste the Keycloak access token. Swagger sends it as `Authorization: Bearer <token>`.",
+            },
+        },
+    }
+    for contract, expected in contracts.items():
+        with open(
+            f"applications/{product}/openapi/{contract}.yaml", encoding="utf-8"
+        ) as stream:
+            openapi = yaml.safe_load(stream)
+        if not str(openapi.get("openapi", "")).startswith("3.") or not openapi.get("paths"):
+            raise SystemExit(f"{product} {contract}: OpenAPI contract is incomplete")
+        if openapi.get("servers") != [{
+            "url": expected["placeholder"],
+            "description": openapi.get("servers", [{}])[0].get("description"),
+        }]:
+            raise SystemExit(f"{product} {contract}: portable server placeholder is invalid")
+        schemes = openapi.get("components", {}).get("securitySchemes", {})
+        if schemes != {expected["scheme"]: expected["definition"]}:
+            raise SystemExit(f"{product} {contract}: Swagger authorization scheme is invalid")
+        operations = [
+            operation
+            for path_item in openapi["paths"].values()
+            for method, operation in path_item.items()
+            if method.lower() in {"get", "post", "put", "patch", "delete"}
+        ]
+        if not operations or any(
+            operation.get("security") != [{expected["scheme"]: []}]
+            for operation in operations
+        ):
+            raise SystemExit(f"{product} {contract}: every operation must require its declared credential")
 
     with open(f"applications/{product}/service.yaml", encoding="utf-8") as stream:
         product_service = yaml.safe_load(stream)
@@ -1104,11 +1175,17 @@ for product in ("inventory", "payments", "ai-chat"):
     if service_ports.get("http-openapi") != (8082, "openapi"):
         raise SystemExit(f"{product}: documentation-only Service port 8082 is missing")
 
-    with open(f"platform/gateway/{product}-api-product.yaml", encoding="utf-8") as stream:
-        api_product = yaml.safe_load(stream)
-    expected_openapi_url = f"http://{product}-api.api-monetization-apps.svc.cluster.local:8082/openapi.yaml"
-    if api_product.get("spec", {}).get("documentation", {}).get("openAPISpecURL") != expected_openapi_url:
-        raise SystemExit(f"{product}: APIProduct must fetch OpenAPI from the documentation-only port")
+    for suffix, contract in (("api-product", "api-key"), ("jwt-api-product", "keycloak-jwt")):
+        with open(f"platform/gateway/{product}-{suffix}.yaml", encoding="utf-8") as stream:
+            api_product = yaml.safe_load(stream)
+        expected_openapi_url = (
+            f"http://{product}-api.api-monetization-apps.svc.cluster.local:8082/"
+            f"openapi/{contract}.yaml"
+        )
+        if api_product.get("spec", {}).get("documentation", {}).get("openAPISpecURL") != expected_openapi_url:
+            raise SystemExit(
+                f"{product}: {contract} APIProduct must fetch its distinct contract from port 8082"
+            )
 
 with open("platform/gateway/openapi-readiness.yaml", encoding="utf-8") as stream:
     openapi_readiness = yaml.safe_load(stream)
@@ -1116,9 +1193,9 @@ readiness_annotations = openapi_readiness.get("metadata", {}).get("annotations",
 readiness_script = openapi_readiness["spec"]["template"]["spec"]["containers"][0]["command"][-1]
 if (
     readiness_annotations.get("argocd.argoproj.io/hook") != "Sync"
-    or ":8082/openapi.yaml" not in readiness_script
+    or ":8082/openapi/${contract}.yaml" not in readiness_script
 ):
-    raise SystemExit("Gateway sync must wait for the fetchable OpenAPI document before APIProduct wave 40")
+    raise SystemExit("Gateway sync must wait for both fetchable OpenAPI contracts before APIProduct wave 40")
 
 with open("platform/gateway/gateway.yaml", encoding="utf-8") as stream:
     gateway = yaml.safe_load(stream)

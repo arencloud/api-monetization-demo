@@ -10,7 +10,8 @@ configMapGenerator:
   - name: inventory-api-openapi
     namespace: api-monetization-apps
     files:
-      - openapi.yaml
+      - openapi/api-key.yaml
+      - openapi/keycloak-jwt.yaml
     options:
       disableNameSuffixHash: true
       labels:

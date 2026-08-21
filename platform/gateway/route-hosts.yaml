@@ -454,8 +454,8 @@ spec:
                 local product=$3
                 local configmap="${product}-api-openapi"
                 local deployment="${product}-api"
-                local openapi_document=""
-                local current_urls
+                local api_key_document=""
+                local jwt_document=""
                 local rollout_state
                 local generation
                 local observed_generation
@@ -464,50 +464,62 @@ spec:
                 local available_replicas
 
                 for _ in $(seq 1 60); do
-                  openapi_document=$(api get configmap "$configmap" \
+                  api_key_document=$(api get configmap "$configmap" \
                     -n api-monetization-apps \
-                    -o go-template='{{index .data "openapi.yaml"}}' 2>/dev/null || true)
-                  [[ -n $openapi_document ]] && break
+                    -o go-template='{{index .data "api-key.yaml"}}' 2>/dev/null || true)
+                  jwt_document=$(api get configmap "$configmap" \
+                    -n api-monetization-apps \
+                    -o go-template='{{index .data "keycloak-jwt.yaml"}}' 2>/dev/null || true)
+                  [[ -n $api_key_document && -n $jwt_document ]] && break
                   sleep 5
                 done
-                if [[ -z $openapi_document ]]; then
-                  echo "ConfigMap $configmap was not ready before the timeout" >&2
+                if [[ -z $api_key_document || -z $jwt_document ]]; then
+                  echo "ConfigMap $configmap did not contain both OpenAPI contracts before the timeout" >&2
                   return 1
                 fi
 
-                current_urls=$(sed -n 's/^  - url: //p' <<<"$openapi_document")
-                if grep -Fxq "https://$api_host" <<<"$current_urls" &&
-                  grep -Fxq "https://$jwt_host" <<<"$current_urls"; then
-                  echo "OpenAPI server URLs already publish both authentication endpoints"
+                if grep -Fxq "  - url: https://$api_host" <<<"$api_key_document" &&
+                  grep -Fxq "  - url: https://$jwt_host" <<<"$jwt_document"; then
+                  echo "$product OpenAPI contracts already publish their authentication-specific endpoints"
                   return 0
                 fi
 
-                awk -v api_url="https://$api_host" -v jwt_url="https://$jwt_host" '
+                awk -v server_url="https://$api_host" '
                   !replaced && /^  - url: / {
-                    print "  - url: " api_url
-                    print "  - url: " jwt_url
+                    print "  - url: " server_url
                     replaced=1
                     next
                   }
                   replaced && /^  - url: / {next}
                   {print}
-                ' <<<"$openapi_document" >/tmp/openapi.yaml
-                if ! grep -Fxq "  - url: https://$api_host" /tmp/openapi.yaml ||
-                  ! grep -Fxq "  - url: https://$jwt_host" /tmp/openapi.yaml; then
-                  echo "error: OpenAPI document has no replaceable server URL" >&2
+                ' <<<"$api_key_document" >"/tmp/${product}-api-key.yaml"
+                awk -v server_url="https://$jwt_host" '
+                  !replaced && /^  - url: / {
+                    print "  - url: " server_url
+                    replaced=1
+                    next
+                  }
+                  replaced && /^  - url: / {next}
+                  {print}
+                ' <<<"$jwt_document" >"/tmp/${product}-keycloak-jwt.yaml"
+                if ! grep -Fxq "  - url: https://$api_host" "/tmp/${product}-api-key.yaml" ||
+                  ! grep -Fxq "  - url: https://$jwt_host" "/tmp/${product}-keycloak-jwt.yaml"; then
+                  echo "error: $product OpenAPI contracts have no replaceable server URL" >&2
                   return 1
                 fi
                 {
                   printf 'data:\n'
-                  printf '  openapi.yaml: |-\n'
-                  sed 's/^/    /' /tmp/openapi.yaml
-                } > /tmp/openapi-patch.yaml
+                  printf '  api-key.yaml: |-\n'
+                  sed 's/^/    /' "/tmp/${product}-api-key.yaml"
+                  printf '  keycloak-jwt.yaml: |-\n'
+                  sed 's/^/    /' "/tmp/${product}-keycloak-jwt.yaml"
+                } >"/tmp/${product}-openapi-patch.yaml"
 
-                echo "publishing OpenAPI server URLs https://$api_host and https://$jwt_host"
+                echo "publishing separate $product API-key and Keycloak JWT OpenAPI contracts"
                 retry_api patch configmap "$configmap" \
                   -n api-monetization-apps \
                   --type=merge \
-                  --patch-file=/tmp/openapi-patch.yaml
+                  --patch-file="/tmp/${product}-openapi-patch.yaml"
                 retry_api rollout restart deployment/"$deployment" \
                   -n api-monetization-apps
 
@@ -538,8 +550,12 @@ spec:
               align_demo_api_key_metadata
               align_route "$api_hostname" inventory-api-key
               align_route "$jwt_hostname" inventory-jwt
+              align_route "$api_hostname" inventory-api-key-preflight
+              align_route "$jwt_hostname" inventory-jwt-preflight
               align_route "$api_hostname" payments-api-key
               align_route "$jwt_hostname" payments-jwt
+              align_route "$api_hostname" payments-api-key-preflight
+              align_route "$jwt_hostname" payments-jwt-preflight
               align_route "$api_hostname" ai-chat-api-key
               align_route "$jwt_hostname" ai-chat-jwt
               align_route "$api_hostname" ai-chat-api-key-preflight

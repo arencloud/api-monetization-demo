@@ -34,7 +34,8 @@ spec:
       name: ai-chat-api-openapi
       namespace: api-monetization-apps
       jsonPointers:
-        - /data/openapi.yaml
+        - /data/api-key.yaml
+        - /data/keycloak-jwt.yaml
   syncPolicy:
     automated: {prune: true, selfHeal: true}
     retry:

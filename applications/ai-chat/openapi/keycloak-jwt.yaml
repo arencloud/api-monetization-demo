@@ -1,0 +1,94 @@
+openapi: 3.0.3
+info:
+  title: AI Chat API (Keycloak JWT)
+  version: 1.0.0
+  description: CPU-hosted, OpenAI-compatible chat inference authenticated by Red Hat build of Keycloak with token-attributed billing through Red Hat Connectivity Link.
+servers:
+  - url: https://jwt.api-monetization.invalid
+    description: Keycloak JWT endpoint; replaced by the admitted Gateway API hostname during publication
+tags:
+  - name: chat
+    description: Token-metered chat completion operations
+paths:
+  /v1/chat/completions:
+    post:
+      tags: [chat]
+      operationId: createChatCompletionWithKeycloakJwt
+      summary: Create a non-streaming chat completion
+      description: Returns an OpenAI-compatible response and reports prompt plus completion tokens as billable units.
+      security:
+        - keycloakBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatCompletionRequest'
+            example:
+              model: ai-chat
+              temperature: 0
+              max_tokens: 16
+              messages:
+                - role: user
+                  content: Explain API monetization in one sentence.
+      responses:
+        '200':
+          description: Chat completion with token usage
+          headers:
+            X-Monetization-Billable-Units:
+              description: Prompt plus completion tokens recorded for billing
+              schema: {type: integer}
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCompletionResponse'
+        '400': {description: Invalid or streaming request}
+        '401': {description: A valid Keycloak bearer token is required}
+        '403': {description: An active AI Chat subscription is required}
+        '429': {description: Connectivity Link request or token quota exceeded}
+        '502': {description: Model unavailable or invalid model response}
+components:
+  securitySchemes:
+    keycloakBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'Paste the Keycloak access token. Swagger sends it as `Authorization: Bearer <token>`.'
+  schemas:
+    ChatMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role: {type: string, enum: [system, user, assistant]}
+        content: {type: string}
+    ChatCompletionRequest:
+      type: object
+      required: [messages]
+      properties:
+        model: {type: string, default: ai-chat}
+        max_tokens: {type: integer, minimum: 1, maximum: 64, default: 16}
+        temperature: {type: number, minimum: 0, maximum: 2, default: 0}
+        stream: {type: boolean, default: false, enum: [false]}
+        messages:
+          type: array
+          minItems: 1
+          items: {$ref: '#/components/schemas/ChatMessage'}
+    TokenUsage:
+      type: object
+      required: [prompt_tokens, completion_tokens, total_tokens]
+      properties:
+        prompt_tokens: {type: integer, example: 9}
+        completion_tokens: {type: integer, example: 3}
+        total_tokens: {type: integer, example: 12}
+    ChatCompletionResponse:
+      type: object
+      required: [model, choices, usage]
+      properties:
+        model: {type: string, example: ai-chat}
+        choices:
+          type: array
+          items:
+            type: object
+            properties:
+              message: {$ref: '#/components/schemas/ChatMessage'}
+        usage: {$ref: '#/components/schemas/TokenUsage'}
