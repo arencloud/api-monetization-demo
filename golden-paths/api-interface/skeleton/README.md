@@ -28,9 +28,10 @@ go run .
 curl http://localhost:8080${{ values.apiPath }}
 ```
 
-In Developer Hub's OpenAPI console, paste `APIKEY <credential>` into the API-key
-authorization field. The Keycloak contract accepts the JWT alone and adds the
-standard `Bearer` prefix automatically.
+In Developer Hub's OpenAPI console, paste only the API-key credential. The
+platform adds the required `APIKEY` authorization prefix automatically. Paste
+only the JWT value for the Keycloak contract; Swagger adds the standard
+`Bearer` prefix automatically.
 
 ## Publish through Developer Hub
 

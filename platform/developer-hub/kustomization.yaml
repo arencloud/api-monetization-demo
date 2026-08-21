@@ -23,11 +23,14 @@ configMapGenerator:
     files:
       - rbac-policy.csv
       - rbac-conditional-policies.yaml
-  - name: api-monetization-rhdh-local-plugins
+  - name: api-monetization-rhdh-backend-plugin
     namespace: api-monetization-developer-hub
     files:
       - arencloud-rhdh-monetization-backend-dynamic-0.1.6.tgz
-      - arencloud-rhdh-policy-catalog-dynamic-0.1.9.tgz
+  - name: api-monetization-rhdh-frontend-plugin
+    namespace: api-monetization-developer-hub
+    files:
+      - arencloud-rhdh-policy-catalog-dynamic-0.1.10.tgz
 generatorOptions:
   disableNameSuffixHash: true
   labels:

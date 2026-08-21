@@ -490,7 +490,7 @@ def assert_rendered_project(kind: str, project: pathlib.Path) -> None:
             "type": "apiKey",
             "in": "header",
             "name": "Authorization",
-            "description": "Paste the complete authorization value, including the prefix — `APIKEY <credential>`. OpenAPI clients do not add this custom prefix automatically.",
+            "description": "Paste the API key only. Developer Hub automatically sends it as `Authorization: APIKEY <credential>`.",
         }
     }:
         fail(f"{kind}: API-key contract must expose only the APIKEY Authorization header")

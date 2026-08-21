@@ -278,17 +278,17 @@ if any(
     raise SystemExit("catalog entities must not expose direct Kuadrant API-key management")
 
 frontend_plugin_path = pathlib.Path(
-    "platform/developer-hub/arencloud-rhdh-policy-catalog-dynamic-0.1.9.tgz"
+    "platform/developer-hub/arencloud-rhdh-policy-catalog-dynamic-0.1.10.tgz"
 )
 frontend_plugin_package = (
     "/opt/app-root/src/local-plugins/"
-    "arencloud-rhdh-policy-catalog-dynamic-0.1.9.tgz"
+    "arencloud-rhdh-policy-catalog-dynamic-0.1.10.tgz"
 )
 frontend_plugin = plugin_by_package.get(frontend_plugin_package, {})
 if (
     frontend_plugin.get("disabled") is not False
     or frontend_plugin.get("integrity")
-    != "sha512-Z21GMaL/H8WWSuw5YV5hQSoE8ubDx0pS3YX+3hwNLHF/0cRGxbqJDviJ1tDERDzQXePGTG+LxpSZlV6jyKt9CA=="
+    != "sha512-Wx/CgGwTqxjcdqgQnQIr819T+SAKSShfGVYS9vgvimmoA3K8pnmeYgJ4Ap4HgkFVsMijSybPyk+g/PByYFW5Xg=="
 ):
     raise SystemExit("effective-policy RHDH plugin is not checksum-pinned")
 frontend_config = (
@@ -301,6 +301,24 @@ if frontend_config.get("apiFactories") != [{"importName": "oidcAuthApiFactory"}]
     raise SystemExit("RHDH monetization UI must register its generic OIDC API factory")
 if frontend_config.get("signInPage") != {"importName": "CustomSignInPage"}:
     raise SystemExit("RHDH must use the branded custom sign-in page extension")
+if not any(
+    tab.get("path") == "/definition"
+    and tab.get("mountPoint") == "entity.page.monetized-definition"
+    for tab in frontend_config.get("entityTabs", [])
+):
+    raise SystemExit("RHDH API Definition tab must use the monetized Swagger extension")
+swagger_mount = next(
+    (
+        mount for mount in frontend_config.get("mountPoints", [])
+        if mount.get("mountPoint") == "entity.page.monetized-definition/cards"
+        and mount.get("importName") == "EntityMonetizedApiDefinition"
+    ),
+    {},
+)
+if {"isKind": "api"} not in (
+    swagger_mount.get("config", {}).get("if", {}).get("allOf", [])
+):
+    raise SystemExit("RHDH monetized Swagger extension must be limited to API entities")
 devspaces_mount = next(
     (
         mount for mount in frontend_config.get("mountPoints", [])
@@ -314,10 +332,10 @@ if {"isKind": "component"} not in devspaces_condition or {
     "hasAnnotation": "github.com/project-slug"
 } not in devspaces_condition:
     raise SystemExit("RHDH API-owner Components must expose their Dev Spaces action")
-if not frontend_plugin_path.is_file() or frontend_plugin_path.stat().st_size >= 350_000:
+if not frontend_plugin_path.is_file() or frontend_plugin_path.stat().st_size >= 950_000:
     raise SystemExit("effective-policy plugin artifact is missing or too large for its ConfigMap")
 if hashlib.sha256(frontend_plugin_path.read_bytes()).hexdigest() != (
-    "8f29545b68c1b83b35d4a852c2520991454c7cd1cdebc0c2e7d4dee60b3dec72"
+    "5a88369a1e6541a9c098d7e11e78ee91afd2c263a500a929f75f36768f0d7dc3"
 ):
     raise SystemExit("effective-policy plugin artifact checksum changed; rebuild and review it")
 
@@ -341,8 +359,6 @@ if hashlib.sha256(backend_plugin_path.read_bytes()).hexdigest() != (
     "671dbfb5576027b94e0c409e8211ee24755fea4a3b4cbba31b1f081f5229597b"
 ):
     raise SystemExit("monetization backend artifact checksum changed; rebuild and review it")
-if frontend_plugin_path.stat().st_size + backend_plugin_path.stat().st_size >= 1_000_000:
-    raise SystemExit("combined RHDH plugin artifacts exceed the ConfigMap safety budget")
 
 configured_routes = []
 for plugin in dynamic_plugins.get("plugins", []):
@@ -591,13 +607,14 @@ for required_fragment in (
         raise SystemExit(
             f"RHDH runtime discovery is missing Git revision behavior {required_fragment}"
         )
-plugin_volume = next(
-    (
-        volume for volume in pod_spec.get("volumes", [])
-        if volume.get("name") == "api-monetization-rhdh-local-plugins"
-    ),
-    {},
-)
+plugin_volumes = {
+    volume.get("name"): volume
+    for volume in pod_spec.get("volumes", [])
+    if volume.get("name") in {
+        "api-monetization-rhdh-backend-plugin",
+        "api-monetization-rhdh-frontend-plugin",
+    }
+}
 plugin_installer = next(
     (
         container for container in pod_spec.get("initContainers", [])
@@ -605,14 +622,27 @@ plugin_installer = next(
     ),
     {},
 )
-if plugin_volume.get("configMap", {}).get("name") != "api-monetization-rhdh-local-plugins":
-    raise SystemExit("RHDH local plugin ConfigMap is not mounted")
-for plugin_path, plugin_package in (
-    (frontend_plugin_path, frontend_plugin_package),
-    (backend_plugin_path, backend_plugin_package),
+for volume_name in (
+    "api-monetization-rhdh-backend-plugin",
+    "api-monetization-rhdh-frontend-plugin",
+):
+    if plugin_volumes.get(volume_name, {}).get("configMap", {}).get("name") != volume_name:
+        raise SystemExit(f"RHDH local plugin ConfigMap {volume_name} is not mounted")
+for plugin_path, plugin_package, volume_name in (
+    (
+        frontend_plugin_path,
+        frontend_plugin_package,
+        "api-monetization-rhdh-frontend-plugin",
+    ),
+    (
+        backend_plugin_path,
+        backend_plugin_package,
+        "api-monetization-rhdh-backend-plugin",
+    ),
 ):
     if not any(
-        mount.get("mountPath") == plugin_package
+        mount.get("name") == volume_name
+        and mount.get("mountPath") == plugin_package
         and mount.get("subPath") == plugin_path.name
         and mount.get("readOnly") is True
         for mount in plugin_installer.get("volumeMounts", [])
