@@ -301,12 +301,22 @@ if frontend_config.get("apiFactories") != [{"importName": "oidcAuthApiFactory"}]
     raise SystemExit("RHDH monetization UI must register its generic OIDC API factory")
 if frontend_config.get("signInPage") != {"importName": "CustomSignInPage"}:
     raise SystemExit("RHDH must use the branded custom sign-in page extension")
+entity_tabs = frontend_config.get("entityTabs", [])
 if not any(
     tab.get("path") == "/definition"
-    and tab.get("mountPoint") == "entity.page.monetized-definition"
-    for tab in frontend_config.get("entityTabs", [])
+    and tab.get("mountPoint") == "entity.page.definition"
+    and isinstance(tab.get("priority"), int)
+    and tab.get("priority") < 0
+    for tab in entity_tabs
 ):
-    raise SystemExit("RHDH API Definition tab must use the monetized Swagger extension")
+    raise SystemExit("RHDH stock API Definition tab must be disabled")
+if not any(
+    tab.get("path") == "/monetized-definition"
+    and tab.get("title") == "Definition"
+    and tab.get("mountPoint") == "entity.page.monetized-definition"
+    for tab in entity_tabs
+):
+    raise SystemExit("RHDH API Definition tab must use a non-colliding monetized route")
 swagger_mount = next(
     (
         mount for mount in frontend_config.get("mountPoints", [])

@@ -85,6 +85,10 @@ plugins:
             entityTabs:
               - path: /definition
                 title: Definition
+                mountPoint: entity.page.definition
+                priority: -1
+              - path: /monetized-definition
+                title: Definition
                 mountPoint: entity.page.monetized-definition
             dynamicRoutes:
               - path: /kuadrant/api-products
