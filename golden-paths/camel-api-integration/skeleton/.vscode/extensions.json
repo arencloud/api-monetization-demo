@@ -1,0 +1,11 @@
+{
+  "recommendations": [
+    "redhat.java",
+    "redhat.vscode-quarkus",
+    "redhat.vscode-apache-camel",
+    "redhat.vscode-kaoto",
+    "redhat.vscode-yaml",
+    "redhat.vscode-xml",
+    "redhat.vscode-openshift-connector"
+  ]
+}

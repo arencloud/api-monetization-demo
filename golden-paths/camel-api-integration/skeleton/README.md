@@ -12,7 +12,9 @@ governed self-service publication through Red Hat Developer Hub.
 
 The Golden Path completion page opens this repository directly in Red Hat
 OpenShift Dev Spaces. The checked-in `devfile.yaml` provides **test** and
-**run** commands in the workspace task menu. The same commands work locally:
+**run** commands in the workspace task menu. Code - OSS automatically installs
+the governed Red Hat Java, Quarkus, Apache Camel, Kaoto, YAML, XML, and OpenShift
+extensions declared in `.vscode/extensions.json`. The same commands work locally:
 
 ```bash
 mvn quarkus:dev

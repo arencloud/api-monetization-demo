@@ -9,7 +9,13 @@ metadata:
     app.kubernetes.io/component: cloud-development-environment
     component: che
 spec:
-  components: {}
+  components:
+    pluginRegistry:
+      # Code - OSS installs the extensions declared by generated repositories.
+      # The public Open VSX catalog contains the complete Red Hat Camel and
+      # Kaoto toolset; production installations can replace this URL with a
+      # curated, organization-managed Open VSX registry.
+      openVSXURL: https://open-vsx.org
   containerRegistry: {}
   devEnvironments: {}
   gitServices: {}
