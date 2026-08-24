@@ -1,0 +1,7 @@
+{
+  "recommendations": [
+    "golang.Go",
+    "redhat.vscode-yaml",
+    "redhat.vscode-openshift-connector"
+  ]
+}

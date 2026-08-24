@@ -34,6 +34,10 @@ coverage.html
 .idea/
 *.iml
 .vscode/
+!golden-paths/api-interface/skeleton/.vscode/
+!golden-paths/api-interface/skeleton/.vscode/extensions.json
+!golden-paths/camel-api-integration/skeleton/.vscode/
+!golden-paths/camel-api-integration/skeleton/.vscode/extensions.json
 
 # OS-generated files
 .DS_Store

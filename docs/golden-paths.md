@@ -24,6 +24,15 @@ contains only portable metadata; the card derives the runtime-specific link
 from the validated `github.com/project-slug` annotation. Generated source is
 not added to this platform repository.
 
+Each generated repository also contains a governed `.vscode/extensions.json`.
+OpenShift Dev Spaces Code - OSS installs these extensions automatically when a
+new workspace starts. The Go template installs Go, YAML, and OpenShift tooling.
+The Camel template installs Red Hat Java, Quarkus, Apache Camel, Kaoto, YAML,
+XML, and OpenShift tooling. The demo configures `https://open-vsx.org` explicitly
+because the embedded registry does not contain the complete Camel and Kaoto
+set. Production or disconnected deployments should point the Operator-managed
+CheCluster at a curated Open VSX registry containing the same extension IDs.
+
 ```text
 Choose template → Create repository → Open Dev Spaces → Develop and review
         → Publish API → Argo CD reconciles → Consumers can subscribe

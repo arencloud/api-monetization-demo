@@ -54,8 +54,24 @@ VALUES = {
     "repoOwner": "api-team-2",
 }
 VALUE_EXPRESSION = re.compile(r"\$\{\{\s*values\.([A-Za-z0-9_]+)\s*\}\}")
-TEMPLATE_VERSION = "1.4.1"
+TEMPLATE_VERSION = "1.5.0"
 GITHUB_OWNER_PATTERN = r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$"
+VSCODE_EXTENSIONS = {
+    "api-interface": [
+        "golang.Go",
+        "redhat.vscode-yaml",
+        "redhat.vscode-openshift-connector",
+    ],
+    "camel-api-integration": [
+        "redhat.java",
+        "redhat.vscode-quarkus",
+        "redhat.vscode-apache-camel",
+        "redhat.vscode-kaoto",
+        "redhat.vscode-yaml",
+        "redhat.vscode-xml",
+        "redhat.vscode-openshift-connector",
+    ],
+}
 
 
 def fail(message: str) -> None:
@@ -180,6 +196,18 @@ def assert_platform_configuration() -> None:
     }
     if ("org.eclipse.che", "v2", "checlusters") not in custom_resources:
         fail("RHDH topology must discover the Operator-managed CheCluster")
+
+    checluster = yaml.safe_load(
+        (ROOT / "platform/devspaces/checluster.yaml").read_text(encoding="utf-8")
+    )
+    open_vsx_url = (
+        checluster.get("spec", {})
+        .get("components", {})
+        .get("pluginRegistry", {})
+        .get("openVSXURL")
+    )
+    if open_vsx_url != "https://open-vsx.org":
+        fail("Dev Spaces must use the Open VSX catalog required by Golden Path extensions")
 
     dynamic_plugins = yaml.safe_load(
         (ROOT / "platform/developer-hub/dynamic-plugins.yaml").read_text(encoding="utf-8")
@@ -377,6 +405,14 @@ def assert_rendered_project(kind: str, project: pathlib.Path) -> None:
     }
     if commands != {"test", "run"}:
         fail(f"{kind}: Dev Spaces must expose test and run commands")
+
+    extensions_path = project / ".vscode/extensions.json"
+    try:
+        extensions = yaml.safe_load(extensions_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, yaml.YAMLError) as error:
+        fail(f"{kind}: generated project must provide valid VS Code extensions: {error}")
+    if extensions != {"recommendations": VSCODE_EXTENSIONS[kind]}:
+        fail(f"{kind}: generated project does not install the governed VS Code toolset")
 
     catalog_documents = list(
         yaml.safe_load_all((project / "catalog-info.yaml").read_text(encoding="utf-8"))
